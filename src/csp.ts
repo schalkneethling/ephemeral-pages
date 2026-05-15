@@ -36,7 +36,7 @@ export function buildAppShellCsp(): string {
     "img-src 'self' data:",
     "font-src 'self'",
     "connect-src 'self'",
-    "frame-src blob:",
+    "frame-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",

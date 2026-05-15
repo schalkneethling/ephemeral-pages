@@ -179,7 +179,7 @@ describe("uploaded page CSP", () => {
   it("builds a tight app shell CSP", () => {
     const csp = buildAppShellCsp();
     expect(csp).toContain("default-src 'self'");
-    expect(csp).toContain("frame-src blob:");
+    expect(csp).toContain("frame-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("object-src 'none'");
   });

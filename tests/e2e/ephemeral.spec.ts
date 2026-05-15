@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { buildUploadedPageHttpCsp } from "../../src/csp.ts";
 import { PAGE_UNAVAILABLE_REASON } from "../../src/domain.ts";
 
 test("uploads valid HTML and renders the shared page", async ({ page }) => {
@@ -181,7 +182,14 @@ test("runs inline script and blocks disallowed remote script", async ({ page }) 
     });
   });
   await page.route("**/api/pages/csp-test/content", async (route) => {
-    await route.fulfill({ status: 200, contentType: "text/html", body: html });
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      headers: {
+        "Content-Security-Policy": buildUploadedPageHttpCsp(),
+      },
+      body: html,
+    });
   });
   await page.route("https://example.invalid/not-allowed.js", async (route) => {
     await route.fulfill({
@@ -193,6 +201,7 @@ test("runs inline script and blocks disallowed remote script", async ({ page }) 
 
   await page.goto("/p/csp-test");
 
+  await expect(page.locator("#page-iframe")).toHaveAttribute("src", "/api/pages/csp-test/content");
   await expect(page.frameLocator("#page-iframe").locator("#status")).toHaveText("Inline works");
   await page.waitForTimeout(250);
   await expect(page.frameLocator("#page-iframe").locator("#status")).toHaveText("Inline works");

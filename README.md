@@ -5,8 +5,8 @@ Ephemeral Pages lets users publish short-lived HTML pages that expire automatica
 ## Uploaded Content Security Model
 
 Uploaded pages are intentionally constrained. The content endpoint returns uploaded HTML with
-a sandboxed Content Security Policy, and the normal viewer injects the same uploaded-page CSP
-before rendering content in a `blob:` iframe.
+a sandboxed Content Security Policy, and the normal viewer renders the content endpoint in a
+sandboxed same-origin iframe.
 
 Allowed external loading is limited to declarative script, stylesheet, and font use:
 

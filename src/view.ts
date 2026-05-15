@@ -1,6 +1,5 @@
 import { html, render } from "lit";
 
-import { injectCsp } from "./csp.ts";
 import { API_BASE, mapUnavailableStatus, type PageMetadata } from "./domain.ts";
 import { icon } from "./icons.ts";
 
@@ -155,7 +154,7 @@ async function loadPage(pageId: string) {
 
     const meta = (await metaResponse.json()) as PageMetadata;
 
-    // Fetch the HTML content
+    // Check the HTML content before revealing the viewer.
     const contentResponse = await fetch(`${API_BASE}/pages/${pageId}/content`);
 
     const contentUnavailable = mapUnavailableStatus(contentResponse.status);
@@ -171,17 +170,8 @@ async function loadPage(pageId: string) {
       throw new Error(`Unexpected status: ${contentResponse.status}`);
     }
 
-    const html = await contentResponse.text();
-
-    // Inject CSP meta tag
-    const modifiedHtml = injectCsp(html);
-
-    // Create blob URL and load in iframe
-    const blob = new Blob([modifiedHtml], { type: "text/html" });
-    const blobUrl = URL.createObjectURL(blob);
-
     const iframe = document.getElementById("page-iframe") as HTMLIFrameElement;
-    iframe.src = blobUrl;
+    iframe.src = `${API_BASE}/pages/${pageId}/content`;
 
     // Set expiration label
     const expiresLabel = document.getElementById("page-expires-label")!;
@@ -192,11 +182,6 @@ async function loadPage(pageId: string) {
     loadingEl.hidden = true;
     contentEl.hidden = false;
     focusVisibleState(contentEl);
-
-    // Clean up blob URL after iframe loads
-    iframe.addEventListener("load", () => {
-      URL.revokeObjectURL(blobUrl);
-    });
   } catch {
     loadingEl.hidden = true;
     errorEl.hidden = false;
