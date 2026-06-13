@@ -52,12 +52,13 @@ Security and abuse protection are first-class product requirements, not follow-u
 
 ## Non-Goals
 
-- Ephemeral Pages is not a CMS, website builder, blog host, pastebin clone, file-sharing service, or permanent hosting platform.
-- It should not add accounts, profiles, comments, analytics dashboards, custom domains, page editing, version history, or long-term archives unless the project goal is deliberately revisited.
-- It should not optimize for arbitrary third-party integrations or broad network access from uploaded pages.
-- It should not store raw actor identifiers for rate limiting when pseudonymous enforcement is enough.
-- It should not make moderation fully automatic; flagged-page deletion remains an owner review action.
-- It should not grow into a general backend platform beyond the storage, cleanup, reporting, and admin flows needed for temporary HTML publishing.
+Ephemeral Pages is not a CMS, website builder, blog host, pastebin clone, file-sharing service, or permanent hosting platform. The project will not:
+
+- Add accounts, profiles, comments, analytics dashboards, custom domains, page editing, version history, or long-term archives unless the project goal is deliberately revisited.
+- Optimize for arbitrary third-party integrations or broad network access from uploaded pages.
+- Store raw actor identifiers for rate limiting when pseudonymous enforcement is enough.
+- Make moderation fully automatic; flagged-page deletion remains an owner review action.
+- Grow into a general backend platform beyond the storage, cleanup, reporting, and admin flows needed for temporary HTML publishing.
 
 ## Principles and Constraints
 
