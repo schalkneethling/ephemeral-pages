@@ -34,7 +34,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
-    "@varlock/1password-plugin": "^1.1.0",
+    "@varlock/1password-plugin": "^2.0.0",
     "stylelint": "^17.11.1",
     "stylelint-order": "^8.1.1",
     "typescript": "~6.0.2",
