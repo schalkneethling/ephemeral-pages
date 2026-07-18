@@ -18,6 +18,7 @@
     "dev": "vp dev",
     "build": "tsc && vp build",
     "css:sort": "stylelint \"src/**/*.css\" --fix",
+    "knip": "knip",
     "preview": "vp preview",
     "test": "vp test",
     "test:e2e": "playwright test",
@@ -35,6 +36,7 @@
   "devDependencies": {
     "@playwright/test": "^1.57.0",
     "@varlock/1password-plugin": "^2.0.0",
+    "knip": "^6.27.0",
     "stylelint": "^17.11.1",
     "stylelint-order": "^8.1.1",
     "typescript": "~6.0.2",

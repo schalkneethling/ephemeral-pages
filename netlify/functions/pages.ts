@@ -87,7 +87,7 @@ export async function createPage(req: Request, store: PageStore): Promise<Respon
     return jsonError("Request body must be valid JSON", 400);
   }
 
-  const html = validateServerHtml(body.html);
+  const html = await validateServerHtml(body.html);
   if (!html.ok) {
     return jsonError(html.error, 400);
   }
