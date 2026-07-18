@@ -39,7 +39,7 @@
     "knip": "^6.27.0",
     "stylelint": "^17.11.1",
     "stylelint-order": "^8.1.1",
-    "typescript": "~6.0.2",
+    "typescript": "~7.0.2",
     "varlock": "^1.2.0",
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vite-plus": "latest",
