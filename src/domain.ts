@@ -3,7 +3,7 @@ export const API_BASE = "/api";
 export const MIN_HOURS = 1;
 export const MAX_HOURS = 24 * 7;
 export const DEFAULT_HOURS = 12;
-export const MAX_HTML_BYTES = 2 * 1024 * 1024;
+export const MAX_COMPRESSED_HTML_BYTES = 2 * 1024 * 1024;
 
 export const ALLOWED_EXPIRATIONS: readonly ExpirationOption[] = [
   { hours: 1, label: "1 hour" },

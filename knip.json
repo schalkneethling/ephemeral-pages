@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/**/*.test.ts", "tests/e2e/**/*.spec.ts", "netlify/functions/*.ts"],
+  "ignoreDependencies": ["@varlock/1password-plugin", "varlock"],
+  "ignoreExportsUsedInFile": true
+}
