@@ -6,6 +6,8 @@ import { parse, type DefaultTreeAdapterTypes } from "parse5";
 import { MAX_COMPRESSED_HTML_BYTES, type ValidationResult } from "../../src/domain.ts";
 
 const HTML_REQUIRED_ERROR = "HTML content is required";
+const MAX_RAW_HTML_LENGTH = 20 * 1024 * 1024;
+const HTML_RAW_SIZE_ERROR = "HTML content cannot exceed 20 MB before compression";
 const HTML_SIZE_ERROR = "HTML content cannot exceed 2 MB after Brotli compression";
 const HTML_DOCUMENT_ERROR =
   "The uploaded file must include a source-authored <html> or <head> element.";
@@ -15,6 +17,10 @@ const compressWithBrotli = promisify(brotliCompress);
 export async function validateServerHtml(value: unknown): Promise<ValidationResult<string>> {
   if (!value || typeof value !== "string" || value.trim().length === 0) {
     return { ok: false, error: HTML_REQUIRED_ERROR };
+  }
+
+  if (value.length > MAX_RAW_HTML_LENGTH) {
+    return { ok: false, error: HTML_RAW_SIZE_ERROR };
   }
 
   const compressed = await compressWithBrotli(value);

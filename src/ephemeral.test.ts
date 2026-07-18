@@ -113,6 +113,15 @@ describe("page policy", () => {
     await expect(validateServerHtml(html)).resolves.toMatchObject({ ok: true });
   });
 
+  it("rejects HTML over the raw-content safety limit before compression", async () => {
+    const html = `<html><body>${"a".repeat(20 * 1024 * 1024)}</body></html>`;
+
+    await expect(validateServerHtml(html)).resolves.toEqual({
+      ok: false,
+      error: "HTML content cannot exceed 20 MB before compression",
+    });
+  });
+
   it("rejects HTML whose Brotli output exceeds 2 MB", async () => {
     const html = `<html><body>${randomBytes(2_200_000).toString("base64")}</body></html>`;
 
