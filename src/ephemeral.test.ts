@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { cleanupExpiredPages, cleanupExpiredRateLimits } from "../netlify/functions/cleanup.ts";
@@ -65,34 +67,58 @@ describe("page policy", () => {
     });
   });
 
-  it("validates server HTML with parse5 source nodes", () => {
-    expect(validateServerHtml("<!doctype html><title>Hello</title><p>Hello</p>")).toMatchObject({
+  it("validates server HTML with parse5 source nodes", async () => {
+    await expect(
+      validateServerHtml("<!doctype html><title>Hello</title><p>Hello</p>"),
+    ).resolves.toMatchObject({
       ok: false,
       error: "The uploaded file must include a source-authored <html> or <head> element.",
     });
-    expect(validateServerHtml("<html><body>Hello</body></html>")).toMatchObject({ ok: true });
-    expect(validateServerHtml("<head><title>Hello</title></head><p>Hello</p>")).toMatchObject({
+    await expect(validateServerHtml("<html><body>Hello</body></html>")).resolves.toMatchObject({
       ok: true,
     });
-    expect(validateServerHtml("<p>Hello</p>")).toMatchObject({
+    await expect(
+      validateServerHtml("<head><title>Hello</title></head><p>Hello</p>"),
+    ).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(validateServerHtml("<p>Hello</p>")).resolves.toMatchObject({
       ok: false,
       error: "The uploaded file must include a source-authored <html> or <head> element.",
     });
-    expect(validateServerHtml("this mentions <script but is not markup")).toMatchObject({
+    await expect(
+      validateServerHtml("this mentions <script but is not markup"),
+    ).resolves.toMatchObject({
       ok: false,
       error: "The uploaded file must include a source-authored <html> or <head> element.",
     });
-    expect(validateServerHtml("<p")).toMatchObject({
+    await expect(validateServerHtml("<p")).resolves.toMatchObject({
       ok: false,
       error: "The uploaded file must include a source-authored <html> or <head> element.",
     });
-    expect(validateServerHtml("plain text")).toMatchObject({
+    await expect(validateServerHtml("plain text")).resolves.toMatchObject({
       ok: false,
       error: "The uploaded file must include a source-authored <html> or <head> element.",
     });
-    expect(validateServerHtml("")).toMatchObject({
+    await expect(validateServerHtml("")).resolves.toMatchObject({
       ok: false,
       error: "HTML content is required",
+    });
+  });
+
+  it("accepts HTML larger than 2 MB when its Brotli output is within the limit", async () => {
+    const html = `<html><body>${"<p>Repeated report content</p>".repeat(100_000)}</body></html>`;
+
+    expect(new TextEncoder().encode(html).byteLength).toBeGreaterThan(2 * 1024 * 1024);
+    await expect(validateServerHtml(html)).resolves.toMatchObject({ ok: true });
+  });
+
+  it("rejects HTML whose Brotli output exceeds 2 MB", async () => {
+    const html = `<html><body>${randomBytes(2_200_000).toString("base64")}</body></html>`;
+
+    await expect(validateServerHtml(html)).resolves.toEqual({
+      ok: false,
+      error: "HTML content cannot exceed 2 MB after Brotli compression",
     });
   });
 

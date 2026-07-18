@@ -3,7 +3,6 @@ import { html, render } from "lit";
 import {
   API_BASE,
   ALLOWED_EXPIRATIONS,
-  MAX_HTML_BYTES,
   type ApiErrorResponse,
   type CreatePageResponse,
 } from "./domain.ts";
@@ -56,7 +55,7 @@ function uploadPageTemplate() {
                 <strong>Drop your HTML</strong>
                 <span>or click to browse</span>
               </p>
-              <p class="drop-hint">Only .html files - max 2 MB</p>
+              <p class="drop-hint">Only .html files - max 2 MB after Brotli compression</p>
             </div>
             <input type="file" id="file-input" class="file-input-hidden" accept=".html,.htm" />
             <label for="file-input" class="file-input-hidden">Choose an HTML file to upload</label>
@@ -257,11 +256,6 @@ function setupUploadForm(container: HTMLDivElement) {
     const ext = "." + file.name.split(".").pop()?.toLowerCase();
     if (!ACCEPTED_TYPES.includes(ext)) {
       showMessage(elements.message, "Only .html files are allowed.", "error");
-      return;
-    }
-
-    if (file.size > MAX_HTML_BYTES) {
-      showMessage(elements.message, "File is too large. Maximum size is 2 MB.", "error");
       return;
     }
 
