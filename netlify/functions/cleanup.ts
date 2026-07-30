@@ -65,30 +65,43 @@ export async function cleanupExpiredRateLimits(
   store: PageStore,
   now = Date.now(),
 ): Promise<number> {
-  const entryKeys = await store.listRateLimitEntries();
-  let deleted = 0;
-
-  for (const entryKey of entryKeys) {
-    const result = await store.getRateLimit(entryKey);
-    if (!activeRateLimitRecord(result?.record ?? null, now)) {
-      await store.deleteRateLimit(entryKey);
-      deleted += 1;
-    }
-  }
-
-  return deleted;
+  return sweepInactiveRecords({
+    list: () => store.listRateLimitEntries(),
+    get: async (key) => (await store.getRateLimit(key))?.record ?? null,
+    delete: (key) => store.deleteRateLimit(key),
+    isActive: (record) => activeRateLimitRecord(record, now),
+  });
 }
 
 export async function cleanupExpiredIdempotency(
   store: PageStore,
   now = new Date(),
 ): Promise<number> {
-  const entryKeys = await store.listIdempotencyEntries();
+  return sweepInactiveRecords({
+    list: () => store.listIdempotencyEntries(),
+    get: async (key) => (await store.getIdempotency(key))?.record ?? null,
+    delete: (key) => store.deleteIdempotency(key),
+    isActive: (record) => activeIdempotencyRecord(record, now),
+  });
+}
+
+async function sweepInactiveRecords<T>({
+  list,
+  get,
+  delete: deleteRecord,
+  isActive,
+}: {
+  list: () => Promise<string[]>;
+  get: (key: string) => Promise<T | null>;
+  delete: (key: string) => Promise<void>;
+  isActive: (record: T | null) => boolean;
+}): Promise<number> {
+  const entryKeys = await list();
   let deleted = 0;
   for (const entryKey of entryKeys) {
-    const result = await store.getIdempotency(entryKey);
-    if (!activeIdempotencyRecord(result?.record ?? null, now)) {
-      await store.deleteIdempotency(entryKey);
+    const record = await get(entryKey);
+    if (!isActive(record)) {
+      await deleteRecord(entryKey);
       deleted += 1;
     }
   }

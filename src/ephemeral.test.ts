@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { brotliCompressSync } from "node:zlib";
 
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   cleanupExpiredIdempotency,
@@ -124,18 +124,22 @@ describe("page policy", () => {
   it("rejects HTML over the raw-content safety limit before compression", async () => {
     const html = `<html><body>${"a".repeat(20 * 1024 * 1024)}</body></html>`;
 
-    await expect(validateServerHtml(html)).resolves.toEqual({
+    await expect(validateServerHtml(html)).resolves.toMatchObject({
       ok: false,
       error: "HTML content cannot exceed 20 MB before compression",
+      status: 413,
+      reason: "raw_size",
     });
   });
 
   it("rejects HTML whose Brotli output exceeds 2 MB", async () => {
     const html = `<html><body>${randomBytes(2_200_000).toString("base64")}</body></html>`;
 
-    await expect(validateServerHtml(html)).resolves.toEqual({
+    await expect(validateServerHtml(html)).resolves.toMatchObject({
       ok: false,
       error: "HTML content cannot exceed 2 MB after Brotli compression",
+      status: 413,
+      reason: "compressed_size",
     });
   });
 
@@ -188,82 +192,108 @@ describe("page policy", () => {
 });
 
 describe("GitHub OIDC", () => {
-  it("verifies signature, issuer, audience, time, and required claims", async () => {
-    const { publicKey, privateKey } = await generateKeyPair("RS256");
-    const publicJwk = await exportJWK(publicKey);
-    const keySet = createLocalJWKSet({
-      keys: [{ ...publicJwk, kid: "test", alg: "RS256", use: "sig" }],
-    });
-    const now = Math.floor(Date.now() / 1000);
-    const claims = {
-      repository_id: "12345",
-      repository: "owner/repository",
-      run_id: "67890",
-      run_attempt: "1",
-      workflow_ref: "owner/repository/.github/workflows/test.yml@refs/heads/main",
-    };
-    const sign = (overrides: Record<string, unknown> = {}) =>
-      new SignJWT({ ...claims, ...overrides })
-        .setProtectedHeader({ alg: "RS256", kid: "test" })
-        .setIssuer("https://token.actions.githubusercontent.com")
-        .setAudience("https://example.com")
-        .setIssuedAt(now)
-        .setNotBefore(now - 1)
-        .setExpirationTime(now + 60)
-        .sign(privateKey);
+  let fixture: Awaited<ReturnType<typeof createOidcFixture>>;
 
+  beforeAll(async () => {
+    fixture = await createOidcFixture();
+  });
+
+  it("accepts a valid GitHub OIDC token", async () => {
     await expect(
-      verifyGitHubOidcToken(await sign(), "https://example.com", keySet),
+      verifyGitHubOidcToken(await fixture.sign(), "https://example.com", fixture.keySet),
     ).resolves.toEqual({ type: "github", repositoryId: "12345" });
-    await expect(
-      verifyGitHubOidcToken(await sign(), "https://wrong.example", keySet),
-    ).rejects.toThrow();
-    await expect(
-      verifyGitHubOidcToken(
-        await new SignJWT(claims)
-          .setProtectedHeader({ alg: "RS256", kid: "test" })
-          .setIssuer("https://wrong.example")
-          .setAudience("https://example.com")
-          .setNotBefore(now - 1)
-          .setExpirationTime(now + 60)
-          .sign(privateKey),
-        "https://example.com",
-        keySet,
-      ),
-    ).rejects.toThrow();
-    await expect(
-      verifyGitHubOidcToken(
-        await new SignJWT(claims)
-          .setProtectedHeader({ alg: "RS256", kid: "test" })
-          .setIssuer("https://token.actions.githubusercontent.com")
-          .setAudience("https://example.com")
-          .setNotBefore(now - 60)
-          .setExpirationTime(now - 1)
-          .sign(privateKey),
-        "https://example.com",
-        keySet,
-      ),
-    ).rejects.toThrow();
-    await expect(
-      verifyGitHubOidcToken(await sign({ repository_id: "" }), "https://example.com", keySet),
-    ).rejects.toThrow("Missing required claim");
+  });
 
-    const otherPair = await generateKeyPair("RS256");
+  it("rejects a token with the wrong audience", async () => {
+    await expect(
+      verifyGitHubOidcToken(await fixture.sign(), "https://wrong.example", fixture.keySet),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a token with the wrong issuer", async () => {
     await expect(
       verifyGitHubOidcToken(
-        await new SignJWT(claims)
-          .setProtectedHeader({ alg: "RS256", kid: "test" })
-          .setIssuer("https://token.actions.githubusercontent.com")
-          .setAudience("https://example.com")
-          .setNotBefore(now - 1)
-          .setExpirationTime(now + 60)
-          .sign(otherPair.privateKey),
+        await fixture.sign({ issuer: "https://wrong.example" }),
         "https://example.com",
-        keySet,
+        fixture.keySet,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("rejects an expired token", async () => {
+    await expect(
+      verifyGitHubOidcToken(
+        await fixture.sign({ expirationTime: fixture.now - 1 }),
+        "https://example.com",
+        fixture.keySet,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a token with a missing required claim", async () => {
+    await expect(
+      verifyGitHubOidcToken(
+        await fixture.sign({ claimOverrides: { repository_id: "" } }),
+        "https://example.com",
+        fixture.keySet,
+      ),
+    ).rejects.toThrow("Missing required claim");
+  });
+
+  it("rejects a token signed by an unknown key", async () => {
+    await expect(
+      verifyGitHubOidcToken(
+        await fixture.sign({ useWrongKey: true }),
+        "https://example.com",
+        fixture.keySet,
       ),
     ).rejects.toThrow();
   });
 });
+
+async function createOidcFixture() {
+  const { publicKey, privateKey } = await generateKeyPair("RS256");
+  const otherPair = await generateKeyPair("RS256");
+  const publicJwk = await exportJWK(publicKey);
+  const keySet = createLocalJWKSet({
+    keys: [{ ...publicJwk, kid: "test", alg: "RS256", use: "sig" }],
+  });
+  const now = Math.floor(Date.now() / 1000);
+  const claims = {
+    repository_id: "12345",
+    repository: "owner/repository",
+    run_id: "67890",
+    run_attempt: "1",
+    workflow_ref: "owner/repository/.github/workflows/test.yml@refs/heads/main",
+  };
+
+  return {
+    keySet,
+    now,
+    sign({
+      issuer = "https://token.actions.githubusercontent.com",
+      audience = "https://example.com",
+      expirationTime = now + 60,
+      claimOverrides = {},
+      useWrongKey = false,
+    }: {
+      issuer?: string;
+      audience?: string;
+      expirationTime?: number;
+      claimOverrides?: Record<string, unknown>;
+      useWrongKey?: boolean;
+    } = {}) {
+      return new SignJWT({ ...claims, ...claimOverrides })
+        .setProtectedHeader({ alg: "RS256", kid: "test" })
+        .setIssuer(issuer)
+        .setAudience(audience)
+        .setIssuedAt(now)
+        .setNotBefore(now - 1)
+        .setExpirationTime(expirationTime)
+        .sign(useWrongKey ? otherPair.privateKey : privateKey);
+    },
+  };
+}
 
 describe("routing", () => {
   it("matches API routes with URLPattern", () => {
@@ -418,6 +448,28 @@ describe("page handlers", () => {
     expect(await store.listExpirationEntries(expirationDayKey(new Date(body.expiresAt)))).toContain(
       expirationIndexKey(body.id, new Date(body.expiresAt)),
     );
+  });
+
+  it("uses PUBLIC_BASE_URL for page URLs and rejects invalid configuration before storage", async () => {
+    const configuredStore = createMemoryStore();
+    const configuredResponse = await createPage(
+      jsonRequest({ html: "<html><body>Hello</body></html>" }),
+      configuredStore,
+      { publicBaseUrl: "https://public.example/path" },
+    );
+    const configuredBody = (await configuredResponse.json()) as { id: string; url: string };
+
+    expect(configuredBody.url).toBe(`https://public.example/p/${configuredBody.id}`);
+
+    const invalidStore = createMemoryStore();
+    const invalidResponse = await createPage(
+      jsonRequest({ html: "<html><body>Hello</body></html>" }),
+      invalidStore,
+      { publicBaseUrl: "not a URL" },
+    );
+
+    expect(invalidResponse.status).toBe(500);
+    expect(await invalidStore.listExpirationDirectories()).toEqual([]);
   });
 
   it("rejects invalid create payloads", async () => {
@@ -631,8 +683,31 @@ describe("page handlers", () => {
 
     expect(first.status).toBe(201);
     expect(replay.status).toBe(200);
+    expect(replay.headers.get("X-RateLimit-Remaining")).toBe("8");
     expect(await replay.json()).toEqual(await first.json());
     expect(conflict.status).toBe(409);
+  });
+
+  it("treats equivalent identity and Brotli requests as the same idempotent upload", async () => {
+    const store = createMemoryStore();
+    const html = "<html><body>Equivalent report</body></html>";
+    const headers = { "Idempotency-Key": "equivalent-report" };
+    const first = await createPage(
+      jsonRequest({ html }, "https://example.com/api/pages", headers),
+      store,
+    );
+    const replay = await createPage(
+      jsonRequest(
+        { html: brotliCompressSync(html).toString("base64"), encoding: "br+base64" },
+        "https://example.com/api/pages",
+        headers,
+      ),
+      store,
+    );
+
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(await first.json());
   });
 
   it("returns metadata and content for active pages", async () => {

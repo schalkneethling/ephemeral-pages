@@ -82,6 +82,7 @@ export async function createPage(
   dependencies: {
     verifyOidc?: typeof verifyGitHubOidcToken;
     oidcAudience?: string;
+    publicBaseUrl?: string;
     now?: () => Date;
     createId?: () => string;
   } = {},
@@ -98,6 +99,15 @@ export async function createPage(
   if (!identity.ok) {
     return jsonError(identity.error, identity.status);
   }
+
+  const actor = identity.identity;
+  const actorSubject = actor.type === "github" ? actor.repositoryId : actor.ip;
+  const limit = await checkRateLimit(req, store, "upload", "global", Date.now(), {
+    type: actor.type,
+    subject: actorSubject,
+  });
+  if (!limit.ok) return limit.response;
+  const actorHash = limit.actorHash;
 
   const body = await parseJson<CreatePageRequest>(req);
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -116,40 +126,24 @@ export async function createPage(
     return jsonError(expirationHours.error, 400);
   }
 
-  const actor = identity.identity;
-  const actorSubject = actor.type === "github" ? actor.repositoryId : actor.ip;
-  let actorHash: string;
-  try {
-    actorHash = await hashValue(`${actor.type}:${actorSubject}`);
-  } catch {
-    return jsonError("Rate limiting is not configured", 500);
-  }
-
-  const requestDigest = await digestRequest(
-    html.value,
-    encoding ?? "identity",
-    expirationHours.value,
-  );
-  let idempotency;
-  try {
-    idempotency = await resolveIdempotency(req, store, actorHash, requestDigest);
-  } catch {
-    return jsonError("Idempotency is temporarily unavailable", 503, { "Retry-After": "2" });
-  }
+  const requestDigest = await digestRequest(html.value, expirationHours.value);
+  const idempotency = await resolveIdempotency(req, store, actor.type, actorHash, requestDigest);
   if (!idempotency.ok) return idempotency.response;
   if (idempotency.record) {
     captureSecurityEvent("idempotency_hit", "info", {
       actor_type: actor.type,
       actor_hash: actorHash,
     });
-    return json(idempotency.record.response, 200);
+    return json(idempotency.record.response, 200, limit.headers);
   }
 
-  const limit = await checkRateLimit(req, store, "upload", "global", Date.now(), {
-    type: actor.type,
-    subject: actorSubject,
-  });
-  if (!limit.ok) return limit.response;
+  const publicBaseUrl = resolvePublicBaseUrl(
+    req,
+    dependencies.publicBaseUrl ?? getEnv("PUBLIC_BASE_URL"),
+  );
+  if (!publicBaseUrl) {
+    return jsonError("Public page URL is not configured correctly", 500);
+  }
 
   const id = dependencies.createId?.() ?? crypto.randomUUID();
   const now = dependencies.now?.() ?? new Date();
@@ -163,12 +157,11 @@ export async function createPage(
 
   await store.savePage(html.value, metadata);
 
-  const serviceOrigin = getEnv("GITHUB_OIDC_AUDIENCE") ?? new URL(req.url).origin;
   const responseBody: CreatePageResponse = {
     id,
     createdAt: metadata.createdAt,
     expiresAt: metadata.expiresAt,
-    url: new URL(`/p/${id}`, serviceOrigin).href,
+    url: new URL(`/p/${id}`, publicBaseUrl).href,
   };
 
   if (idempotency.key) {
@@ -366,12 +359,8 @@ async function parseJson<T>(req: Request): Promise<T | null> {
   }
 }
 
-async function digestRequest(
-  html: string,
-  encoding: string,
-  expirationHours: number,
-): Promise<string> {
-  const data = JSON.stringify({ html, encoding, expirationHours });
+async function digestRequest(html: string, expirationHours: number): Promise<string> {
+  const data = JSON.stringify({ html, expirationHours });
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -379,6 +368,7 @@ async function digestRequest(
 async function resolveIdempotency(
   req: Request,
   store: PageStore,
+  actorType: "anonymous" | "github",
   actorHash: string,
   digest: string,
 ): Promise<
@@ -394,18 +384,50 @@ async function resolveIdempotency(
     };
   }
 
-  const keyHash = await hashValue(`idempotency:${supplied}`);
+  let keyHash: string;
+  try {
+    keyHash = await hashValue(`idempotency:${supplied}`);
+  } catch {
+    return { ok: false, response: jsonError("Rate limiting is not configured", 500) };
+  }
   const key = idempotencyKey(actorHash, keyHash);
-  const existing = await store.getIdempotency(key);
+  let existing;
+  try {
+    existing = await store.getIdempotency(key);
+  } catch {
+    return {
+      ok: false,
+      response: jsonError("Idempotency is temporarily unavailable", 503, { "Retry-After": "2" }),
+    };
+  }
   if (!existing) return { ok: true, key, record: null };
   if (isExpired(existing.record.expiresAt)) {
-    await store.deleteIdempotency(key);
+    try {
+      await store.deleteIdempotency(key);
+    } catch {
+      return {
+        ok: false,
+        response: jsonError("Idempotency is temporarily unavailable", 503, { "Retry-After": "2" }),
+      };
+    }
     return { ok: true, key, record: null };
   }
   if (existing.record.digest !== digest) {
-    return { ok: false, response: idempotencyConflict("unknown", actorHash) };
+    return { ok: false, response: idempotencyConflict(actorType, actorHash) };
   }
   return { ok: true, key, record: existing.record };
+}
+
+function resolvePublicBaseUrl(req: Request, configuredUrl: string | undefined): string | null {
+  try {
+    const url = new URL(configuredUrl ?? new URL(req.url).origin);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
+      return null;
+    }
+    return url.origin;
+  } catch {
+    return null;
+  }
 }
 
 function idempotencyConflict(actorType: string, actorHash: string): Response {

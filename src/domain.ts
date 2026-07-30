@@ -31,9 +31,11 @@ export interface PageMetadata {
   sizeBytes: number;
 }
 
-export type CreatePageRequest =
-  | { html: string; expirationHours?: number; encoding?: "identity" }
-  | { html: string; expirationHours?: number; encoding: "br+base64" };
+export interface CreatePageRequest {
+  html: string;
+  expirationHours?: number;
+  encoding?: "identity" | "br+base64";
+}
 
 export interface CreatePageResponse {
   id: string;

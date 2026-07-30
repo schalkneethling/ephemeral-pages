@@ -68,15 +68,15 @@ workflow/repository claims returns `401` and never falls back to anonymous acces
 
 Anonymous uploads are limited to 10 per 10 minutes per client IP. Verified GitHub uploads are
 limited to 10 per 10 minutes per stable GitHub repository ID. Successful responses include
-`X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` where available. A `429`
-response also includes `Retry-After`.
+`X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`, including `200` idempotent
+replays because every replay is metered. A `429` response also includes `Retry-After`.
 
 ## Idempotency
 
 Clients may send `Idempotency-Key` with 1–200 printable ASCII characters. Keys are HMAC-protected
 and scoped to the anonymous IP or verified GitHub repository identity. Repeating the same key,
-content, encoding, and TTL returns the original page. Reusing it with a different request returns
-`409 Conflict`. The record is deleted after the page expires.
+decoded content, and TTL returns the original page, even if the transport encoding changes. Reusing
+it with a different request returns `409 Conflict`. The record is deleted after the page expires.
 
 ## Errors
 

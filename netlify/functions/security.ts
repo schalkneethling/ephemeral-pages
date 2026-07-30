@@ -128,6 +128,9 @@ export async function checkRateLimit(
           headers: rateLimitHeaders(policy.limit, record.count + 1, record.resetAt),
         };
       }
+      if (attempt < MAX_RATE_LIMIT_RETRIES - 1) {
+        await retryDelay(attempt);
+      }
     }
   } catch {
     return rateLimitUnavailable(name, actor.type, actorHash);
@@ -151,6 +154,12 @@ function rateLimitUnavailable(
     actorHash,
     response: jsonError("Rate limiting is temporarily unavailable", 503, { "Retry-After": "2" }),
   };
+}
+
+async function retryDelay(attempt: number): Promise<void> {
+  const baseMs = Math.min(40, 2 ** attempt);
+  const jitterMs = Math.floor(Math.random() * 10);
+  await new Promise((resolve) => setTimeout(resolve, baseMs + jitterMs));
 }
 
 export async function resetRateLimit(

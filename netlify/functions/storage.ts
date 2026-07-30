@@ -2,6 +2,7 @@ import { getStore, type Store } from "@netlify/blobs";
 
 import {
   expirationIndexKey,
+  IDEMPOTENCY_PREFIX,
   pageHtmlKey,
   pageMetadataKey,
   type PageMetadata,
@@ -141,7 +142,7 @@ export function createPageStore(
     },
 
     async listIdempotencyEntries() {
-      const result = await store.list({ prefix: "idempotency/" });
+      const result = await store.list({ prefix: `${IDEMPOTENCY_PREFIX}/` });
       return result.blobs.map((blob) => blob.key);
     },
 
