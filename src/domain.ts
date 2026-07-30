@@ -3,6 +3,7 @@ export const API_BASE = "/api";
 export const MIN_HOURS = 1;
 export const MAX_HOURS = 24 * 7;
 export const DEFAULT_HOURS = 12;
+export const MAX_RAW_HTML_BYTES = 20 * 1024 * 1024;
 export const MAX_COMPRESSED_HTML_BYTES = 2 * 1024 * 1024;
 
 export const ALLOWED_EXPIRATIONS: readonly ExpirationOption[] = [
@@ -30,10 +31,9 @@ export interface PageMetadata {
   sizeBytes: number;
 }
 
-export interface CreatePageRequest {
-  html: string;
-  expirationHours?: number;
-}
+export type CreatePageRequest =
+  | { html: string; expirationHours?: number; encoding?: "identity" }
+  | { html: string; expirationHours?: number; encoding: "br+base64" };
 
 export interface CreatePageResponse {
   id: string;
@@ -59,6 +59,7 @@ export type PageUnavailableReason =
 export const PAGE_PREFIX = "pages";
 export const EXPIRES_PREFIX = "expires";
 export const RATE_LIMIT_PREFIX = "rate-limits";
+export const IDEMPOTENCY_PREFIX = "idempotency";
 
 export function pageHtmlKey(id: string): string {
   return `${PAGE_PREFIX}/${id}/index.html`;
@@ -81,6 +82,10 @@ export function expirationDayKey(expiresAt: Date): string {
 
 export function expirationIndexKey(id: string, expiresAt: Date): string {
   return `${expirationDayKey(expiresAt)}/${id}.json`;
+}
+
+export function idempotencyKey(actorHash: string, keyHash: string): string {
+  return `${IDEMPOTENCY_PREFIX}/${actorHash}/${keyHash}.json`;
 }
 
 export function validateExpirationHours(value: unknown): ValidationResult<number> {

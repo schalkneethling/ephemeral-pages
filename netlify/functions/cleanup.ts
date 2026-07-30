@@ -1,7 +1,12 @@
 import type { Config } from "@netlify/functions";
 
 import { isExpired } from "../../src/domain.ts";
-import { createPageStore, type PageStore, type RateLimitRecord } from "./storage.ts";
+import {
+  createPageStore,
+  type IdempotencyRecord,
+  type PageStore,
+  type RateLimitRecord,
+} from "./storage.ts";
 
 export const config: Config = {
   schedule: "0 * * * *",
@@ -11,14 +16,18 @@ export default async function handler() {
   const store = createPageStore();
   const pagesDeleted = await cleanupExpiredPages(store);
   const rateLimitsDeleted = await cleanupExpiredRateLimits(store);
-  const deleted = pagesDeleted + rateLimitsDeleted;
+  const idempotencyDeleted = await cleanupExpiredIdempotency(store);
+  const deleted = pagesDeleted + rateLimitsDeleted + idempotencyDeleted;
 
   console.log(
-    `Cleanup: hard-deleted ${pagesDeleted} expired page(s) and ${rateLimitsDeleted} expired rate-limit record(s)`,
+    `Cleanup: hard-deleted ${pagesDeleted} page(s), ${rateLimitsDeleted} rate-limit record(s), and ${idempotencyDeleted} idempotency record(s)`,
   );
-  return new Response(JSON.stringify({ deleted, pagesDeleted, rateLimitsDeleted }), {
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ deleted, pagesDeleted, rateLimitsDeleted, idempotencyDeleted }),
+    {
+      headers: { "Content-Type": "application/json" },
+    },
+  );
 }
 
 export async function cleanupExpiredPages(store: PageStore, now = new Date()): Promise<number> {
@@ -60,13 +69,29 @@ export async function cleanupExpiredRateLimits(
   let deleted = 0;
 
   for (const entryKey of entryKeys) {
-    const record = await store.getRateLimit(entryKey);
-    if (!activeRateLimitRecord(record, now)) {
+    const result = await store.getRateLimit(entryKey);
+    if (!activeRateLimitRecord(result?.record ?? null, now)) {
       await store.deleteRateLimit(entryKey);
       deleted += 1;
     }
   }
 
+  return deleted;
+}
+
+export async function cleanupExpiredIdempotency(
+  store: PageStore,
+  now = new Date(),
+): Promise<number> {
+  const entryKeys = await store.listIdempotencyEntries();
+  let deleted = 0;
+  for (const entryKey of entryKeys) {
+    const result = await store.getIdempotency(entryKey);
+    if (!activeIdempotencyRecord(result?.record ?? null, now)) {
+      await store.deleteIdempotency(entryKey);
+      deleted += 1;
+    }
+  }
   return deleted;
 }
 
@@ -80,6 +105,15 @@ function expirationDirectoryIsInFuture(dateDir: string, now: Date): boolean {
 
   const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   return dayStart > todayStart;
+}
+
+function activeIdempotencyRecord(record: IdempotencyRecord | null, now: Date): boolean {
+  return (
+    typeof record?.digest === "string" &&
+    typeof record.pageId === "string" &&
+    typeof record.expiresAt === "string" &&
+    new Date(record.expiresAt) > now
+  );
 }
 
 function activeRateLimitRecord(record: RateLimitRecord | null, now: number): boolean {

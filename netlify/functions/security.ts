@@ -20,6 +20,8 @@ export const RATE_LIMITS = {
 } as const;
 
 export type RateLimitName = keyof typeof RATE_LIMITS;
+export type RateLimitActor = { type: "anonymous" | "github"; subject: string };
+const MAX_RATE_LIMIT_RETRIES = 12;
 
 let sentryInitialized = false;
 
@@ -69,7 +71,11 @@ export async function checkRateLimit(
   name: RateLimitName,
   subject = "global",
   now = Date.now(),
-): Promise<{ ok: true; actorHash: string } | { ok: false; actorHash: string; response: Response }> {
+  actor: RateLimitActor = { type: "anonymous", subject: clientIp(req) },
+): Promise<
+  | { ok: true; actorHash: string; headers: Record<string, string> }
+  | { ok: false; actorHash: string; response: Response }
+> {
   const secret = getRateLimitSecret();
   if (!secret) {
     captureSecurityEvent("rate_limit_secret_missing", "error", { rate_limit: name });
@@ -80,28 +86,71 @@ export async function checkRateLimit(
     };
   }
 
-  const actorHash = await hashValue(`${clientIp(req)}:${userAgent(req)}`, secret);
+  const actorHash = await hashValue(`${actor.type}:${actor.subject}`, secret);
   const subjectHash = await hashValue(subject, secret);
   const key = rateLimitKey(name, actorHash, subjectHash);
   const policy = RATE_LIMITS[name];
-  const existing = await store.getRateLimit(key);
-  const record = activeRecord(existing, now, policy.windowMs);
+  try {
+    for (let attempt = 0; attempt < MAX_RATE_LIMIT_RETRIES; attempt += 1) {
+      const existing = await store.getRateLimit(key);
+      const record = activeRecord(existing?.record ?? null, now, policy.windowMs);
+      const headers = rateLimitHeaders(policy.limit, record.count, record.resetAt);
 
-  if (record.count >= policy.limit) {
-    captureSecurityEvent("rate_limit_exceeded", "warning", {
-      rate_limit: name,
-      actor_hash: actorHash,
-      subject_hash: subjectHash,
-    });
-    return {
-      ok: false,
-      actorHash,
-      response: jsonError("Too many requests. Please try again later.", 429),
-    };
+      if (record.count >= policy.limit) {
+        captureSecurityEvent("rate_limit_exceeded", "warning", {
+          rate_limit: name,
+          actor_type: actor.type,
+          actor_hash: actorHash,
+          subject_hash: subjectHash,
+        });
+        return {
+          ok: false,
+          actorHash,
+          response: jsonError("Too many requests. Please try again later.", 429, {
+            ...headers,
+            "Retry-After": String(Math.max(1, Math.ceil((record.resetAt - now) / 1000))),
+          }),
+        };
+      }
+
+      const condition = existing
+        ? ({ onlyIfMatch: existing.etag } as const)
+        : ({ onlyIfNew: true } as const);
+      const write = await store.setRateLimit(
+        key,
+        { count: record.count + 1, resetAt: record.resetAt },
+        condition,
+      );
+      if (write.modified) {
+        return {
+          ok: true,
+          actorHash,
+          headers: rateLimitHeaders(policy.limit, record.count + 1, record.resetAt),
+        };
+      }
+    }
+  } catch {
+    return rateLimitUnavailable(name, actor.type, actorHash);
   }
 
-  await store.setRateLimit(key, { count: record.count + 1, resetAt: record.resetAt });
-  return { ok: true, actorHash };
+  return rateLimitUnavailable(name, actor.type, actorHash);
+}
+
+function rateLimitUnavailable(
+  name: RateLimitName,
+  actorType: RateLimitActor["type"],
+  actorHash: string,
+): { ok: false; actorHash: string; response: Response } {
+  captureSecurityEvent("rate_limit_contention", "warning", {
+    rate_limit: name,
+    actor_type: actorType,
+    actor_hash: actorHash,
+  });
+  return {
+    ok: false,
+    actorHash,
+    response: jsonError("Rate limiting is temporarily unavailable", 503, { "Retry-After": "2" }),
+  };
 }
 
 export async function resetRateLimit(
@@ -165,11 +214,8 @@ function clientIp(req: Request): string {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown-ip";
 }
 
-function userAgent(req: Request): string {
-  return req.headers.get("user-agent") || "unknown-user-agent";
-}
-
-async function hashValue(value: string, secret: string): Promise<string> {
+export async function hashValue(value: string, secret = getRateLimitSecret()): Promise<string> {
+  if (!secret) throw new Error("Rate limiting is not configured");
   // Create a deterministic HMAC digest for rate-limit keys so raw IPs and user agents are never
   // stored in Netlify Blobs. We only need stable pseudonymous keys, so there is nothing to verify
   // later; each request recomputes the same signature and looks up the matching counter.
@@ -192,12 +238,25 @@ async function hashValue(value: string, secret: string): Promise<string> {
   );
 }
 
-function jsonError(error: string, status: number): Response {
+function rateLimitHeaders(limit: number, count: number, resetAt: number): Record<string, string> {
+  return {
+    "X-RateLimit-Limit": String(limit),
+    "X-RateLimit-Remaining": String(Math.max(0, limit - count)),
+    "X-RateLimit-Reset": String(Math.ceil(resetAt / 1000)),
+  };
+}
+
+function jsonError(
+  error: string,
+  status: number,
+  additionalHeaders: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify({ error } satisfies ApiErrorResponse), {
     status,
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
+      ...additionalHeaders,
     },
   });
 }

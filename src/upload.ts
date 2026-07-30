@@ -313,7 +313,7 @@ function setupUploadForm(container: HTMLDivElement) {
 
       const data = (await response.json()) as CreatePageResponse;
 
-      const fullUrl = `${window.location.origin}${data.url}`;
+      const fullUrl = new URL(data.url, window.location.origin).href;
       elements.shareUrl.value = fullUrl;
 
       startExpirySnippet(data.expiresAt);

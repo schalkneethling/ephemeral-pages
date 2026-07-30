@@ -2,6 +2,12 @@
 
 Ephemeral Pages lets users publish short-lived HTML pages that expire automatically.
 
+## Public API
+
+The documented [`POST /api/pages` API](docs/api.md) supports plain JSON uploads, Brotli/Base64 CI
+reports, optional GitHub Actions OIDC identity, actor-scoped idempotency, and stable error/rate-limit
+responses.
+
 ## Uploaded Content Security Model
 
 Uploaded pages are intentionally constrained. The content endpoint returns uploaded HTML with
@@ -34,8 +40,8 @@ fetch("https://cdn.jsdelivr.net/npm/lodash/lodash.min.js");
 ## Rate-Limit Data Retention
 
 Rate limits use short-lived, pseudonymous JSON records in Netlify Blobs. The record key is derived
-from an HMAC of the request actor signal and rate-limit subject, so raw IP addresses and user agents
-are not stored in Blob keys.
+from an HMAC of the request actor signal and rate-limit subject, so raw IP addresses and verified
+GitHub repository identities are not stored in Blob keys.
 
 Expired rate-limit records are hard-deleted by the scheduled cleanup function once their `resetAt`
 window has passed. Malformed rate-limit records are also deleted during cleanup because they cannot

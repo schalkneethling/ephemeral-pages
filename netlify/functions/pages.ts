@@ -4,6 +4,7 @@ import { buildUploadedPageHttpCsp } from "../../src/csp.ts";
 import {
   expirationDate,
   htmlByteLength,
+  idempotencyKey,
   isExpired,
   PAGE_UNAVAILABLE_REASON,
   type ApiErrorResponse,
@@ -13,17 +14,20 @@ import {
   type PageUnavailableReason,
   validateExpirationHours,
 } from "../../src/domain.ts";
+import { resolveUploadIdentity, verifyGitHubOidcToken } from "./github-oidc.ts";
 import { matchApiRoute } from "../../src/routes.ts";
-import { validateServerHtml } from "./html-validation.ts";
+import { decodeAndValidateHtml } from "./html-validation.ts";
 import {
   captureException,
   captureSecurityEvent,
   checkRateLimit,
   getAdminDeleteToken,
+  getEnv,
+  hashValue,
   initSentry,
   resetRateLimit,
 } from "./security.ts";
-import { createPageStore, type PageStore } from "./storage.ts";
+import { createPageStore, type IdempotencyRecord, type PageStore } from "./storage.ts";
 
 const NETLIFY_RATE_LIMIT_WINDOW_SECONDS = 60;
 const NETLIFY_RATE_LIMIT_REQUESTS = 120;
@@ -72,24 +76,39 @@ export default async function handler(req: Request) {
   }
 }
 
-export async function createPage(req: Request, store: PageStore): Promise<Response> {
-  const limit = await checkRateLimit(req, store, "upload");
-  if (!limit.ok) {
-    return limit.response;
-  }
-
+export async function createPage(
+  req: Request,
+  store: PageStore,
+  dependencies: {
+    verifyOidc?: typeof verifyGitHubOidcToken;
+    oidcAudience?: string;
+    now?: () => Date;
+    createId?: () => string;
+  } = {},
+): Promise<Response> {
   if (!isJsonRequest(req)) {
     return jsonError("Content-Type must be application/json", 415);
   }
 
+  const identity = await resolveUploadIdentity(
+    req,
+    dependencies.verifyOidc,
+    dependencies.oidcAudience,
+  );
+  if (!identity.ok) {
+    return jsonError(identity.error, identity.status);
+  }
+
   const body = await parseJson<CreatePageRequest>(req);
-  if (!body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
     return jsonError("Request body must be valid JSON", 400);
   }
 
-  const html = await validateServerHtml(body.html);
+  const encoding = "encoding" in body ? body.encoding : undefined;
+  const html = await decodeAndValidateHtml(body.html, encoding);
   if (!html.ok) {
-    return jsonError(html.error, 400);
+    captureSecurityEvent("upload_payload_rejected", "info", { reason: html.reason });
+    return jsonError(html.error, html.status);
   }
 
   const expirationHours = validateExpirationHours(body.expirationHours);
@@ -97,8 +116,43 @@ export async function createPage(req: Request, store: PageStore): Promise<Respon
     return jsonError(expirationHours.error, 400);
   }
 
-  const id = crypto.randomUUID();
-  const now = new Date();
+  const actor = identity.identity;
+  const actorSubject = actor.type === "github" ? actor.repositoryId : actor.ip;
+  let actorHash: string;
+  try {
+    actorHash = await hashValue(`${actor.type}:${actorSubject}`);
+  } catch {
+    return jsonError("Rate limiting is not configured", 500);
+  }
+
+  const requestDigest = await digestRequest(
+    html.value,
+    encoding ?? "identity",
+    expirationHours.value,
+  );
+  let idempotency;
+  try {
+    idempotency = await resolveIdempotency(req, store, actorHash, requestDigest);
+  } catch {
+    return jsonError("Idempotency is temporarily unavailable", 503, { "Retry-After": "2" });
+  }
+  if (!idempotency.ok) return idempotency.response;
+  if (idempotency.record) {
+    captureSecurityEvent("idempotency_hit", "info", {
+      actor_type: actor.type,
+      actor_hash: actorHash,
+    });
+    return json(idempotency.record.response, 200);
+  }
+
+  const limit = await checkRateLimit(req, store, "upload", "global", Date.now(), {
+    type: actor.type,
+    subject: actorSubject,
+  });
+  if (!limit.ok) return limit.response;
+
+  const id = dependencies.createId?.() ?? crypto.randomUUID();
+  const now = dependencies.now?.() ?? new Date();
   const expiresAt = expirationDate(expirationHours.value, now);
   const metadata: PageMetadata = {
     id,
@@ -109,15 +163,55 @@ export async function createPage(req: Request, store: PageStore): Promise<Respon
 
   await store.savePage(html.value, metadata);
 
-  return json<CreatePageResponse>(
-    {
-      id,
-      createdAt: metadata.createdAt,
+  const serviceOrigin = getEnv("GITHUB_OIDC_AUDIENCE") ?? new URL(req.url).origin;
+  const responseBody: CreatePageResponse = {
+    id,
+    createdAt: metadata.createdAt,
+    expiresAt: metadata.expiresAt,
+    url: new URL(`/p/${id}`, serviceOrigin).href,
+  };
+
+  if (idempotency.key) {
+    const record: IdempotencyRecord = {
+      digest: requestDigest,
+      pageId: id,
+      response: responseBody,
       expiresAt: metadata.expiresAt,
-      url: `/p/${id}`,
-    },
-    201,
-  );
+    };
+    let claim;
+    try {
+      claim = await store.setIdempotency(idempotency.key, record, { onlyIfNew: true });
+    } catch {
+      await compensatePage(store, id, metadata.expiresAt);
+      return jsonError("Idempotency is temporarily unavailable", 503, { "Retry-After": "2" });
+    }
+    if (!claim.modified) {
+      let authoritative;
+      try {
+        authoritative = await store.getIdempotency(idempotency.key);
+      } catch {
+        return jsonError("Idempotency is temporarily unavailable", 503, { "Retry-After": "2" });
+      } finally {
+        await compensatePage(store, id, metadata.expiresAt);
+      }
+      if (!authoritative) {
+        return jsonError("Idempotency is temporarily unavailable", 503, { "Retry-After": "2" });
+      }
+      if (authoritative.record.digest !== requestDigest) {
+        return idempotencyConflict(actor.type, actorHash);
+      }
+      return json(authoritative.record.response, 200, limit.headers);
+    }
+  }
+
+  captureSecurityEvent("upload_accepted", "info", {
+    actor_type: actor.type,
+    actor_hash: actorHash,
+    compressed_bytes: String(html.compressedBytes),
+    raw_bytes: String(html.rawBytes),
+    ttl_hours: String(expirationHours.value),
+  });
+  return json(responseBody, 201, limit.headers);
 }
 
 export async function createReport(req: Request, store: PageStore): Promise<Response> {
@@ -261,7 +355,7 @@ function bearerToken(req: Request): string | null {
 
 function isJsonRequest(req: Request): boolean {
   const contentType = req.headers.get("content-type");
-  return contentType?.toLowerCase().includes("application/json") ?? false;
+  return contentType?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
 }
 
 async function parseJson<T>(req: Request): Promise<T | null> {
@@ -272,18 +366,85 @@ async function parseJson<T>(req: Request): Promise<T | null> {
   }
 }
 
-function json<T>(body: T, status: number): Response {
+async function digestRequest(
+  html: string,
+  encoding: string,
+  expirationHours: number,
+): Promise<string> {
+  const data = JSON.stringify({ html, encoding, expirationHours });
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function resolveIdempotency(
+  req: Request,
+  store: PageStore,
+  actorHash: string,
+  digest: string,
+): Promise<
+  | { ok: true; key: string | null; record: IdempotencyRecord | null }
+  | { ok: false; response: Response }
+> {
+  const supplied = req.headers.get("idempotency-key");
+  if (supplied === null) return { ok: true, key: null, record: null };
+  if (supplied.length < 1 || supplied.length > 200 || !/^[\x20-\x7E]+$/.test(supplied)) {
+    return {
+      ok: false,
+      response: jsonError("Idempotency-Key must be 1-200 printable ASCII characters", 400),
+    };
+  }
+
+  const keyHash = await hashValue(`idempotency:${supplied}`);
+  const key = idempotencyKey(actorHash, keyHash);
+  const existing = await store.getIdempotency(key);
+  if (!existing) return { ok: true, key, record: null };
+  if (isExpired(existing.record.expiresAt)) {
+    await store.deleteIdempotency(key);
+    return { ok: true, key, record: null };
+  }
+  if (existing.record.digest !== digest) {
+    return { ok: false, response: idempotencyConflict("unknown", actorHash) };
+  }
+  return { ok: true, key, record: existing.record };
+}
+
+function idempotencyConflict(actorType: string, actorHash: string): Response {
+  captureSecurityEvent("idempotency_conflict", "warning", {
+    actor_type: actorType,
+    actor_hash: actorHash,
+  });
+  return jsonError("Idempotency-Key was already used for a different request", 409);
+}
+
+async function compensatePage(store: PageStore, id: string, expiresAt: string): Promise<void> {
+  try {
+    await store.deletePage(id, expiresAt);
+  } catch {
+    captureSecurityEvent("storage_compensation_failure", "error", { stage: "idempotency" });
+  }
+}
+
+function json<T>(
+  body: T,
+  status: number,
+  additionalHeaders: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
+      ...additionalHeaders,
     },
   });
 }
 
-function jsonError(error = "Something went wrong", status: number): Response {
-  return json<ApiErrorResponse>({ error }, status);
+function jsonError(
+  error = "Something went wrong",
+  status: number,
+  headers: Record<string, string> = {},
+): Response {
+  return json<ApiErrorResponse>({ error }, status, headers);
 }
 
 function htmlHeaders(): HeadersInit {
