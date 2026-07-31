@@ -28,6 +28,7 @@
     "@netlify/blobs": "^10.7.6",
     "@netlify/functions": "^5.2.1",
     "@sentry/node": "^10.53.1",
+    "jose": "^6.1.0",
     "lit": "^3.3.2",
     "lucide": "^1.14.0",
     "parse5": "^8.0.1",

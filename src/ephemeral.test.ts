@@ -1,9 +1,16 @@
 import { randomBytes } from "node:crypto";
+import { brotliCompressSync } from "node:zlib";
 
-import { describe, expect, it, vi } from "vitest";
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { cleanupExpiredPages, cleanupExpiredRateLimits } from "../netlify/functions/cleanup.ts";
-import { validateServerHtml } from "../netlify/functions/html-validation.ts";
+import {
+  cleanupExpiredIdempotency,
+  cleanupExpiredPages,
+  cleanupExpiredRateLimits,
+} from "../netlify/functions/cleanup.ts";
+import { verifyGitHubOidcToken } from "../netlify/functions/github-oidc.ts";
+import { decodeAndValidateHtml, validateServerHtml } from "../netlify/functions/html-validation.ts";
 import {
   createPage,
   createReport,
@@ -11,7 +18,7 @@ import {
   getPageContent,
   getPageMetadata,
 } from "../netlify/functions/pages.ts";
-import type { PageStore } from "../netlify/functions/storage.ts";
+import { createPageStore, type PageStore } from "../netlify/functions/storage.ts";
 import {
   buildAppShellCsp,
   buildUploadedPageHttpCsp,
@@ -25,6 +32,7 @@ import {
   MIN_HOURS,
   expirationDayKey,
   expirationIndexKey,
+  idempotencyKey,
   mapUnavailableStatus,
   pageHtmlKey,
   pageMetadataKey,
@@ -116,18 +124,22 @@ describe("page policy", () => {
   it("rejects HTML over the raw-content safety limit before compression", async () => {
     const html = `<html><body>${"a".repeat(20 * 1024 * 1024)}</body></html>`;
 
-    await expect(validateServerHtml(html)).resolves.toEqual({
+    await expect(validateServerHtml(html)).resolves.toMatchObject({
       ok: false,
       error: "HTML content cannot exceed 20 MB before compression",
+      status: 413,
+      reason: "raw_size",
     });
   });
 
   it("rejects HTML whose Brotli output exceeds 2 MB", async () => {
     const html = `<html><body>${randomBytes(2_200_000).toString("base64")}</body></html>`;
 
-    await expect(validateServerHtml(html)).resolves.toEqual({
+    await expect(validateServerHtml(html)).resolves.toMatchObject({
       ok: false,
       error: "HTML content cannot exceed 2 MB after Brotli compression",
+      status: 413,
+      reason: "compressed_size",
     });
   });
 
@@ -138,7 +150,150 @@ describe("page policy", () => {
     expect(expirationDayKey(expiresAt)).toBe("expires/2026-05-13");
     expect(expirationIndexKey("abc", expiresAt)).toBe("expires/2026-05-13/abc.json");
   });
+
+  it("writes the expiration index first and compensates partial page writes", async () => {
+    const values = new Map<string, string>();
+    const operations: string[] = [];
+    const backingStore = {
+      async setJSON(key: string, value: unknown) {
+        operations.push(`setJSON:${key}`);
+        if (key.endsWith("/meta.json")) throw new Error("metadata write failed");
+        values.set(key, JSON.stringify(value));
+        return { modified: true, etag: "1" };
+      },
+      async set(key: string, value: string) {
+        operations.push(`set:${key}`);
+        values.set(key, value);
+        return { modified: true, etag: "1" };
+      },
+      async delete(key: string) {
+        operations.push(`delete:${key}`);
+        values.delete(key);
+      },
+    };
+    const store = createPageStore(backingStore as never);
+    const metadata: PageMetadata = {
+      id: "partial",
+      createdAt: "2026-05-13T08:00:00.000Z",
+      expiresAt: "2026-05-13T10:00:00.000Z",
+      sizeBytes: 13,
+    };
+
+    await expect(store.savePage("<html></html>", metadata)).rejects.toThrow(
+      "metadata write failed",
+    );
+    expect(operations.slice(0, 3)).toEqual([
+      "setJSON:expires/2026-05-13/partial.json",
+      "set:pages/partial/index.html",
+      "setJSON:pages/partial/meta.json",
+    ]);
+    expect(values.size).toBe(0);
+  });
 });
+
+describe("GitHub OIDC", () => {
+  let fixture: Awaited<ReturnType<typeof createOidcFixture>>;
+
+  beforeAll(async () => {
+    fixture = await createOidcFixture();
+  });
+
+  it("accepts a valid GitHub OIDC token", async () => {
+    await expect(
+      verifyGitHubOidcToken(await fixture.sign(), "https://example.com", fixture.keySet),
+    ).resolves.toEqual({ type: "github", repositoryId: "12345" });
+  });
+
+  it("rejects a token with the wrong audience", async () => {
+    await expect(
+      verifyGitHubOidcToken(await fixture.sign(), "https://wrong.example", fixture.keySet),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a token with the wrong issuer", async () => {
+    await expect(
+      verifyGitHubOidcToken(
+        await fixture.sign({ issuer: "https://wrong.example" }),
+        "https://example.com",
+        fixture.keySet,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("rejects an expired token", async () => {
+    await expect(
+      verifyGitHubOidcToken(
+        await fixture.sign({ expirationTime: fixture.now - 1 }),
+        "https://example.com",
+        fixture.keySet,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a token with a missing required claim", async () => {
+    await expect(
+      verifyGitHubOidcToken(
+        await fixture.sign({ claimOverrides: { repository_id: "" } }),
+        "https://example.com",
+        fixture.keySet,
+      ),
+    ).rejects.toThrow("Missing required claim");
+  });
+
+  it("rejects a token signed by an unknown key", async () => {
+    await expect(
+      verifyGitHubOidcToken(
+        await fixture.sign({ useWrongKey: true }),
+        "https://example.com",
+        fixture.keySet,
+      ),
+    ).rejects.toThrow();
+  });
+});
+
+async function createOidcFixture() {
+  const { publicKey, privateKey } = await generateKeyPair("RS256");
+  const otherPair = await generateKeyPair("RS256");
+  const publicJwk = await exportJWK(publicKey);
+  const keySet = createLocalJWKSet({
+    keys: [{ ...publicJwk, kid: "test", alg: "RS256", use: "sig" }],
+  });
+  const now = Math.floor(Date.now() / 1000);
+  const claims = {
+    repository_id: "12345",
+    repository: "owner/repository",
+    run_id: "67890",
+    run_attempt: "1",
+    workflow_ref: "owner/repository/.github/workflows/test.yml@refs/heads/main",
+  };
+
+  return {
+    keySet,
+    now,
+    sign({
+      issuer = "https://token.actions.githubusercontent.com",
+      audience = "https://example.com",
+      expirationTime = now + 60,
+      claimOverrides = {},
+      useWrongKey = false,
+    }: {
+      issuer?: string;
+      audience?: string;
+      expirationTime?: number;
+      claimOverrides?: Record<string, unknown>;
+      useWrongKey?: boolean;
+    } = {}) {
+      return new SignJWT({ ...claims, ...claimOverrides })
+        .setProtectedHeader({ alg: "RS256", kid: "test" })
+        .setIssuer(issuer)
+        .setAudience(audience)
+        .setIssuedAt(now)
+        .setNotBefore(now - 1)
+        .setExpirationTime(expirationTime)
+        .sign(useWrongKey ? otherPair.privateKey : privateKey);
+    },
+  };
+}
 
 describe("routing", () => {
   it("matches API routes with URLPattern", () => {
@@ -284,7 +439,7 @@ describe("page handlers", () => {
     const body = (await response.json()) as { id: string; url: string; expiresAt: string };
 
     expect(response.status).toBe(201);
-    expect(body.url).toBe(`/p/${body.id}`);
+    expect(body.url).toBe(`https://example.com/p/${body.id}`);
     expect(await store.getHtml(body.id)).toBe("<html><body>Hello</body></html>");
     expect(await store.getMetadata(body.id)).toMatchObject({
       id: body.id,
@@ -293,6 +448,28 @@ describe("page handlers", () => {
     expect(await store.listExpirationEntries(expirationDayKey(new Date(body.expiresAt)))).toContain(
       expirationIndexKey(body.id, new Date(body.expiresAt)),
     );
+  });
+
+  it("uses PUBLIC_BASE_URL for page URLs and rejects invalid configuration before storage", async () => {
+    const configuredStore = createMemoryStore();
+    const configuredResponse = await createPage(
+      jsonRequest({ html: "<html><body>Hello</body></html>" }),
+      configuredStore,
+      { publicBaseUrl: "https://public.example/path" },
+    );
+    const configuredBody = (await configuredResponse.json()) as { id: string; url: string };
+
+    expect(configuredBody.url).toBe(`https://public.example/p/${configuredBody.id}`);
+
+    const invalidStore = createMemoryStore();
+    const invalidResponse = await createPage(
+      jsonRequest({ html: "<html><body>Hello</body></html>" }),
+      invalidStore,
+      { publicBaseUrl: "not a URL" },
+    );
+
+    expect(invalidResponse.status).toBe(500);
+    expect(await invalidStore.listExpirationDirectories()).toEqual([]);
   });
 
   it("rejects invalid create payloads", async () => {
@@ -306,9 +483,231 @@ describe("page handlers", () => {
       store,
     );
     const plainText = await createPage(jsonRequest({ html: "hello" }), store);
+    const primitiveJson = await createPage(jsonRequest("hello"), store);
 
     expect(wrongContentType.status).toBe(415);
     expect(plainText.status).toBe(400);
+    expect(primitiveJson.status).toBe(400);
+  });
+
+  it("accepts every supported TTL and uses the default", async () => {
+    for (const { hours } of ALLOWED_EXPIRATIONS) {
+      const response = await createPage(
+        jsonRequest({ html: "<html><body>Hello</body></html>", expirationHours: hours }),
+        createMemoryStore(),
+      );
+      expect(response.status).toBe(201);
+      const body = (await response.json()) as { createdAt: string; expiresAt: string };
+      expect(new Date(body.expiresAt).getTime() - new Date(body.createdAt).getTime()).toBe(
+        hours * 3_600_000,
+      );
+    }
+
+    const defaultResponse = await createPage(
+      jsonRequest({ html: "<html><body>Hello</body></html>" }),
+      createMemoryStore(),
+    );
+    const defaultBody = (await defaultResponse.json()) as { createdAt: string; expiresAt: string };
+    expect(
+      new Date(defaultBody.expiresAt).getTime() - new Date(defaultBody.createdAt).getTime(),
+    ).toBe(DEFAULT_HOURS * 3_600_000);
+  });
+
+  it("accepts strict Brotli/Base64 uploads and stores decompressed HTML", async () => {
+    const store = createMemoryStore();
+    const html = "<html><body>Compressed report</body></html>";
+    const response = await createPage(
+      jsonRequest({
+        html: brotliCompressSync(html).toString("base64"),
+        encoding: "br+base64",
+      }),
+      store,
+    );
+    const body = (await response.json()) as { id: string };
+
+    expect(response.status).toBe(201);
+    expect(await store.getHtml(body.id)).toBe(html);
+  });
+
+  it("rejects malformed Base64, Brotli, and unsupported encodings", async () => {
+    const malformedBase64 = await createPage(
+      jsonRequest({ html: "not base64", encoding: "br+base64" }),
+      createMemoryStore(),
+    );
+    const malformedBrotli = await createPage(
+      jsonRequest({ html: Buffer.from("not brotli").toString("base64"), encoding: "br+base64" }),
+      createMemoryStore(),
+    );
+    const unsupported = await createPage(
+      jsonRequest({ html: "<html></html>", encoding: "gzip" }),
+      createMemoryStore(),
+    );
+
+    expect(malformedBase64.status).toBe(400);
+    expect(malformedBrotli.status).toBe(400);
+    expect(unsupported.status).toBe(415);
+  });
+
+  it("rejects compressed and decompressed size violations", async () => {
+    const compressed = Buffer.alloc(2 * 1024 * 1024 + 1).toString("base64");
+    await expect(decodeAndValidateHtml(compressed, "br+base64")).resolves.toMatchObject({
+      ok: false,
+      status: 413,
+      reason: "compressed_size",
+    });
+
+    const bomb = brotliCompressSync(
+      `<html><body>${"x".repeat(20 * 1024 * 1024)}</body></html>`,
+    ).toString("base64");
+    await expect(decodeAndValidateHtml(bomb, "br+base64")).resolves.toMatchObject({
+      ok: false,
+      status: 413,
+      reason: "decompressed_size",
+    });
+  });
+
+  it("uses verified repository identity and rejects invalid supplied tokens", async () => {
+    const store = createMemoryStore();
+    const verifyOidc = vi.fn(async (token: string) => {
+      if (token === "invalid") throw new Error("invalid");
+      return { type: "github" as const, repositoryId: token };
+    });
+    const dependencies = {
+      verifyOidc,
+      oidcAudience: "https://example.com",
+    };
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      expect(
+        (
+          await createPage(
+            jsonRequest(
+              { html: "<html><body>Hello</body></html>" },
+              "https://example.com/api/pages",
+              { Authorization: "Bearer repository-1" },
+            ),
+            store,
+            dependencies,
+          )
+        ).status,
+      ).toBe(201);
+    }
+    expect(
+      (
+        await createPage(
+          jsonRequest(
+            { html: "<html><body>Hello</body></html>" },
+            "https://example.com/api/pages",
+            { Authorization: "Bearer repository-1" },
+          ),
+          store,
+          dependencies,
+        )
+      ).status,
+    ).toBe(429);
+    expect(
+      (
+        await createPage(
+          jsonRequest(
+            { html: "<html><body>Hello</body></html>" },
+            "https://example.com/api/pages",
+            { Authorization: "Bearer repository-2" },
+          ),
+          store,
+          dependencies,
+        )
+      ).status,
+    ).toBe(201);
+
+    const invalid = await createPage(
+      jsonRequest({ html: "<html><body>Hello</body></html>" }, "https://example.com/api/pages", {
+        Authorization: "Bearer invalid",
+      }),
+      store,
+      dependencies,
+    );
+    expect(invalid.status).toBe(401);
+  });
+
+  it("ignores User-Agent rotation for anonymous upload quotas and returns limit headers", async () => {
+    const store = createMemoryStore();
+    let response = new Response();
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      response = await createPage(
+        jsonRequest({ html: "<html><body>Hello</body></html>" }, "https://example.com/api/pages", {
+          "User-Agent": `rotated-${attempt}`,
+        }),
+        store,
+      );
+    }
+    expect(response.headers.get("X-RateLimit-Remaining")).toBe("0");
+
+    const rejected = await createPage(
+      jsonRequest({ html: "<html><body>Hello</body></html>" }, "https://example.com/api/pages", {
+        "User-Agent": "another-agent",
+      }),
+      store,
+    );
+    expect(rejected.status).toBe(429);
+    expect(rejected.headers.get("Retry-After")).toMatch(/^\d+$/);
+    expect(rejected.headers.get("X-RateLimit-Limit")).toBe("10");
+  });
+
+  it("returns the same page for an idempotent replay and conflicts on changed content", async () => {
+    const store = createMemoryStore();
+    const headers = { "Idempotency-Key": "run-123-report" };
+    const first = await createPage(
+      jsonRequest(
+        { html: "<html><body>First</body></html>" },
+        "https://example.com/api/pages",
+        headers,
+      ),
+      store,
+    );
+    const replay = await createPage(
+      jsonRequest(
+        { html: "<html><body>First</body></html>" },
+        "https://example.com/api/pages",
+        headers,
+      ),
+      store,
+    );
+    const conflict = await createPage(
+      jsonRequest(
+        { html: "<html><body>Changed</body></html>" },
+        "https://example.com/api/pages",
+        headers,
+      ),
+      store,
+    );
+
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(200);
+    expect(replay.headers.get("X-RateLimit-Remaining")).toBe("8");
+    expect(await replay.json()).toEqual(await first.json());
+    expect(conflict.status).toBe(409);
+  });
+
+  it("treats equivalent identity and Brotli requests as the same idempotent upload", async () => {
+    const store = createMemoryStore();
+    const html = "<html><body>Equivalent report</body></html>";
+    const headers = { "Idempotency-Key": "equivalent-report" };
+    const first = await createPage(
+      jsonRequest({ html }, "https://example.com/api/pages", headers),
+      store,
+    );
+    const replay = await createPage(
+      jsonRequest(
+        { html: brotliCompressSync(html).toString("base64"), encoding: "br+base64" },
+        "https://example.com/api/pages",
+        headers,
+      ),
+      store,
+    );
+
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(await first.json());
   });
 
   it("returns metadata and content for active pages", async () => {
@@ -461,6 +860,31 @@ describe("page handlers", () => {
       (await createPage(jsonRequest({ html: "<html><body>Hello</body></html>" }), store)).status,
     ).toBe(429);
   });
+
+  it("uses conditional counter writes under concurrent uploads", async () => {
+    const store = createMemoryStore();
+    const responses = await Promise.all(
+      Array.from({ length: 11 }, () =>
+        createPage(jsonRequest({ html: "<html><body>Hello</body></html>" }), store),
+      ),
+    );
+
+    expect(responses.filter((response) => response.status === 201)).toHaveLength(10);
+    expect(responses.filter((response) => response.status === 429)).toHaveLength(1);
+  });
+
+  it("fails closed when a quota counter cannot be updated safely", async () => {
+    const store = createMemoryStore();
+    store.setRateLimit = async () => ({ modified: false });
+
+    const response = await createPage(
+      jsonRequest({ html: "<html><body>Hello</body></html>" }),
+      store,
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("2");
+  });
 });
 
 describe("cleanup", () => {
@@ -501,7 +925,10 @@ describe("cleanup", () => {
 
     expect(await cleanupExpiredRateLimits(store, 1_778_672_000_000)).toBe(1);
     expect(await store.getRateLimit(expiredKey)).toBe(null);
-    expect(await store.getRateLimit(activeKey)).toEqual({ count: 1, resetAt: 1_778_672_600_000 });
+    expect((await store.getRateLimit(activeKey))?.record).toEqual({
+      count: 1,
+      resetAt: 1_778_672_600_000,
+    });
   });
 
   it("hard-deletes malformed rate-limit records", async () => {
@@ -513,12 +940,43 @@ describe("cleanup", () => {
     expect(await cleanupExpiredRateLimits(store, 1_778_672_000_000)).toBe(1);
     expect(await store.getRateLimit(malformedKey)).toBe(null);
   });
+
+  it("hard-deletes expired idempotency records", async () => {
+    const store = createMemoryStore();
+    const key = idempotencyKey("actor", "key");
+    await store.setIdempotency(
+      key,
+      {
+        digest: "digest",
+        pageId: "page",
+        response: {
+          id: "page",
+          createdAt: "2026-05-13T08:00:00.000Z",
+          expiresAt: "2026-05-13T09:00:00.000Z",
+          url: "https://example.com/p/page",
+        },
+        expiresAt: "2026-05-13T09:00:00.000Z",
+      },
+      { onlyIfNew: true },
+    );
+
+    expect(await cleanupExpiredIdempotency(store, new Date("2026-05-13T10:00:00.000Z"))).toBe(1);
+    expect(await store.getIdempotency(key)).toBe(null);
+  });
 });
 
-function jsonRequest(body: unknown, url = "https://example.com/api/pages"): Request {
+function jsonRequest(
+  body: unknown,
+  url = "https://example.com/api/pages",
+  additionalHeaders: Record<string, string> = {},
+): Request {
   return new Request(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-nf-client-connection-ip": "203.0.113.1" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-nf-client-connection-ip": "203.0.113.1",
+      ...additionalHeaders,
+    },
     body: JSON.stringify(body),
   });
 }
@@ -530,6 +988,8 @@ function createMemoryStore(): PageStore & {
   addRawEntry(key: string, value: string): Promise<void>;
 } {
   const values = new Map<string, string>();
+  const etags = new Map<string, string>();
+  let etagCounter = 0;
 
   return {
     async savePage(html, metadata) {
@@ -552,16 +1012,50 @@ function createMemoryStore(): PageStore & {
       if (expiresAt) values.delete(expirationIndexKey(id, new Date(expiresAt)));
     },
     async getRateLimit(key) {
-      return readJson(values.get(key));
+      const record = readJson<{ count: number; resetAt: number }>(values.get(key));
+      const etag = etags.get(key);
+      return record && etag ? { record, etag } : null;
     },
-    async setRateLimit(key, record) {
+    async setRateLimit(key, record, condition) {
+      if ("onlyIfNew" in condition && values.has(key)) return { modified: false };
+      if ("onlyIfMatch" in condition && etags.get(key) !== condition.onlyIfMatch) {
+        return { modified: false };
+      }
       values.set(key, JSON.stringify(record));
+      const etag = String(++etagCounter);
+      etags.set(key, etag);
+      return { modified: true, etag };
     },
     async deleteRateLimit(key) {
       values.delete(key);
+      etags.delete(key);
     },
     async listRateLimitEntries() {
       return [...values.keys()].filter((key) => key.startsWith("rate-limits/"));
+    },
+    async getIdempotency(key) {
+      const record = readJson<import("../netlify/functions/storage.ts").IdempotencyRecord>(
+        values.get(key),
+      );
+      const etag = etags.get(key);
+      return record && etag ? { record, etag } : null;
+    },
+    async setIdempotency(key, record, condition) {
+      if ("onlyIfNew" in condition && values.has(key)) return { modified: false };
+      if ("onlyIfMatch" in condition && etags.get(key) !== condition.onlyIfMatch) {
+        return { modified: false };
+      }
+      values.set(key, JSON.stringify(record));
+      const etag = String(++etagCounter);
+      etags.set(key, etag);
+      return { modified: true, etag };
+    },
+    async deleteIdempotency(key) {
+      values.delete(key);
+      etags.delete(key);
+    },
+    async listIdempotencyEntries() {
+      return [...values.keys()].filter((key) => key.startsWith("idempotency/"));
     },
     async listExpirationDirectories() {
       return [
@@ -596,6 +1090,7 @@ function createMemoryStore(): PageStore & {
     },
     async addRateLimitEntry(key, value) {
       values.set(key, JSON.stringify(value));
+      etags.set(key, String(++etagCounter));
     },
     async addRawEntry(key, value) {
       values.set(key, value);

@@ -2,6 +2,7 @@ import { getStore, type Store } from "@netlify/blobs";
 
 import {
   expirationIndexKey,
+  IDEMPOTENCY_PREFIX,
   pageHtmlKey,
   pageMetadataKey,
   type PageMetadata,
@@ -14,10 +15,22 @@ export interface PageStore {
   getMetadata(id: string): Promise<PageMetadata | null>;
   getHtml(id: string): Promise<string | null>;
   deletePage(id: string, expiresAt?: string): Promise<void>;
-  getRateLimit(key: string): Promise<RateLimitRecord | null>;
-  setRateLimit(key: string, record: RateLimitRecord): Promise<void>;
+  getRateLimit(key: string): Promise<VersionedRecord<RateLimitRecord> | null>;
+  setRateLimit(
+    key: string,
+    record: RateLimitRecord,
+    condition: WriteCondition,
+  ): Promise<ConditionalWriteResult>;
   deleteRateLimit(key: string): Promise<void>;
   listRateLimitEntries(): Promise<string[]>;
+  getIdempotency(key: string): Promise<VersionedRecord<IdempotencyRecord> | null>;
+  setIdempotency(
+    key: string,
+    record: IdempotencyRecord,
+    condition: WriteCondition,
+  ): Promise<ConditionalWriteResult>;
+  deleteIdempotency(key: string): Promise<void>;
+  listIdempotencyEntries(): Promise<string[]>;
   listExpirationDirectories(): Promise<string[]>;
   listExpirationEntries(dayKey: string): Promise<string[]>;
   getExpirationEntry(key: string): Promise<{ id: string } | null>;
@@ -29,16 +42,57 @@ export interface RateLimitRecord {
   resetAt: number;
 }
 
+export interface IdempotencyRecord {
+  digest: string;
+  pageId: string;
+  response: {
+    id: string;
+    createdAt: string;
+    expiresAt: string;
+    url: string;
+  };
+  expiresAt: string;
+}
+
+export interface VersionedRecord<T> {
+  record: T;
+  etag: string;
+}
+
+export type WriteCondition = { onlyIfNew: true } | { onlyIfMatch: string };
+export interface ConditionalWriteResult {
+  modified: boolean;
+  etag?: string;
+}
+
 export function createPageStore(
   store = getStore({ name: STORE_NAME, consistency: "strong" }),
 ): PageStore {
   return {
     async savePage(html, metadata) {
-      await store.set(pageHtmlKey(metadata.id), html);
-      await store.setJSON(pageMetadataKey(metadata.id), metadata);
-      await store.setJSON(expirationIndexKey(metadata.id, new Date(metadata.expiresAt)), {
-        id: metadata.id,
-      });
+      const expirationKey = expirationIndexKey(metadata.id, new Date(metadata.expiresAt));
+      await store.setJSON(expirationKey, { id: metadata.id });
+      try {
+        await store.set(pageHtmlKey(metadata.id), html);
+        await store.setJSON(pageMetadataKey(metadata.id), metadata);
+      } catch (error) {
+        const pageCompensation = await Promise.allSettled([
+          store.delete(pageHtmlKey(metadata.id)),
+          store.delete(pageMetadataKey(metadata.id)),
+        ]);
+        if (pageCompensation.every((result) => result.status === "fulfilled")) {
+          await store.delete(expirationKey).catch(() => {
+            console.error(
+              JSON.stringify({ event: "storage_compensation_failure", page_id: metadata.id }),
+            );
+          });
+        } else {
+          console.error(
+            JSON.stringify({ event: "storage_compensation_failure", page_id: metadata.id }),
+          );
+        }
+        throw error;
+      }
     },
 
     async getMetadata(id) {
@@ -59,11 +113,11 @@ export function createPageStore(
     },
 
     async getRateLimit(key) {
-      return getJson<RateLimitRecord>(store, key);
+      return getVersionedJson<RateLimitRecord>(store, key);
     },
 
-    async setRateLimit(key, record) {
-      await store.setJSON(key, record);
+    async setRateLimit(key, record, condition) {
+      return store.setJSON(key, record, condition);
     },
 
     async deleteRateLimit(key) {
@@ -72,6 +126,23 @@ export function createPageStore(
 
     async listRateLimitEntries() {
       const result = await store.list({ prefix: "rate-limits/" });
+      return result.blobs.map((blob) => blob.key);
+    },
+
+    async getIdempotency(key) {
+      return getVersionedJson<IdempotencyRecord>(store, key);
+    },
+
+    async setIdempotency(key, record, condition) {
+      return store.setJSON(key, record, condition);
+    },
+
+    async deleteIdempotency(key) {
+      await store.delete(key);
+    },
+
+    async listIdempotencyEntries() {
+      const result = await store.list({ prefix: `${IDEMPOTENCY_PREFIX}/` });
       return result.blobs.map((blob) => blob.key);
     },
 
@@ -93,6 +164,16 @@ export function createPageStore(
       await store.delete(key);
     },
   };
+}
+
+async function getVersionedJson<T>(store: Store, key: string): Promise<VersionedRecord<T> | null> {
+  const result = await store.getWithMetadata(key, { type: "text" });
+  if (!result?.etag) return null;
+  try {
+    return { record: JSON.parse(result.data) as T, etag: result.etag };
+  } catch {
+    return null;
+  }
 }
 
 async function getJson<T>(store: Store, key: string): Promise<T | null> {
