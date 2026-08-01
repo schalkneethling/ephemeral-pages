@@ -20,6 +20,7 @@
     "css:sort": "stylelint \"src/**/*.css\" --fix",
     "knip": "knip",
     "preview": "vp preview",
+    "smoke:production": "node scripts/production-smoke.mjs",
     "test": "vp test",
     "test:e2e": "playwright test",
     "prepare": "vp config"
