@@ -1,5 +1,6 @@
 import { brotliCompressSync } from "node:zlib";
 
+const FETCH_TIMEOUT_MS = 30_000;
 const productionOrigin = "https://ephemeral.schalkneethling.com";
 const serviceUrl = new URL(process.env.EPHEMERAL_PAGES_SERVICE_URL ?? productionOrigin).origin;
 
@@ -30,6 +31,7 @@ async function createPage(body, idempotencyKey) {
     method: "POST",
     headers,
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   const payload = await response.json();
   return {
@@ -161,7 +163,10 @@ async function requestGitHubOidcToken(audience) {
 
   const url = new URL(requestUrl);
   url.searchParams.set("audience", audience);
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${requestToken}` } });
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${requestToken}` },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
   if (!response.ok) throw new Error(`GitHub OIDC token request failed with ${response.status}`);
 
   const payload = await response.json();
