@@ -15,7 +15,35 @@ Production URL:
 https://ephemeral.schalkneethling.com/mcp
 ```
 
-Cursor / Claude HTTP config:
+This is a public Streamable HTTP endpoint. No API key or OAuth is required. Optional GitHub
+OIDC still uses `Authorization: Bearer <JWT>` when you want the repository quota. Clients that
+only speak 2025-era MCP will fail.
+
+Each client has its own config file and field names. Use the official docs for the client you
+run; the snippets below are the minimum working shapes for this URL.
+
+### Codex
+
+[Codex MCP docs](https://developers.openai.com/codex/mcp)
+
+```bash
+codex mcp add ephemeral-pages --url https://ephemeral.schalkneethling.com/mcp
+```
+
+Or add a table to `~/.codex/config.toml` (or a trusted project's `.codex/config.toml`):
+
+```toml
+[mcp_servers.ephemeral-pages]
+url = "https://ephemeral.schalkneethling.com/mcp"
+```
+
+Do not set a bearer token. Codex connects without credentials when none are configured.
+
+### Cursor
+
+[Cursor MCP docs](https://cursor.com/docs/mcp)
+
+Project file `.cursor/mcp.json`, or `~/.cursor/mcp.json` for every workspace:
 
 ```json
 {
@@ -26,6 +54,79 @@ Cursor / Claude HTTP config:
   }
 }
 ```
+
+### Claude Code
+
+[Claude Code MCP docs](https://code.claude.com/docs/en/mcp)
+
+```bash
+claude mcp add --transport http ephemeral-pages https://ephemeral.schalkneethling.com/mcp
+```
+
+JSON in `.mcp.json` or `~/.claude.json` must include `"type": "http"`. A `url` with no `type` is
+read as stdio and skipped:
+
+```json
+{
+  "mcpServers": {
+    "ephemeral-pages": {
+      "type": "http",
+      "url": "https://ephemeral.schalkneethling.com/mcp"
+    }
+  }
+}
+```
+
+### OpenCode
+
+[OpenCode MCP docs](https://opencode.ai/docs/mcp-servers) (current). [OpenCode v2](https://opencode.ai/v2/docs/mcp-servers)
+nests the same remote entry under `mcp.servers` and uses `disabled` instead of `enabled`.
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "ephemeral-pages": {
+      "type": "remote",
+      "url": "https://ephemeral.schalkneethling.com/mcp"
+    }
+  }
+}
+```
+
+If the client starts an OAuth flow against this public server, set `oauth` to `false` on the
+remote entry.
+
+### Pi
+
+Pi does not ship MCP. Install the community
+[pi-mcp-extension](https://pi.dev/packages/pi-mcp-extension), then add
+`~/.pi/agent/mcp.json` or a project `.pi/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "ephemeral-pages": {
+      "transport": "streamable-http",
+      "url": "https://ephemeral.schalkneethling.com/mcp",
+      "lifecycle": "eager"
+    }
+  }
+}
+```
+
+That extension documents MCP 2025-03-26. This server rejects 2025-era clients, so the
+connection only works if the client negotiates 2026-07-28.
+
+### Other clients
+
+| Client | Official docs |
+| ------ | ------------- |
+| VS Code / Copilot | [MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) — workspace `.vscode/mcp.json` uses `"type": "http"` and `url` under `servers` |
+| MCP clients | [Model Context Protocol](https://modelcontextprotocol.io/) |
+
+Look for a remote / HTTP / Streamable HTTP server. Point it at the production URL. Do not
+invent an API key, OAuth client, or stdio `command` for this service.
 
 ## Tools and prompt
 
