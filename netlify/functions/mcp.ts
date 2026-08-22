@@ -25,21 +25,21 @@ export const config: Config & {
   },
 };
 
-const handler = createMcpHandler(
-  (ctx) => {
-    const incoming = ctx.requestInfo ?? new Request("https://ephemeral.schalkneethling.com/mcp");
-    return createEphemeralPagesMcpServer({
-      incoming,
-      store: createPageStore(),
-    });
-  },
-  {
-    ...MCP_HANDLER_OPTIONS,
-    onerror: (error) => {
-      captureException(error);
+function createRequestHandler(incoming: Request) {
+  return createMcpHandler(
+    () =>
+      createEphemeralPagesMcpServer({
+        incoming,
+        store: createPageStore(),
+      }),
+    {
+      ...MCP_HANDLER_OPTIONS,
+      onerror: (error) => {
+        captureException(error);
+      },
     },
-  },
-);
+  );
+}
 
 function withCors(request: Request, response: Response): Response {
   const cors = mcpCorsHeaders(request);
@@ -70,5 +70,5 @@ export default async function mcp(req: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: mcpCorsHeaders(req) });
   }
 
-  return withCors(req, await handler.fetch(req));
+  return withCors(req, await createRequestHandler(req).fetch(req));
 }

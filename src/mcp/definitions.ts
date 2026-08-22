@@ -44,6 +44,7 @@ export const createPageInputSchema = z.object({
     .string()
     .min(1)
     .max(200)
+    .regex(/^[\x20-\x7E]+$/)
     .optional()
     .describe("Optional 1-200 printable ASCII key that replays the same publish safely."),
 });
