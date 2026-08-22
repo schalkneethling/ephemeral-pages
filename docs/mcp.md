@@ -129,11 +129,21 @@ invent an API key, OAuth client, or stdio `command` for this service.
 
 ## Tools and prompt
 
-| Name                | Kind   | Purpose                                                                           |
-| ------------------- | ------ | --------------------------------------------------------------------------------- |
-| `create_page`       | tool   | Publish a full HTML document and return `id`, `createdAt`, `expiresAt`, and `url` |
-| `get_page`          | tool   | Return metadata for a known page id (never the HTML)                              |
-| `publish-html-page` | prompt | Instructions for publishing a full page with `create_page`                        |
+Clients discover what this server can do from the protocol, not from this page. After
+connect they receive server `instructions`, then [`tools/list`](https://modelcontextprotocol.io/docs/learn/server-concepts)
+(name, description, and input schema) and `prompts/list`. The model uses those
+descriptions and schemas to call tools.
+
+`publish-html-page` is a [prompt](https://modelcontextprotocol.io/docs/learn/server-concepts#prompts):
+a user-invoked starter (slash command or menu item), not a help or usage catalog. Prompts
+are usually named for the workflow they start (`git-commit`, `draft-email`), not `help` or
+`usage` — those would collide with client commands and duplicate the tool descriptions.
+
+| Name                | Kind   | Purpose                                                                                   |
+| ------------------- | ------ | ----------------------------------------------------------------------------------------- |
+| `create_page`       | tool   | Publish a full HTML document and return `id`, `createdAt`, `expiresAt`, and `url`         |
+| `get_page`          | tool   | Return metadata for a known page id (never the HTML)                                      |
+| `publish-html-page` | prompt | User-invoked starter that fills a “publish this HTML” message and points at `create_page` |
 
 `create_page` arguments:
 
