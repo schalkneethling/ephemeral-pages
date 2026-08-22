@@ -28,13 +28,21 @@ describe("MCP tool and prompt definitions", () => {
     const createPage = mcpToolDefinitions.find((tool) => tool.name === CREATE_PAGE_TOOL_NAME);
     expect(createPage?.requiredArguments).toEqual(["html"]);
     expect(createPage?.optionalArguments).toEqual(["expirationHours", "idempotencyKey"]);
-    expect(CREATE_PAGE_TOOL_DESCRIPTION).toContain("public");
-    expect(CREATE_PAGE_TOOL_DESCRIPTION).toContain("expire");
-    expect(CREATE_PAGE_TOOL_DESCRIPTION.toLowerCase()).toContain("secret");
-    expect(CREATE_PAGE_TOOL_DESCRIPTION).toContain("fetch");
-    expect(CREATE_PAGE_TOOL_DESCRIPTION).toContain("full HTML page");
+    expect(CREATE_PAGE_TOOL_DESCRIPTION).toContain(
+      "complete, self-contained HTML document as a public ephemeral page",
+    );
+    expect(CREATE_PAGE_TOOL_DESCRIPTION).toContain(
+      "The resulting URL is public, expires automatically",
+    );
+    expect(CREATE_PAGE_TOOL_DESCRIPTION).toContain(
+      "Never include secrets, credentials, private source, or sensitive data",
+    );
+    expect(CREATE_PAGE_TOOL_DESCRIPTION).toContain("fetch, XHR, and WebSocket are blocked");
+    expect(CREATE_PAGE_TOOL_DESCRIPTION).toContain("html must be a full HTML page");
     expect(CREATE_PAGE_TOOL_DESCRIPTION).not.toContain("source-authored");
-    expect(createPageInputSchema.shape.html.description).toContain("complete, self-contained HTML");
+    expect(createPageInputSchema.shape.html.description).toContain(
+      "A complete, self-contained HTML document",
+    );
     expect(createPageInputSchema.shape.expirationHours).toBeDefined();
     expect(createPageInputSchema.shape.idempotencyKey).toBeDefined();
   });
@@ -53,10 +61,15 @@ describe("MCP tool and prompt definitions", () => {
     expect(mcpPromptDefinitions[0]?.optionalArguments).toEqual(["html"]);
 
     const text = publishHtmlPagePromptText("<!doctype html><html></html>");
-    expect(text).toContain("create_page");
-    expect(text).toContain("complete, self-contained HTML document");
-    expect(text).toContain("Never include secrets");
-    expect(text).toContain("Google Fonts");
+    expect(text).toContain("using the create_page tool");
+    expect(text).toContain(
+      "html must be a complete, self-contained HTML document (doctype plus html, head, and body)",
+    );
+    expect(text).toContain(
+      "Never include secrets, credentials, private source, or sensitive test data",
+    );
+    expect(text).toContain("jsDelivr, unpkg, cdnjs, Google Fonts");
+    expect(text).toContain("fetch, XHR, and WebSocket are blocked");
     expect(text).toContain("1, 3, 5, 7, 12, 24, 72, 120, or 168");
     expect(text).toContain("<!doctype html><html></html>");
     expect(text).not.toContain("source-authored");
