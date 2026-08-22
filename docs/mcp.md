@@ -120,10 +120,9 @@ connection only works if the client negotiates 2026-07-28.
 
 ### Other clients
 
-| Client | Official docs |
-| ------ | ------------- |
-| VS Code / Copilot | [MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) — workspace `.vscode/mcp.json` uses `"type": "http"` and `url` under `servers` |
-| MCP clients | [Model Context Protocol](https://modelcontextprotocol.io/) |
+- [VS Code / Copilot](https://code.visualstudio.com/docs/copilot/customization/mcp-servers):
+  workspace `.vscode/mcp.json` uses `"type": "http"` and `url` under `servers`.
+- [Model Context Protocol](https://modelcontextprotocol.io/) lists other clients.
 
 Look for a remote / HTTP / Streamable HTTP server. Point it at the production URL. Do not
 invent an API key, OAuth client, or stdio `command` for this service.
