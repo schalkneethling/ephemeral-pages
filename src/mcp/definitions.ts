@@ -25,17 +25,7 @@ export const createPageInputSchema = z.object({
       "A complete, self-contained HTML document. Typical form: doctype plus html, head, and body. Fragments, Markdown, and a bare body are not a page.",
     ),
   expirationHours: z
-    .union([
-      z.literal(1),
-      z.literal(3),
-      z.literal(5),
-      z.literal(7),
-      z.literal(12),
-      z.literal(24),
-      z.literal(72),
-      z.literal(120),
-      z.literal(168),
-    ])
+    .literal(expirationHours)
     .optional()
     .describe(
       `TTL in hours. Allowed values: ${expirationHours.join(", ")}. Default ${DEFAULT_HOURS}.`,
