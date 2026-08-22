@@ -28,7 +28,7 @@ export const GET_PAGE_TOOL_ANNOTATIONS = {
   openWorldHint: false,
 } as const;
 
-export const PUBLISH_HTML_PAGE_PROMPT_DESCRIPTION = `Instructions for publishing a full HTML page with ${CREATE_PAGE_TOOL_NAME}, from a file path or pasted HTML.`;
+export const PUBLISH_HTML_PAGE_PROMPT_DESCRIPTION = `Instructions for publishing a full HTML page with ${CREATE_PAGE_TOOL_NAME} from a file path.`;
 
 export const createPageInputSchema = z.object({
   html: z
@@ -60,14 +60,9 @@ export const publishHtmlPagePromptArgs = z.object({
   path: z
     .string()
     .min(1)
-    .optional()
     .describe(
-      `Optional path to an HTML file. The agent should read that file, then call ${CREATE_PAGE_TOOL_NAME} with its contents.`,
+      `Path to an HTML file. The agent should read that file, then call ${CREATE_PAGE_TOOL_NAME} with its contents.`,
     ),
-  html: z
-    .string()
-    .optional()
-    .describe("Optional full HTML document to include in the prompt as a starting point."),
 });
 
 export const mcpToolDefinitions = [
@@ -89,32 +84,17 @@ export const mcpPromptDefinitions = [
   {
     name: PUBLISH_HTML_PAGE_PROMPT_NAME,
     description: PUBLISH_HTML_PAGE_PROMPT_DESCRIPTION,
-    optionalArguments: ["path", "html"],
+    requiredArguments: ["path"],
+    optionalArguments: [],
   },
 ] as const;
 
-export function publishHtmlPagePromptText({
-  html,
-  path,
-}: {
-  html?: string;
-  path?: string;
-} = {}): string {
-  const extras: string[] = [];
-  if (path) {
-    extras.push(
-      `The caller provided a file path. Read the file at that path, then call ${CREATE_PAGE_TOOL_NAME} with its contents (or a corrected full page). Do not guess the HTML if the file can be read.\n\nPath: ${path}`,
-    );
-  }
-  if (html) {
-    extras.push(
-      path
-        ? `If the file cannot be read, use this HTML instead (or a corrected full page):\n\n${html}`
-        : `The caller already drafted this HTML. Review it, then call ${CREATE_PAGE_TOOL_NAME} with it (or a corrected full page):\n\n${html}`,
-    );
-  }
-
+export function publishHtmlPagePromptText(path: string): string {
   return `Publish HTML to Ephemeral Pages using the ${CREATE_PAGE_TOOL_NAME} tool.
+
+The caller provided a file path. Read the file at that path, then call ${CREATE_PAGE_TOOL_NAME} with its contents (or a corrected full page). Do not guess the HTML if the file can be read.
+
+Path: ${path}
 
 Requirements:
 - html must be a complete, self-contained HTML document (doctype plus html, head, and body). Do not send Markdown, fragments, or a bare body.
@@ -122,5 +102,5 @@ Requirements:
 - Scripts, styles, and fonts may load only from the service allowlist (jsDelivr, unpkg, cdnjs, Google Fonts). fetch, XHR, and WebSocket are blocked.
 - Choose expirationHours from 1, 3, 5, 7, 12, 24, 72, 120, or 168. Default is 12 hours.
 - After publishing, share the returned url with the user.
-${extras.length > 0 ? `\n${extras.join("\n\n")}\n` : ""}`;
+`;
 }

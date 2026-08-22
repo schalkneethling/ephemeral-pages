@@ -68,14 +68,20 @@ describe("MCP tool and prompt definitions", () => {
     });
   });
 
-  it("instructs publish-html-page to send a full page and call create_page", () => {
+  it("instructs publish-html-page to read a file path and call create_page", () => {
+    const path = "reports/latest.html";
     expect(mcpPromptDefinitions.map((prompt) => prompt.name)).toEqual([
       PUBLISH_HTML_PAGE_PROMPT_NAME,
     ]);
-    expect(mcpPromptDefinitions[0]?.optionalArguments).toEqual(["path", "html"]);
+    expect(mcpPromptDefinitions[0]?.requiredArguments).toEqual(["path"]);
+    expect(mcpPromptDefinitions[0]?.optionalArguments).toEqual([]);
 
-    const text = publishHtmlPagePromptText({ html: "<!doctype html><html></html>" });
+    const text = publishHtmlPagePromptText(path);
     expect(text).toContain(`using the ${CREATE_PAGE_TOOL_NAME} tool`);
+    expect(text).toContain("Read the file at that path");
+    expect(text).toContain(`call ${CREATE_PAGE_TOOL_NAME} with its contents`);
+    expect(text).toContain("Do not guess the HTML if the file can be read");
+    expect(text).toContain(`Path: ${path}`);
     expect(text).toContain(
       "html must be a complete, self-contained HTML document (doctype plus html, head, and body)",
     );
@@ -85,25 +91,6 @@ describe("MCP tool and prompt definitions", () => {
     expect(text).toContain("jsDelivr, unpkg, cdnjs, Google Fonts");
     expect(text).toContain("fetch, XHR, and WebSocket are blocked");
     expect(text).toContain("1, 3, 5, 7, 12, 24, 72, 120, or 168");
-    expect(text).toContain("<!doctype html><html></html>");
     expect(text).not.toContain("source-authored");
-  });
-
-  it("instructs publish-html-page to read a file path before calling create_page", () => {
-    const path = "reports/latest.html";
-    const fromPath = publishHtmlPagePromptText({ path });
-    const pathAndHtml = publishHtmlPagePromptText({
-      path,
-      html: "<!doctype html><html></html>",
-    });
-
-    expect(fromPath).toContain("Read the file at that path");
-    expect(fromPath).toContain(`call ${CREATE_PAGE_TOOL_NAME} with its contents`);
-    expect(fromPath).toContain("Do not guess the HTML if the file can be read");
-    expect(fromPath).toContain(`Path: ${path}`);
-    expect(fromPath).not.toContain("<!doctype html>");
-    expect(pathAndHtml).toContain(`Path: ${path}`);
-    expect(pathAndHtml).toContain("If the file cannot be read, use this HTML instead");
-    expect(pathAndHtml).toContain("<!doctype html><html></html>");
   });
 });
