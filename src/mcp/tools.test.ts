@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PageStore } from "../../netlify/functions/storage.ts";
-import { expirationIndexKey, pageHtmlKey, pageMetadataKey, type PageMetadata } from "../domain.ts";
+import { pageHtmlKey, pageMetadataKey, type PageMetadata } from "../domain.ts";
 import { publishPage, readPage } from "./tools.ts";
 
 const FULL_HTML = `<!doctype html>
@@ -30,7 +30,9 @@ describe("MCP page tool adapters", () => {
     );
 
     expect(result.isError).toBe(false);
-    if (result.isError) return;
+    if (result.isError) {
+      return;
+    }
 
     expect(result.structuredContent.id).toBeTruthy();
     expect(result.structuredContent.url).toBe(
@@ -50,7 +52,9 @@ describe("MCP page tool adapters", () => {
     const result = await publishPage(incomingRequest(), { html: FULL_HTML }, createMemoryStore());
 
     expect(result.isError).toBe(false);
-    if (result.isError) return;
+    if (result.isError) {
+      return;
+    }
     expect(
       new Date(result.structuredContent.expiresAt).getTime() -
         new Date(result.structuredContent.createdAt).getTime(),
@@ -65,7 +69,9 @@ describe("MCP page tool adapters", () => {
     );
 
     expect(result.isError).toBe(false);
-    if (result.isError) return;
+    if (result.isError) {
+      return;
+    }
     expect(result.text.toLowerCase()).not.toContain("invalid expiration");
     expect(
       new Date(result.structuredContent.expiresAt).getTime() -
@@ -77,12 +83,16 @@ describe("MCP page tool adapters", () => {
     const store = createMemoryStore();
     const created = await publishPage(incomingRequest(), { html: FULL_HTML }, store);
     expect(created.isError).toBe(false);
-    if (created.isError) return;
+    if (created.isError) {
+      return;
+    }
 
     const result = await readPage(incomingRequest(), { id: created.structuredContent.id }, store);
 
     expect(result.isError).toBe(false);
-    if (result.isError) return;
+    if (result.isError) {
+      return;
+    }
     expect(result.structuredContent).toEqual(created.structuredContent);
     expect(JSON.stringify(result.structuredContent)).not.toContain("<html");
     expect(result.text).not.toContain("<html");
@@ -116,7 +126,9 @@ describe("MCP page tool adapters", () => {
     );
 
     expect(result.isError).toBe(false);
-    if (result.isError) return;
+    if (result.isError) {
+      return;
+    }
     expect(result.structuredContent.id).toBeTruthy();
     expect(await store.getHtml(result.structuredContent.id)).toBe(FULL_HTML);
   });
@@ -157,14 +169,31 @@ function createMemoryStore(): PageStore {
   const etags = new Map<string, string>();
   let etagCounter = 0;
 
+  const unused = async (): Promise<never> => {
+    throw new Error("unused by MCP adapter tests");
+  };
+
+  async function writeVersioned(
+    key: string,
+    record: unknown,
+    condition: { onlyIfNew: true } | { onlyIfMatch: string },
+  ) {
+    if ("onlyIfNew" in condition && values.has(key)) {
+      return { modified: false };
+    }
+    if ("onlyIfMatch" in condition && etags.get(key) !== condition.onlyIfMatch) {
+      return { modified: false };
+    }
+    values.set(key, JSON.stringify(record));
+    const etag = String(++etagCounter);
+    etags.set(key, etag);
+    return { modified: true, etag };
+  }
+
   return {
     async savePage(html, metadata) {
       values.set(pageHtmlKey(metadata.id), html);
       values.set(pageMetadataKey(metadata.id), JSON.stringify(metadata));
-      values.set(
-        expirationIndexKey(metadata.id, new Date(metadata.expiresAt)),
-        JSON.stringify({ id: metadata.id }),
-      );
     },
     async getMetadata(id) {
       const value = values.get(pageMetadataKey(id));
@@ -173,10 +202,9 @@ function createMemoryStore(): PageStore {
     async getHtml(id) {
       return values.get(pageHtmlKey(id)) ?? null;
     },
-    async deletePage(id, expiresAt) {
+    async deletePage(id) {
       values.delete(pageHtmlKey(id));
       values.delete(pageMetadataKey(id));
-      if (expiresAt) values.delete(expirationIndexKey(id, new Date(expiresAt)));
     },
     async getRateLimit(key) {
       const value = values.get(key);
@@ -184,62 +212,26 @@ function createMemoryStore(): PageStore {
       return value && etag ? { record: JSON.parse(value), etag } : null;
     },
     async setRateLimit(key, record, condition) {
-      if ("onlyIfNew" in condition && values.has(key)) return { modified: false };
-      if ("onlyIfMatch" in condition && etags.get(key) !== condition.onlyIfMatch) {
-        return { modified: false };
-      }
-      values.set(key, JSON.stringify(record));
-      const etag = String(++etagCounter);
-      etags.set(key, etag);
-      return { modified: true, etag };
+      return writeVersioned(key, record, condition);
     },
-    async deleteRateLimit(key) {
-      values.delete(key);
-      etags.delete(key);
-    },
-    async listRateLimitEntries() {
-      return [...values.keys()].filter((key) => key.startsWith("rate-limits/"));
-    },
+    deleteRateLimit: unused,
+    listRateLimitEntries: unused,
     async getIdempotency(key) {
       const value = values.get(key);
       const etag = etags.get(key);
       return value && etag ? { record: JSON.parse(value), etag } : null;
     },
     async setIdempotency(key, record, condition) {
-      if ("onlyIfNew" in condition && values.has(key)) return { modified: false };
-      if ("onlyIfMatch" in condition && etags.get(key) !== condition.onlyIfMatch) {
-        return { modified: false };
-      }
-      values.set(key, JSON.stringify(record));
-      const etag = String(++etagCounter);
-      etags.set(key, etag);
-      return { modified: true, etag };
+      return writeVersioned(key, record, condition);
     },
     async deleteIdempotency(key) {
       values.delete(key);
       etags.delete(key);
     },
-    async listIdempotencyEntries() {
-      return [...values.keys()].filter((key) => key.startsWith("idempotency/"));
-    },
-    async listExpirationDirectories() {
-      return [
-        ...new Set(
-          [...values.keys()]
-            .filter((key) => key.startsWith("expires/"))
-            .map((key) => key.split("/").slice(0, 2).join("/")),
-        ),
-      ];
-    },
-    async listExpirationEntries(dayKey) {
-      return [...values.keys()].filter((key) => key.startsWith(`${dayKey}/`));
-    },
-    async getExpirationEntry(key) {
-      const value = values.get(key);
-      return value ? (JSON.parse(value) as { id: string }) : null;
-    },
-    async deleteExpirationEntry(key) {
-      values.delete(key);
-    },
+    listIdempotencyEntries: unused,
+    listExpirationDirectories: unused,
+    listExpirationEntries: unused,
+    getExpirationEntry: unused,
+    deleteExpirationEntry: unused,
   };
 }
