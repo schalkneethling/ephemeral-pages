@@ -46,24 +46,30 @@ describe("MCP page tool adapters", () => {
     expect(await store.getHtml(result.structuredContent.id)).toBe(FULL_HTML);
   });
 
-  it("defaults the TTL to 12 hours when expirationHours is omitted or nullish", async () => {
-    const omitted = await publishPage(incomingRequest(), { html: FULL_HTML }, createMemoryStore());
-    const nullish = await publishPage(
+  it("defaults the TTL to 12 hours when expirationHours is omitted", async () => {
+    const result = await publishPage(incomingRequest(), { html: FULL_HTML }, createMemoryStore());
+
+    expect(result.isError).toBe(false);
+    if (result.isError) return;
+    expect(
+      new Date(result.structuredContent.expiresAt).getTime() -
+        new Date(result.structuredContent.createdAt).getTime(),
+    ).toBe(12 * 3_600_000);
+  });
+
+  it("does not send a null expirationHours to REST validation", async () => {
+    const result = await publishPage(
       incomingRequest(),
-      { html: FULL_HTML, expirationHours: undefined, idempotencyKey: undefined },
+      { html: FULL_HTML, expirationHours: null, idempotencyKey: null },
       createMemoryStore(),
     );
 
-    expect(omitted.isError).toBe(false);
-    expect(nullish.isError).toBe(false);
-    if (omitted.isError || nullish.isError) return;
+    expect(result.isError).toBe(false);
+    if (result.isError) return;
+    expect(result.text.toLowerCase()).not.toContain("invalid expiration");
     expect(
-      new Date(omitted.structuredContent.expiresAt).getTime() -
-        new Date(omitted.structuredContent.createdAt).getTime(),
-    ).toBe(12 * 3_600_000);
-    expect(
-      new Date(nullish.structuredContent.expiresAt).getTime() -
-        new Date(nullish.structuredContent.createdAt).getTime(),
+      new Date(result.structuredContent.expiresAt).getTime() -
+        new Date(result.structuredContent.createdAt).getTime(),
     ).toBe(12 * 3_600_000);
   });
 

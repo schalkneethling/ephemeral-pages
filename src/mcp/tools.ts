@@ -7,8 +7,8 @@ import { pagePublicUrl, resolvePublicBaseUrl } from "../public-url.ts";
 
 export interface PublishPageArgs {
   html: string;
-  expirationHours?: number;
-  idempotencyKey?: string;
+  expirationHours?: number | null;
+  idempotencyKey?: string | null;
 }
 
 export interface ReadPageArgs {

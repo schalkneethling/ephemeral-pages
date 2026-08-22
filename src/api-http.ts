@@ -1,7 +1,7 @@
 export function createJsonApiRequest(
   incoming: Request,
   body: unknown,
-  options: { idempotencyKey?: string } = {},
+  options: { idempotencyKey?: string | null } = {},
 ): Request {
   const headers = new Headers(incoming.headers);
   headers.delete("Authorization");

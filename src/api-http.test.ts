@@ -23,6 +23,19 @@ describe("API HTTP helpers", () => {
     expect(request.headers.get("Idempotency-Key")).toBe("run-1");
   });
 
+  it("does not set Idempotency-Key when the key is null or omitted", () => {
+    const incoming = new Request("https://example.com/mcp");
+    const omitted = createJsonApiRequest(incoming, { html: "<html></html>" });
+    const explicitNull = createJsonApiRequest(
+      incoming,
+      { html: "<html></html>" },
+      { idempotencyKey: null },
+    );
+
+    expect(omitted.headers.get("Idempotency-Key")).toBeNull();
+    expect(explicitNull.headers.get("Idempotency-Key")).toBeNull();
+  });
+
   it("reads a JSON API error string and falls back when the body is unusable", async () => {
     const jsonError = new Response(JSON.stringify({ error: "Gone" }), { status: 410 });
     const empty = new Response("not-json", { status: 500 });
