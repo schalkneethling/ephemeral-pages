@@ -14,19 +14,19 @@ export const CREATE_PAGE_TOOL_DESCRIPTION =
 export const GET_PAGE_TOOL_DESCRIPTION =
   "Return metadata for a previously published ephemeral page by id: id, createdAt, expiresAt, and the public URL. Does not return HTML. Expired pages are gone; unknown ids are not found.";
 
-export const CREATE_PAGE_TOOL_ANNOTATIONS = {
+export const CREATE_PAGE_TOOL_ANNOTATIONS = Object.freeze({
   readOnlyHint: false,
   destructiveHint: false,
   idempotentHint: false,
   openWorldHint: false,
-} as const;
+});
 
-export const GET_PAGE_TOOL_ANNOTATIONS = {
+export const GET_PAGE_TOOL_ANNOTATIONS = Object.freeze({
   readOnlyHint: true,
   destructiveHint: false,
   idempotentHint: true,
   openWorldHint: false,
-} as const;
+});
 
 export const PUBLISH_HTML_PAGE_PROMPT_DESCRIPTION = `Instructions for publishing a full HTML page with ${CREATE_PAGE_TOOL_NAME} from a file path.`;
 
