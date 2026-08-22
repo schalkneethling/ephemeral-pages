@@ -6,32 +6,32 @@ import type { CreatePageResponse } from "../domain.ts";
 import { pagePublicUrl, resolvePublicBaseUrl } from "../public-url.ts";
 import type { PageMetadataOutput } from "./definitions.ts";
 
-export interface PublishPageArgs {
+export type PublishPageArgs = {
   html: string;
   expirationHours?: number | null;
   idempotencyKey?: string | null;
-}
+};
 
-export interface ReadPageArgs {
+export type ReadPageArgs = {
   id: string;
-}
+};
 
-export interface PageToolDependencies {
+export type PageToolDependencies = {
   publicBaseUrl?: string;
   now?: () => Date;
   createId?: () => string;
-}
+};
 
-export interface PageToolSuccess {
+export type PageToolSuccess = {
   isError: false;
   text: string;
   structuredContent: PageMetadataOutput;
-}
+};
 
-export interface PageToolFailure {
+export type PageToolFailure = {
   isError: true;
   text: string;
-}
+};
 
 export type PageToolResult = PageToolSuccess | PageToolFailure;
 
