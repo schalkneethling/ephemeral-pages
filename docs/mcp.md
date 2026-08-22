@@ -138,11 +138,11 @@ a user-invoked starter (slash command or menu item), not a help or usage catalog
 are usually named for the workflow they start (`git-commit`, `draft-email`), not `help` or
 `usage` — those would collide with client commands and duplicate the tool descriptions.
 
-| Name                | Kind   | Purpose                                                                                   |
-| ------------------- | ------ | ----------------------------------------------------------------------------------------- |
-| `create_page`       | tool   | Publish a full HTML document and return `id`, `createdAt`, `expiresAt`, and `url`         |
-| `get_page`          | tool   | Return metadata for a known page id (never the HTML)                                      |
-| `publish-html-page` | prompt | User-invoked starter that fills a “publish this HTML” message and points at `create_page` |
+| Name                | Kind   | Purpose                                                                                |
+| ------------------- | ------ | -------------------------------------------------------------------------------------- |
+| `create_page`       | tool   | Publish a full HTML document and return `id`, `createdAt`, `expiresAt`, and `url`      |
+| `get_page`          | tool   | Return metadata for a known page id (never the HTML)                                   |
+| `publish-html-page` | prompt | User-invoked starter that points at `create_page`, from a file `path` or pasted `html` |
 
 `create_page` arguments:
 
@@ -151,6 +151,13 @@ are usually named for the workflow they start (`git-commit`, `draft-email`), not
 - `expirationHours` (optional): `1`, `3`, `5`, `7`, `12` (default), `24`, `72`, `120`, or `168`.
 - `idempotencyKey` (optional): 1–200 printable ASCII characters; same key and payload replay the
   original page.
+
+`publish-html-page` arguments (both optional):
+
+- `path`: a workspace file the agent should read, then send to `create_page`. Use this when
+  another step just wrote an HTML file.
+- `html`: pasted HTML. If both are set, the file is the source and the pasted HTML is a
+  fallback if the file cannot be read.
 
 There is no `encoding` argument. Large CI reports should keep using the REST API with
 `encoding: "br+base64"`.

@@ -89,11 +89,11 @@ export function createEphemeralPagesMcpServer({
       description: PUBLISH_HTML_PAGE_PROMPT_DESCRIPTION,
       argsSchema: publishHtmlPagePromptArgs,
     },
-    ({ html }) => ({
+    ({ html, path }) => ({
       messages: [
         {
           role: "user" as const,
-          content: { type: "text" as const, text: publishHtmlPagePromptText(html) },
+          content: { type: "text" as const, text: publishHtmlPagePromptText({ html, path }) },
         },
       ],
     }),
