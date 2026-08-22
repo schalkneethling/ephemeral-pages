@@ -8,6 +8,9 @@ The documented [`POST /api/pages` API](docs/api.md) supports plain JSON uploads,
 reports, optional GitHub Actions OIDC identity, actor-scoped idempotency, and stable error/rate-limit
 responses.
 
+Agents can use the same create/get surface through the hosted [MCP 2026-07-28 server](docs/mcp.md)
+at `https://ephemeral.schalkneethling.com/mcp`.
+
 ## Uploaded Content Security Model
 
 Uploaded pages are intentionally constrained. The content endpoint returns uploaded HTML with

@@ -1,5 +1,6 @@
 import type { Config } from "@netlify/functions";
 
+import { NETLIFY_EDGE_RATE_LIMIT } from "../../src/constants.ts";
 import { buildUploadedPageHttpCsp } from "../../src/csp.ts";
 import {
   expirationDate,
@@ -14,8 +15,9 @@ import {
   type PageUnavailableReason,
   validateExpirationHours,
 } from "../../src/domain.ts";
-import { resolveUploadIdentity, verifyGitHubOidcToken } from "./github-oidc.ts";
+import { pagePublicUrl, resolvePublicBaseUrl } from "../../src/public-url.ts";
 import { matchApiRoute } from "../../src/routes.ts";
+import { resolveUploadIdentity, verifyGitHubOidcToken } from "./github-oidc.ts";
 import { decodeAndValidateHtml } from "./html-validation.ts";
 import {
   captureException,
@@ -29,19 +31,10 @@ import {
 } from "./security.ts";
 import { createPageStore, type IdempotencyRecord, type PageStore } from "./storage.ts";
 
-const NETLIFY_RATE_LIMIT_WINDOW_SECONDS = 60;
-const NETLIFY_RATE_LIMIT_REQUESTS = 120;
-
-export const config: Config & {
-  rateLimit: { aggregateBy: string[]; windowSize: number; windowLimit: number };
-} = {
+export const config = {
   path: "/api/*",
-  rateLimit: {
-    aggregateBy: ["ip", "domain"],
-    windowSize: NETLIFY_RATE_LIMIT_WINDOW_SECONDS,
-    windowLimit: NETLIFY_RATE_LIMIT_REQUESTS,
-  },
-};
+  rateLimit: NETLIFY_EDGE_RATE_LIMIT,
+} satisfies Config;
 
 export default async function handler(req: Request) {
   initSentry();
@@ -161,7 +154,7 @@ export async function createPage(
     id,
     createdAt: metadata.createdAt,
     expiresAt: metadata.expiresAt,
-    url: new URL(`/p/${id}`, publicBaseUrl).href,
+    url: pagePublicUrl(id, publicBaseUrl),
   };
 
   if (idempotency.key) {
@@ -416,18 +409,6 @@ async function resolveIdempotency(
     return { ok: false, response: idempotencyConflict(actorType, actorHash) };
   }
   return { ok: true, key, record: existing.record };
-}
-
-function resolvePublicBaseUrl(req: Request, configuredUrl: string | undefined): string | null {
-  try {
-    const url = new URL(configuredUrl ?? new URL(req.url).origin);
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
-      return null;
-    }
-    return url.origin;
-  } catch {
-    return null;
-  }
 }
 
 function idempotencyConflict(actorType: string, actorHash: string): Response {

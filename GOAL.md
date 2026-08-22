@@ -70,6 +70,9 @@ Ephemeral Pages is not a CMS, website builder, blog host, pastebin clone, file-s
 - Keep the public workflow frictionless: no signup, no tracking, no framework requirement.
 - Preserve the service's narrow scope even when adding features.
 
+The hosted MCP server at `/mcp` is a first-party adapter of the existing public page-creation API.
+It does not add accounts, listing, editing, or a second storage path.
+
 ## Current Focus
 
 - Maintain the secure upload, view, report, admin-delete, and cleanup flows already present in the app.

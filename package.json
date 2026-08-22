@@ -26,6 +26,7 @@
     "prepare": "vp config"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "2",
     "@netlify/blobs": "^10.7.6",
     "@netlify/functions": "^5.2.1",
     "@sentry/node": "^10.53.1",
@@ -33,7 +34,8 @@
     "lit": "^3.3.2",
     "lucide": "^1.14.0",
     "parse5": "^8.0.1",
-    "urlpattern-polyfill": "^10.1.0"
+    "urlpattern-polyfill": "^10.1.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",

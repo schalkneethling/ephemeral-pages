@@ -5,6 +5,9 @@ Uploaded pages are public, temporary, reportable, and rendered with the service'
 Content Security Policy. **Never upload secrets, credentials, private source code, or sensitive
 test data.**
 
+Agents can publish and look up pages through the hosted [MCP server](mcp.md) without using this
+HTTP API directly. Large Brotli-encoded CI reports should still use this REST endpoint.
+
 ## Create a page
 
 ```http
