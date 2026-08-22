@@ -14,23 +14,14 @@ function isLocalHostname(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
 
-export function isAllowedMcpHostHostname(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  if (isLocalHostname(host) || host === PRODUCTION_HOST) {
-    return true;
-  }
-
-  return host.endsWith(".netlify.app");
-}
-
-export function isAllowedMcpOriginHostname(hostname: string): boolean {
+export function isAllowedMcpHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return isLocalHostname(host) || host === PRODUCTION_HOST;
 }
 
 export function mcpHostOriginGuard(request: Request): Response | null {
   const hostHeader = request.headers.get("host");
-  if (hostHeader && !isAllowedMcpHostHostname(hostnameFromHostHeader(hostHeader))) {
+  if (hostHeader && !isAllowedMcpHostname(hostnameFromHostHeader(hostHeader))) {
     return new Response("Forbidden", { status: 403 });
   }
 
@@ -48,7 +39,7 @@ export function mcpHostOriginGuard(request: Request): Response | null {
     ) {
       return new Response("Forbidden", { status: 403 });
     }
-    if (!isAllowedMcpOriginHostname(originUrl.hostname)) {
+    if (!isAllowedMcpHostname(originUrl.hostname)) {
       return new Response("Forbidden", { status: 403 });
     }
   } catch {
@@ -66,7 +57,7 @@ export function mcpCorsHeaders(request: Request): Record<string, string> {
 
   try {
     const originUrl = new URL(origin);
-    if (!isAllowedMcpOriginHostname(originUrl.hostname)) {
+    if (!isAllowedMcpHostname(originUrl.hostname)) {
       return {};
     }
 
