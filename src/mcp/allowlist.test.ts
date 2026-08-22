@@ -19,18 +19,26 @@ describe("MCP host and origin allowlist", () => {
     expect(mcpHostOriginGuard(requestWith({ Host: PRODUCTION_MCP_HOST }))).toBeNull();
   });
 
-  it("allows localhost, production, and Netlify deploy-preview hosts", () => {
+  it("allows localhost, production, and Netlify deploy-preview Host hostnames", () => {
     expect(isAllowedMcpHostHostname("localhost")).toBe(true);
     expect(isAllowedMcpHostHostname("127.0.0.1")).toBe(true);
     expect(isAllowedMcpHostHostname("::1")).toBe(true);
     expect(isAllowedMcpHostHostname(PRODUCTION_MCP_HOST)).toBe(true);
     expect(isAllowedMcpHostHostname("deploy-preview-12--ephemeral-pages.netlify.app")).toBe(true);
+  });
+
+  it("does not treat Netlify preview hosts as allowed Origins", () => {
     expect(isAllowedMcpOriginHostname("deploy-preview-12--ephemeral-pages.netlify.app")).toBe(
       false,
     );
+  });
+
+  it("strips ports and IPv6 brackets from Host headers", () => {
     expect(hostnameFromHostHeader("localhost:8888")).toBe("localhost");
     expect(hostnameFromHostHeader("[::1]:8888")).toBe("::1");
+  });
 
+  it("allows the guard for local ports, deploy-preview Hosts, and production Origin", () => {
     expect(mcpHostOriginGuard(requestWith({ Host: "localhost:8888" }))).toBeNull();
     expect(
       mcpHostOriginGuard(requestWith({ Host: "deploy-preview-12--ephemeral-pages.netlify.app" })),
