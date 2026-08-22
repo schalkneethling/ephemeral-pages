@@ -4,6 +4,7 @@ import { PRODUCTION_HOST } from "../constants.ts";
 import {
   hostnameFromHostHeader,
   isAllowedMcpHostname,
+  isAllowedMcpOrigin,
   mcpCorsHeaders,
   mcpHostOriginGuard,
 } from "./allowlist.ts";
@@ -23,6 +24,13 @@ describe("MCP host and origin allowlist", () => {
     expect(isAllowedMcpHostname("127.0.0.1")).toBe(true);
     expect(isAllowedMcpHostname("::1")).toBe(true);
     expect(isAllowedMcpHostname(PRODUCTION_HOST)).toBe(true);
+  });
+
+  it("allows http only on localhost Origins", () => {
+    expect(isAllowedMcpOrigin(new URL("http://localhost:6274"))).toBe(true);
+    expect(isAllowedMcpOrigin(new URL("https://localhost"))).toBe(true);
+    expect(isAllowedMcpOrigin(new URL(`https://${PRODUCTION_HOST}`))).toBe(true);
+    expect(isAllowedMcpOrigin(new URL(`http://${PRODUCTION_HOST}`))).toBe(false);
   });
 
   it("rejects Netlify hosts for both Host and Origin", () => {
@@ -58,11 +66,15 @@ describe("MCP host and origin allowlist", () => {
     const netlifyHost = mcpHostOriginGuard(
       requestWith({ Host: "deploy-preview-12--ephemeral-pages.netlify.app" }),
     );
+    const httpProduction = mcpHostOriginGuard(
+      requestWith({ Host: PRODUCTION_HOST, Origin: `http://${PRODUCTION_HOST}` }),
+    );
 
     expect(badHost?.status).toBe(403);
     expect(badOrigin?.status).toBe(403);
     expect(malformedOrigin?.status).toBe(403);
     expect(netlifyHost?.status).toBe(403);
+    expect(httpProduction?.status).toBe(403);
     expect(await badHost?.text()).toBe("Forbidden");
   });
 
@@ -78,5 +90,6 @@ describe("MCP host and origin allowlist", () => {
         requestWith({ Origin: "https://deploy-preview-12--ephemeral-pages.netlify.app" }),
       ),
     ).toEqual({});
+    expect(mcpCorsHeaders(requestWith({ Origin: `http://${PRODUCTION_HOST}` }))).toEqual({});
   });
 });

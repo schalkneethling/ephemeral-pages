@@ -19,6 +19,19 @@ export function isAllowedMcpHostname(hostname: string): boolean {
   return isLocalHostname(host) || host === PRODUCTION_HOST;
 }
 
+export function isAllowedMcpOrigin(originUrl: URL): boolean {
+  if (originUrl.username || originUrl.password) {
+    return false;
+  }
+
+  const host = originUrl.hostname.toLowerCase();
+  if (isLocalHostname(host)) {
+    return originUrl.protocol === "http:" || originUrl.protocol === "https:";
+  }
+
+  return originUrl.protocol === "https:" && host === PRODUCTION_HOST;
+}
+
 export function mcpHostOriginGuard(request: Request): Response | null {
   const hostHeader = request.headers.get("host");
   if (hostHeader && !isAllowedMcpHostname(hostnameFromHostHeader(hostHeader))) {
@@ -31,15 +44,7 @@ export function mcpHostOriginGuard(request: Request): Response | null {
   }
 
   try {
-    const originUrl = new URL(origin);
-    if (
-      !["http:", "https:"].includes(originUrl.protocol) ||
-      originUrl.username ||
-      originUrl.password
-    ) {
-      return new Response("Forbidden", { status: 403 });
-    }
-    if (!isAllowedMcpHostname(originUrl.hostname)) {
+    if (!isAllowedMcpOrigin(new URL(origin))) {
       return new Response("Forbidden", { status: 403 });
     }
   } catch {
@@ -57,7 +62,7 @@ export function mcpCorsHeaders(request: Request): Record<string, string> {
 
   try {
     const originUrl = new URL(origin);
-    if (!isAllowedMcpHostname(originUrl.hostname)) {
+    if (!isAllowedMcpOrigin(originUrl)) {
       return {};
     }
 
