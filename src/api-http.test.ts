@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createJsonApiRequest, readApiError, readApiJson } from "./api-http.ts";
 
 describe("API HTTP helpers", () => {
-  it("clones incoming headers, sets JSON content type, and applies an idempotency key", () => {
+  it("clones incoming headers, drops Authorization, and applies an idempotency key", () => {
     const incoming = new Request("https://example.com/mcp", {
       headers: {
         Authorization: "Bearer token",
@@ -17,7 +17,7 @@ describe("API HTTP helpers", () => {
     );
 
     expect(request.url).toBe("https://example.com/mcp");
-    expect(request.headers.get("Authorization")).toBe("Bearer token");
+    expect(request.headers.get("Authorization")).toBeNull();
     expect(request.headers.get("x-nf-client-connection-ip")).toBe("203.0.113.1");
     expect(request.headers.get("Content-Type")).toBe("application/json");
     expect(request.headers.get("Idempotency-Key")).toBe("run-1");

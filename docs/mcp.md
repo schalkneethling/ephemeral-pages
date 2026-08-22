@@ -2,8 +2,8 @@
 
 Ephemeral Pages exposes a hosted [Model Context Protocol](https://modelcontextprotocol.io/) server
 for agents. It is a first-party adapter of the existing [`POST /api/pages` API](api.md): same
-validation, rate limits, optional GitHub OIDC, and public `/p/:id` URLs. It is not a new product
-surface — no accounts, listing, or page editing.
+validation, anonymous rate limits, and public `/p/:id` URLs. It is not a new product surface — no
+accounts, listing, or page editing.
 
 The server speaks **MCP 2026-07-28 only**. Older 2025-era clients are not supported.
 
@@ -15,9 +15,8 @@ Production URL:
 https://ephemeral.schalkneethling.com/mcp
 ```
 
-This is a public Streamable HTTP endpoint. No API key or OAuth is required. Optional GitHub
-OIDC still uses `Authorization: Bearer <JWT>` when you want the repository quota. Clients that
-only speak 2025-era MCP will fail.
+This is a public Streamable HTTP endpoint. No API key, OAuth, or GitHub OIDC is required or
+accepted. Clients that only speak 2025-era MCP will fail.
 
 Each client has its own config file and field names. Use the official docs for the client you
 run; the snippets below are the minimum working shapes for this URL.
@@ -160,8 +159,8 @@ There is no `encoding` argument. Large CI reports should keep using the REST API
 
 - Netlify buffered request body is about 6 MB.
 - Raw HTML is limited to 20 MiB; Brotli-compressed HTML to 2 MiB (same as REST).
-- Anonymous uploads: 10 per 10 minutes per client IP. Verified GitHub OIDC uploads: 10 per 10
-  minutes per repository. `/mcp` also has the same 120 requests per minute edge limit as `/api/*`.
+- Uploads: 10 per 10 minutes per client IP. `/mcp` also has the same 120 requests per minute
+  edge limit as `/api/*`.
 
 ## Security
 
@@ -169,8 +168,11 @@ There is no `encoding` argument. Large CI reports should keep using the REST API
   data.
 - Uploaded pages are sandboxed. Declarative scripts, stylesheets, and fonts may load only from the
   approved CDNs. `fetch`, XHR, and WebSocket are blocked.
-- Authentication is optional. Send `Authorization: Bearer <GitHub OIDC JWT>` to use the repository
-  quota. A supplied invalid token is rejected and never falls back to anonymous access.
+- `/mcp` is unauthenticated. Incoming `Authorization` is ignored so a leftover client token
+  cannot be treated as GitHub OIDC. Repository OIDC stays on the [REST API](api.md) for GitHub
+  Actions. Later auth, if any, should follow
+  [MCP 2026-07-28 authorization](https://blog.modelcontextprotocol.io/posts/2026-07-28/#authorization)
+  (CIMD), not Actions OIDC.
 - Admin delete, page HTML content, and abuse reporting are **not** MCP tools.
 
 ## Future idea

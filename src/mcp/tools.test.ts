@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { PageStore } from "../../netlify/functions/storage.ts";
 import { expirationIndexKey, pageHtmlKey, pageMetadataKey, type PageMetadata } from "../domain.ts";
@@ -91,24 +91,18 @@ describe("MCP page tool adapters", () => {
     });
   });
 
-  it("does not create a page when a supplied OIDC token is invalid", async () => {
+  it("ignores incoming Authorization so a leftover Bearer token cannot fail the publish", async () => {
     const store = createMemoryStore();
     const result = await publishPage(
-      incomingRequest({ Authorization: "Bearer invalid" }),
+      incomingRequest({ Authorization: "Bearer leftover-client-token" }),
       { html: FULL_HTML },
       store,
-      {
-        oidcAudience: "https://example.com",
-        verifyOidc: async () => {
-          throw new Error("invalid");
-        },
-      },
     );
 
-    expect(result.isError).toBe(true);
-    if (!result.isError) return;
-    expect(result.text.toLowerCase()).toContain("invalid");
-    expect(await store.listExpirationDirectories()).toEqual([]);
+    expect(result.isError).toBe(false);
+    if (result.isError) return;
+    expect(result.structuredContent.id).toBeTruthy();
+    expect(await store.getHtml(result.structuredContent.id)).toBe(FULL_HTML);
   });
 
   it("replays the same idempotent publish and conflicts on a changed payload", async () => {
@@ -141,20 +135,6 @@ describe("MCP page tool adapters", () => {
     });
   });
 
-  it("forwards Authorization onto the create request", async () => {
-    const store = createMemoryStore();
-    const verifyOidc = vi.fn(async () => ({ type: "github" as const, repositoryId: "repo-1" }));
-
-    const result = await publishPage(
-      incomingRequest({ Authorization: "Bearer good-token" }),
-      { html: FULL_HTML },
-      store,
-      { verifyOidc, oidcAudience: "https://example.com" },
-    );
-
-    expect(result.isError).toBe(false);
-    expect(verifyOidc).toHaveBeenCalledWith("good-token", "https://example.com");
-  });
 });
 
 function createMemoryStore(): PageStore {

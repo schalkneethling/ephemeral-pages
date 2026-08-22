@@ -1,5 +1,4 @@
 import { createPage, getPageMetadata } from "../../netlify/functions/pages.ts";
-import type { verifyGitHubOidcToken } from "../../netlify/functions/github-oidc.ts";
 import { getEnv } from "../../netlify/functions/security.ts";
 import type { PageStore } from "../../netlify/functions/storage.ts";
 import { createJsonApiRequest, readApiError, readApiJson } from "../api-http.ts";
@@ -17,8 +16,6 @@ export interface ReadPageArgs {
 }
 
 export interface PageToolDependencies {
-  verifyOidc?: typeof verifyGitHubOidcToken;
-  oidcAudience?: string;
   publicBaseUrl?: string;
   now?: () => Date;
   createId?: () => string;

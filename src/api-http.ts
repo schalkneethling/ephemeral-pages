@@ -4,6 +4,7 @@ export function createJsonApiRequest(
   options: { idempotencyKey?: string } = {},
 ): Request {
   const headers = new Headers(incoming.headers);
+  headers.delete("Authorization");
   headers.set("Content-Type", "application/json");
   if (options.idempotencyKey !== undefined) {
     headers.set("Idempotency-Key", options.idempotencyKey);
