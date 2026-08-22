@@ -126,6 +126,21 @@ connection only works if the client negotiates 2026-07-28.
 Look for a remote / HTTP / Streamable HTTP server. Point it at the production URL. Do not
 invent an API key, OAuth client, or stdio `command` for this service.
 
+### MCP Inspector
+
+The official [Inspector CLI](https://modelcontextprotocol.io/docs/2026-07-28/tools/inspector)
+defaults to the 2025 era. Use [`ephemeral-pages-inspector.json`](../ephemeral-pages-inspector.json)
+so it negotiates 2026-07-28:
+
+```bash
+npx @modelcontextprotocol/inspector --cli \
+  --config ephemeral-pages-inspector.json \
+  --server ephemeral-pages \
+  --stored-auth-only \
+  --format json \
+  --method tools/list
+```
+
 ## Tools and prompt
 
 Clients discover what this server can do from the protocol, not from this page. After

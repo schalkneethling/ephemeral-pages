@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ephemeral-pages": {
+      "type": "http",
+      "url": "https://ephemeral.schalkneethling.com/mcp",
+      "protocolEra": "modern"
+    }
+  }
+}
