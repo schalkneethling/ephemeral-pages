@@ -92,7 +92,7 @@ export const mcpPromptDefinitions = [
 export function publishHtmlPagePromptText(path: string): string {
   return `Publish HTML to Ephemeral Pages using the ${CREATE_PAGE_TOOL_NAME} tool.
 
-The caller provided a file path. Read the file at that path, then call ${CREATE_PAGE_TOOL_NAME} with its contents (or a corrected full page). Do not guess the HTML if the file can be read.
+The caller provided a file path. Read the file at that path, then call ${CREATE_PAGE_TOOL_NAME} with its contents (or a corrected full page). If you can't read the file, inform the user and stop.
 
 Path: ${path}
 

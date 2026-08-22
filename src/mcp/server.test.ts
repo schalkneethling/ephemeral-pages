@@ -80,7 +80,7 @@ describe("MCP tool and prompt definitions", () => {
     expect(text).toContain(`using the ${CREATE_PAGE_TOOL_NAME} tool`);
     expect(text).toContain("Read the file at that path");
     expect(text).toContain(`call ${CREATE_PAGE_TOOL_NAME} with its contents`);
-    expect(text).toContain("Do not guess the HTML if the file can be read");
+    expect(text).toContain("If you can't read the file, inform the user and stop");
     expect(text).toContain(`Path: ${path}`);
     expect(text).toContain(
       "html must be a complete, self-contained HTML document (doctype plus html, head, and body)",
