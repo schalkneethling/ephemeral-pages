@@ -6,7 +6,7 @@ export function createJsonApiRequest(
   const headers = new Headers(incoming.headers);
   headers.delete("Authorization");
   headers.set("Content-Type", "application/json");
-  if (options.idempotencyKey !== undefined) {
+  if (options.idempotencyKey != null) {
     headers.set("Idempotency-Key", options.idempotencyKey);
   }
 

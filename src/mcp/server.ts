@@ -66,19 +66,7 @@ export function createEphemeralPagesMcpServer({
       description: CREATE_PAGE_TOOL_DESCRIPTION,
       inputSchema: createPageInputSchema,
     },
-    async (args) =>
-      toolResponse(
-        await publishPage(
-          incoming,
-          {
-            html: args.html,
-            expirationHours: args.expirationHours,
-            idempotencyKey: args.idempotencyKey,
-          },
-          store,
-          dependencies,
-        ),
-      ),
+    async (args) => toolResponse(await publishPage(incoming, args, store, dependencies)),
   );
 
   server.registerTool(

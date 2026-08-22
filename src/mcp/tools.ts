@@ -65,9 +65,9 @@ export async function publishPage(
     incoming,
     {
       html: args.html,
-      ...(args.expirationHours === undefined ? {} : { expirationHours: args.expirationHours }),
+      ...(args.expirationHours == null ? {} : { expirationHours: args.expirationHours }),
     },
-    { idempotencyKey: args.idempotencyKey },
+    args.idempotencyKey == null ? {} : { idempotencyKey: args.idempotencyKey },
   );
   const response = await createPage(request, store, dependencies);
   if (!response.ok) {

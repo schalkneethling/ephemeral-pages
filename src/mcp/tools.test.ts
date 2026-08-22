@@ -46,14 +46,24 @@ describe("MCP page tool adapters", () => {
     expect(await store.getHtml(result.structuredContent.id)).toBe(FULL_HTML);
   });
 
-  it("defaults the TTL to 12 hours", async () => {
-    const result = await publishPage(incomingRequest(), { html: FULL_HTML }, createMemoryStore());
+  it("defaults the TTL to 12 hours when expirationHours is omitted or nullish", async () => {
+    const omitted = await publishPage(incomingRequest(), { html: FULL_HTML }, createMemoryStore());
+    const nullish = await publishPage(
+      incomingRequest(),
+      { html: FULL_HTML, expirationHours: undefined, idempotencyKey: undefined },
+      createMemoryStore(),
+    );
 
-    expect(result.isError).toBe(false);
-    if (result.isError) return;
+    expect(omitted.isError).toBe(false);
+    expect(nullish.isError).toBe(false);
+    if (omitted.isError || nullish.isError) return;
     expect(
-      new Date(result.structuredContent.expiresAt).getTime() -
-        new Date(result.structuredContent.createdAt).getTime(),
+      new Date(omitted.structuredContent.expiresAt).getTime() -
+        new Date(omitted.structuredContent.createdAt).getTime(),
+    ).toBe(12 * 3_600_000);
+    expect(
+      new Date(nullish.structuredContent.expiresAt).getTime() -
+        new Date(nullish.structuredContent.createdAt).getTime(),
     ).toBe(12 * 3_600_000);
   });
 
