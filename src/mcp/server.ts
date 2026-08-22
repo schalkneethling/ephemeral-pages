@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/server";
 
+import { PRODUCTION_HOST } from "../constants.ts";
 import type { PageStore } from "../../netlify/functions/storage.ts";
 import {
   CREATE_PAGE_TOOL_DESCRIPTION,
@@ -41,10 +42,16 @@ export function createEphemeralPagesMcpServer({
   dependencies,
 }: CreateEphemeralPagesMcpServerOptions): McpServer {
   const server = new McpServer(
-    { name: "ephemeral-pages", version: "0.5.0" },
+    {
+      name: "ephemeral-pages",
+      title: "Ephemeral Pages",
+      version: "0.5.0",
+      description: "Publish short-lived public HTML pages that expire automatically.",
+      websiteUrl: `https://${PRODUCTION_HOST}`,
+    },
     {
       instructions:
-        "Publish short-lived public HTML pages. Use create_page with a full HTML document, then share the returned URL. Use get_page to look up metadata for a known id.",
+        "Use create_page with a full HTML document, then share the returned URL. Use get_page to look up metadata for a known id.",
       cacheHints: {
         "tools/list": { ttlMs: 24 * 60 * 60 * 1000, cacheScope: "public" },
         "prompts/list": { ttlMs: 24 * 60 * 60 * 1000, cacheScope: "public" },
