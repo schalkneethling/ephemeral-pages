@@ -1,13 +1,11 @@
 import type { Config } from "@netlify/functions";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 
+import { NETLIFY_EDGE_RATE_LIMIT } from "../../src/constants.ts";
 import { mcpCorsHeaders, mcpHostOriginGuard } from "../../src/mcp/allowlist.ts";
 import { createEphemeralPagesMcpServer } from "../../src/mcp/server.ts";
 import { captureException, initSentry } from "./security.ts";
 import { createPageStore } from "./storage.ts";
-
-const NETLIFY_RATE_LIMIT_WINDOW_SECONDS = 60;
-const NETLIFY_RATE_LIMIT_REQUESTS = 120;
 
 export const MCP_HANDLER_OPTIONS = {
   legacy: "reject",
@@ -18,11 +16,7 @@ export const config: Config & {
   rateLimit: { aggregateBy: string[]; windowSize: number; windowLimit: number };
 } = {
   path: "/mcp",
-  rateLimit: {
-    aggregateBy: ["ip", "domain"],
-    windowSize: NETLIFY_RATE_LIMIT_WINDOW_SECONDS,
-    windowLimit: NETLIFY_RATE_LIMIT_REQUESTS,
-  },
+  rateLimit: NETLIFY_EDGE_RATE_LIMIT,
 };
 
 function createRequestHandler(incoming: Request) {

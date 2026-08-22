@@ -1,5 +1,6 @@
 import type { Config } from "@netlify/functions";
 
+import { NETLIFY_EDGE_RATE_LIMIT } from "../../src/constants.ts";
 import { buildUploadedPageHttpCsp } from "../../src/csp.ts";
 import {
   expirationDate,
@@ -30,18 +31,11 @@ import {
 } from "./security.ts";
 import { createPageStore, type IdempotencyRecord, type PageStore } from "./storage.ts";
 
-const NETLIFY_RATE_LIMIT_WINDOW_SECONDS = 60;
-const NETLIFY_RATE_LIMIT_REQUESTS = 120;
-
 export const config: Config & {
   rateLimit: { aggregateBy: string[]; windowSize: number; windowLimit: number };
 } = {
   path: "/api/*",
-  rateLimit: {
-    aggregateBy: ["ip", "domain"],
-    windowSize: NETLIFY_RATE_LIMIT_WINDOW_SECONDS,
-    windowLimit: NETLIFY_RATE_LIMIT_REQUESTS,
-  },
+  rateLimit: NETLIFY_EDGE_RATE_LIMIT,
 };
 
 export default async function handler(req: Request) {
