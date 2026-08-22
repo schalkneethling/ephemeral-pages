@@ -134,7 +134,6 @@ describe("MCP page tool adapters", () => {
       text: "Idempotency-Key was already used for a different request",
     });
   });
-
 });
 
 function createMemoryStore(): PageStore {
