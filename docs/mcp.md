@@ -130,8 +130,10 @@ invent an API key, OAuth client, or stdio `command` for this service.
 
 Clients discover what this server can do from the protocol, not from this page. After
 connect they receive server `instructions`, then [`tools/list`](https://modelcontextprotocol.io/docs/learn/server-concepts)
-(name, description, and input schema) and `prompts/list`. The model uses those
-descriptions and schemas to call tools.
+(name, description, input schema, and output schema) and `prompts/list`. The
+model uses those descriptions and schemas to call tools. Both tools advertise
+the same output: `id`, `createdAt`, `expiresAt`, and `url`. Error results omit
+`structuredContent`.
 
 `publish-html-page` is a [prompt](https://modelcontextprotocol.io/docs/learn/server-concepts#prompts):
 a user-invoked starter (slash command or menu item), not a help or usage catalog. Prompts

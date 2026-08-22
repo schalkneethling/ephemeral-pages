@@ -4,6 +4,7 @@ import type { PageStore } from "../../netlify/functions/storage.ts";
 import { createJsonApiRequest, readApiError, readApiJson } from "../api-http.ts";
 import type { CreatePageResponse } from "../domain.ts";
 import { pagePublicUrl, resolvePublicBaseUrl } from "../public-url.ts";
+import type { PageMetadataOutput } from "./definitions.ts";
 
 export interface PublishPageArgs {
   html: string;
@@ -24,12 +25,7 @@ export interface PageToolDependencies {
 export interface PageToolSuccess {
   isError: false;
   text: string;
-  structuredContent: {
-    id: string;
-    createdAt: string;
-    expiresAt: string;
-    url: string;
-  };
+  structuredContent: PageMetadataOutput;
 }
 
 export interface PageToolFailure {

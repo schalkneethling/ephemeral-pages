@@ -13,6 +13,7 @@ import {
   PUBLISH_HTML_PAGE_PROMPT_NAME,
   createPageInputSchema,
   getPageInputSchema,
+  pageMetadataOutputSchema,
   publishHtmlPagePromptArgs,
   publishHtmlPagePromptText,
 } from "./definitions.ts";
@@ -66,6 +67,7 @@ export function createEphemeralPagesMcpServer({
       title: "Create ephemeral page",
       description: CREATE_PAGE_TOOL_DESCRIPTION,
       inputSchema: createPageInputSchema,
+      outputSchema: pageMetadataOutputSchema,
       annotations: CREATE_PAGE_TOOL_ANNOTATIONS,
     },
     async (args) => toolResponse(await publishPage(incoming, args, store, dependencies)),
@@ -77,6 +79,7 @@ export function createEphemeralPagesMcpServer({
       title: "Get ephemeral page metadata",
       description: GET_PAGE_TOOL_DESCRIPTION,
       inputSchema: getPageInputSchema,
+      outputSchema: pageMetadataOutputSchema,
       annotations: GET_PAGE_TOOL_ANNOTATIONS,
     },
     async (args) => toolResponse(await readPage(incoming, { id: args.id }, store, dependencies)),

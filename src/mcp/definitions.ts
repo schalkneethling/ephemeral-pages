@@ -56,6 +56,15 @@ export const getPageInputSchema = z.object({
   id: z.string().min(1).describe(`The page id returned by ${CREATE_PAGE_TOOL_NAME}.`),
 });
 
+export const pageMetadataOutputSchema = z.object({
+  id: z.string().min(1).describe("Opaque page identifier."),
+  createdAt: z.string().min(1).describe("ISO 8601 creation timestamp."),
+  expiresAt: z.string().min(1).describe("ISO 8601 expiration timestamp."),
+  url: z.string().min(1).describe("Public HTTPS URL for the published page."),
+});
+
+export type PageMetadataOutput = z.infer<typeof pageMetadataOutputSchema>;
+
 export const publishHtmlPagePromptArgs = z.object({
   path: z
     .string()

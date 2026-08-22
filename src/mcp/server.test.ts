@@ -12,6 +12,7 @@ import {
   getPageInputSchema,
   mcpPromptDefinitions,
   mcpToolDefinitions,
+  pageMetadataOutputSchema,
   publishHtmlPagePromptText,
 } from "./definitions.ts";
 
@@ -66,6 +67,19 @@ describe("MCP tool and prompt definitions", () => {
       idempotentHint: true,
       openWorldHint: false,
     });
+  });
+
+  it("advertises the same page-metadata output schema for both tools", () => {
+    expect(Object.keys(pageMetadataOutputSchema.shape)).toEqual([
+      "id",
+      "createdAt",
+      "expiresAt",
+      "url",
+    ]);
+    expect(pageMetadataOutputSchema.shape.id.description).toContain("Opaque page identifier");
+    expect(pageMetadataOutputSchema.shape.createdAt.description).toContain("ISO 8601");
+    expect(pageMetadataOutputSchema.shape.expiresAt.description).toContain("ISO 8601");
+    expect(pageMetadataOutputSchema.shape.url.description).toContain("Public HTTPS URL");
   });
 
   it("instructs publish-html-page to read a file path and call create_page", () => {
