@@ -50,8 +50,7 @@ export function createEphemeralPagesMcpServer({
       websiteUrl: `https://${PRODUCTION_HOST}`,
     },
     {
-      instructions:
-        "Use create_page with a full HTML document, then share the returned URL. Use get_page to look up metadata for a known id.",
+      instructions: `Use ${CREATE_PAGE_TOOL_NAME} with a full HTML document, then share the returned URL. Use ${GET_PAGE_TOOL_NAME} to look up metadata for a known id.`,
       cacheHints: {
         "tools/list": { ttlMs: 24 * 60 * 60 * 1000, cacheScope: "public" },
         "prompts/list": { ttlMs: 24 * 60 * 60 * 1000, cacheScope: "public" },

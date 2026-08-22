@@ -14,8 +14,7 @@ export const CREATE_PAGE_TOOL_DESCRIPTION =
 export const GET_PAGE_TOOL_DESCRIPTION =
   "Return metadata for a previously published ephemeral page by id: id, createdAt, expiresAt, and the public URL. Does not return HTML. Expired pages are gone; unknown ids are not found.";
 
-export const PUBLISH_HTML_PAGE_PROMPT_DESCRIPTION =
-  "Instructions for publishing a full HTML page to Ephemeral Pages with create_page.";
+export const PUBLISH_HTML_PAGE_PROMPT_DESCRIPTION = `Instructions for publishing a full HTML page to Ephemeral Pages with ${CREATE_PAGE_TOOL_NAME}.`;
 
 export const createPageInputSchema = z.object({
   html: z
@@ -40,7 +39,7 @@ export const createPageInputSchema = z.object({
 });
 
 export const getPageInputSchema = z.object({
-  id: z.string().min(1).describe("The page id returned by create_page."),
+  id: z.string().min(1).describe(`The page id returned by ${CREATE_PAGE_TOOL_NAME}.`),
 });
 
 export const publishHtmlPagePromptArgs = z.object({
@@ -75,10 +74,10 @@ export const mcpPromptDefinitions = [
 
 export function publishHtmlPagePromptText(html?: string): string {
   const prefills = html
-    ? `\nThe caller already drafted this HTML. Review it, then call create_page with it (or a corrected full page):\n\n${html}\n`
+    ? `\nThe caller already drafted this HTML. Review it, then call ${CREATE_PAGE_TOOL_NAME} with it (or a corrected full page):\n\n${html}\n`
     : "";
 
-  return `Publish HTML to Ephemeral Pages using the create_page tool.
+  return `Publish HTML to Ephemeral Pages using the ${CREATE_PAGE_TOOL_NAME} tool.
 
 Requirements:
 - html must be a complete, self-contained HTML document (doctype plus html, head, and body). Do not send Markdown, fragments, or a bare body.

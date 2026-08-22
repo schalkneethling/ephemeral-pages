@@ -61,7 +61,7 @@ describe("MCP tool and prompt definitions", () => {
     expect(mcpPromptDefinitions[0]?.optionalArguments).toEqual(["html"]);
 
     const text = publishHtmlPagePromptText("<!doctype html><html></html>");
-    expect(text).toContain("using the create_page tool");
+    expect(text).toContain(`using the ${CREATE_PAGE_TOOL_NAME} tool`);
     expect(text).toContain(
       "html must be a complete, self-contained HTML document (doctype plus html, head, and body)",
     );
