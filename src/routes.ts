@@ -38,13 +38,25 @@ const apiPatterns = [
 const adminPattern = new URLPattern({ pathname: "/admin" });
 const viewPattern = new URLPattern({ pathname: "/p/:id" });
 
+const PAGES_FUNCTION_PREFIX = "/.netlify/functions/pages/";
+
+export function publicApiUrl(requestUrl: string): string {
+  const url = new URL(requestUrl);
+  if (url.pathname.startsWith(PAGES_FUNCTION_PREFIX)) {
+    url.pathname = `/api/${url.pathname.slice(PAGES_FUNCTION_PREFIX.length)}`;
+  }
+  return url.href;
+}
+
 export function matchApiRoute(req: Request): ApiRoute | null {
+  const requestUrl = publicApiUrl(req.url);
+
   for (const route of apiPatterns) {
     if (route.method !== req.method) {
       continue;
     }
 
-    const match = route.pattern.exec(req.url);
+    const match = route.pattern.exec(requestUrl);
     if (!match) {
       continue;
     }

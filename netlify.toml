@@ -20,6 +20,12 @@ to = "/.netlify/functions/mcp"
 status = 200
 
 [[redirects]]
+from = "/api/*"
+to = "/.netlify/functions/pages/:splat"
+status = 200
+force = true
+
+[[redirects]]
 from = "/p/*"
 to = "/index.html"
 status = 200
