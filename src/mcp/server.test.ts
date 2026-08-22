@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CREATE_PAGE_TOOL_ANNOTATIONS,
   CREATE_PAGE_TOOL_DESCRIPTION,
   CREATE_PAGE_TOOL_NAME,
+  GET_PAGE_TOOL_ANNOTATIONS,
   GET_PAGE_TOOL_DESCRIPTION,
   GET_PAGE_TOOL_NAME,
   PUBLISH_HTML_PAGE_PROMPT_NAME,
@@ -45,6 +47,12 @@ describe("MCP tool and prompt definitions", () => {
     );
     expect(createPageInputSchema.shape.expirationHours).toBeDefined();
     expect(createPageInputSchema.shape.idempotencyKey).toBeDefined();
+    expect(CREATE_PAGE_TOOL_ANNOTATIONS).toEqual({
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    });
   });
 
   it("describes get_page as metadata-only", () => {
@@ -52,6 +60,12 @@ describe("MCP tool and prompt definitions", () => {
     expect(getPage?.requiredArguments).toEqual(["id"]);
     expect(GET_PAGE_TOOL_DESCRIPTION).toContain("Does not return HTML");
     expect(getPageInputSchema.shape.id).toBeDefined();
+    expect(GET_PAGE_TOOL_ANNOTATIONS).toEqual({
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
   });
 
   it("instructs publish-html-page to send a full page and call create_page", () => {

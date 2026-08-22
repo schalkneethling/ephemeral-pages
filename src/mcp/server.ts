@@ -3,8 +3,10 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { PRODUCTION_HOST } from "../constants.ts";
 import type { PageStore } from "../../netlify/functions/storage.ts";
 import {
+  CREATE_PAGE_TOOL_ANNOTATIONS,
   CREATE_PAGE_TOOL_DESCRIPTION,
   CREATE_PAGE_TOOL_NAME,
+  GET_PAGE_TOOL_ANNOTATIONS,
   GET_PAGE_TOOL_DESCRIPTION,
   GET_PAGE_TOOL_NAME,
   PUBLISH_HTML_PAGE_PROMPT_DESCRIPTION,
@@ -64,6 +66,7 @@ export function createEphemeralPagesMcpServer({
       title: "Create ephemeral page",
       description: CREATE_PAGE_TOOL_DESCRIPTION,
       inputSchema: createPageInputSchema,
+      annotations: CREATE_PAGE_TOOL_ANNOTATIONS,
     },
     async (args) => toolResponse(await publishPage(incoming, args, store, dependencies)),
   );
@@ -74,6 +77,7 @@ export function createEphemeralPagesMcpServer({
       title: "Get ephemeral page metadata",
       description: GET_PAGE_TOOL_DESCRIPTION,
       inputSchema: getPageInputSchema,
+      annotations: GET_PAGE_TOOL_ANNOTATIONS,
     },
     async (args) => toolResponse(await readPage(incoming, { id: args.id }, store, dependencies)),
   );
