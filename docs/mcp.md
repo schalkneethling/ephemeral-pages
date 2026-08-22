@@ -177,7 +177,7 @@ There is no `encoding` argument. Large CI reports should keep using the REST API
 
 ## Future idea
 
-An [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview) preview (confirm HTML in
-the client before or after publish) is tracked as a later exploration:
+An [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview) preview (confirm the
+published HTML in the client after `create_page`) is tracked as a later exploration:
 [issue #14](https://github.com/schalkneethling/ephemeral-pages/issues/14). No preview UI exists
 today.
