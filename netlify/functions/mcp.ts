@@ -12,12 +12,10 @@ export const MCP_HANDLER_OPTIONS = {
   responseMode: "json",
 } as const;
 
-export const config: Config & {
-  rateLimit: { aggregateBy: string[]; windowSize: number; windowLimit: number };
-} = {
+export const config = {
   path: "/mcp",
   rateLimit: NETLIFY_EDGE_RATE_LIMIT,
-};
+} satisfies Config;
 
 function createRequestHandler(incoming: Request) {
   return createMcpHandler(

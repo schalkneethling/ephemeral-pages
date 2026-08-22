@@ -31,12 +31,10 @@ import {
 } from "./security.ts";
 import { createPageStore, type IdempotencyRecord, type PageStore } from "./storage.ts";
 
-export const config: Config & {
-  rateLimit: { aggregateBy: string[]; windowSize: number; windowLimit: number };
-} = {
+export const config = {
   path: "/api/*",
   rateLimit: NETLIFY_EDGE_RATE_LIMIT,
-};
+} satisfies Config;
 
 export default async function handler(req: Request) {
   initSentry();
