@@ -1,4 +1,4 @@
-export const PRODUCTION_MCP_HOST = "ephemeral.schalkneethling.com";
+import { PRODUCTION_HOST } from "../constants.ts";
 
 export function hostnameFromHostHeader(host: string): string {
   const trimmed = host.trim();
@@ -16,7 +16,7 @@ function isLocalHostname(hostname: string): boolean {
 
 export function isAllowedMcpHostHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
-  if (isLocalHostname(host) || host === PRODUCTION_MCP_HOST) {
+  if (isLocalHostname(host) || host === PRODUCTION_HOST) {
     return true;
   }
 
@@ -25,7 +25,7 @@ export function isAllowedMcpHostHostname(hostname: string): boolean {
 
 export function isAllowedMcpOriginHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
-  return isLocalHostname(host) || host === PRODUCTION_MCP_HOST;
+  return isLocalHostname(host) || host === PRODUCTION_HOST;
 }
 
 export function mcpHostOriginGuard(request: Request): Response | null {

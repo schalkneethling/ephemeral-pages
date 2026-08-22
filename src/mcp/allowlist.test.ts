@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import { PRODUCTION_HOST } from "../constants.ts";
 import {
   hostnameFromHostHeader,
   isAllowedMcpHostHostname,
   isAllowedMcpOriginHostname,
   mcpCorsHeaders,
   mcpHostOriginGuard,
-  PRODUCTION_MCP_HOST,
 } from "./allowlist.ts";
 
 function requestWith(headers: Record<string, string>): Request {
@@ -16,14 +16,14 @@ function requestWith(headers: Record<string, string>): Request {
 describe("MCP host and origin allowlist", () => {
   it("allows origin-less requests, including when Host is absent", () => {
     expect(mcpHostOriginGuard(requestWith({}))).toBeNull();
-    expect(mcpHostOriginGuard(requestWith({ Host: PRODUCTION_MCP_HOST }))).toBeNull();
+    expect(mcpHostOriginGuard(requestWith({ Host: PRODUCTION_HOST }))).toBeNull();
   });
 
   it("allows localhost, production, and Netlify deploy-preview Host hostnames", () => {
     expect(isAllowedMcpHostHostname("localhost")).toBe(true);
     expect(isAllowedMcpHostHostname("127.0.0.1")).toBe(true);
     expect(isAllowedMcpHostHostname("::1")).toBe(true);
-    expect(isAllowedMcpHostHostname(PRODUCTION_MCP_HOST)).toBe(true);
+    expect(isAllowedMcpHostHostname(PRODUCTION_HOST)).toBe(true);
     expect(isAllowedMcpHostHostname("deploy-preview-12--ephemeral-pages.netlify.app")).toBe(true);
   });
 
@@ -46,8 +46,8 @@ describe("MCP host and origin allowlist", () => {
     expect(
       mcpHostOriginGuard(
         requestWith({
-          Host: PRODUCTION_MCP_HOST,
-          Origin: `https://${PRODUCTION_MCP_HOST}`,
+          Host: PRODUCTION_HOST,
+          Origin: `https://${PRODUCTION_HOST}`,
         }),
       ),
     ).toBeNull();
@@ -56,10 +56,10 @@ describe("MCP host and origin allowlist", () => {
   it("rejects disallowed Host or Origin values", async () => {
     const badHost = mcpHostOriginGuard(requestWith({ Host: "evil.example" }));
     const badOrigin = mcpHostOriginGuard(
-      requestWith({ Host: PRODUCTION_MCP_HOST, Origin: "https://evil.example" }),
+      requestWith({ Host: PRODUCTION_HOST, Origin: "https://evil.example" }),
     );
     const malformedOrigin = mcpHostOriginGuard(
-      requestWith({ Host: PRODUCTION_MCP_HOST, Origin: "not-a-url" }),
+      requestWith({ Host: PRODUCTION_HOST, Origin: "not-a-url" }),
     );
 
     expect(badHost?.status).toBe(403);
