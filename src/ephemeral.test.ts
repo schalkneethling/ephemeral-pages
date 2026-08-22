@@ -326,6 +326,27 @@ describe("routing", () => {
     expect(
       matchApiRoute(new Request("https://example.com/api/pages/page-1", { method: "POST" })),
     ).toBe(null);
+    expect(
+      matchApiRoute(
+        new Request("https://example.com/.netlify/functions/pages/pages", { method: "POST" }),
+      ),
+    ).toEqual({
+      name: "create-page",
+    });
+    expect(
+      matchApiRoute(new Request("https://example.com/.netlify/functions/pages/pages/page-1")),
+    ).toEqual({
+      name: "get-page",
+      id: "page-1",
+    });
+    expect(
+      matchApiRoute(
+        new Request("https://example.com/.netlify/functions/pages/pages/page-1/content"),
+      ),
+    ).toEqual({
+      name: "get-page-content",
+      id: "page-1",
+    });
   });
 
   it("matches the admin route", () => {
