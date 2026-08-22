@@ -46,8 +46,8 @@ export function createEphemeralPagesMcpServer({
       instructions:
         "Publish short-lived public HTML pages. Use create_page with a full HTML document, then share the returned URL. Use get_page to look up metadata for a known id.",
       cacheHints: {
-        "tools/list": { ttlMs: 3_600_000, cacheScope: "public" },
-        "prompts/list": { ttlMs: 3_600_000, cacheScope: "public" },
+        "tools/list": { ttlMs: 24 * 60 * 60 * 1000, cacheScope: "public" },
+        "prompts/list": { ttlMs: 24 * 60 * 60 * 1000, cacheScope: "public" },
       },
     },
   );
