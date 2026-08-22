@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { PageStore } from "../../netlify/functions/storage.ts";
+import type { PageStore, WriteCondition } from "../../netlify/functions/storage.ts";
 import { pageHtmlKey, pageMetadataKey, type PageMetadata } from "../domain.ts";
 import { publishPage, readPage } from "./tools.ts";
 
@@ -173,11 +173,7 @@ function createMemoryStore(): PageStore {
     throw new Error("unused by MCP adapter tests");
   };
 
-  async function writeVersioned(
-    key: string,
-    record: unknown,
-    condition: { onlyIfNew: true } | { onlyIfMatch: string },
-  ) {
+  async function writeVersioned(key: string, record: unknown, condition: WriteCondition) {
     if ("onlyIfNew" in condition && values.has(key)) {
       return { modified: false };
     }
