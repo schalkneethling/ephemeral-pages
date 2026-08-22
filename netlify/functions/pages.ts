@@ -14,8 +14,9 @@ import {
   type PageUnavailableReason,
   validateExpirationHours,
 } from "../../src/domain.ts";
-import { resolveUploadIdentity, verifyGitHubOidcToken } from "./github-oidc.ts";
+import { pagePublicUrl, resolvePublicBaseUrl } from "../../src/public-url.ts";
 import { matchApiRoute } from "../../src/routes.ts";
+import { resolveUploadIdentity, verifyGitHubOidcToken } from "./github-oidc.ts";
 import { decodeAndValidateHtml } from "./html-validation.ts";
 import {
   captureException,
@@ -161,7 +162,7 @@ export async function createPage(
     id,
     createdAt: metadata.createdAt,
     expiresAt: metadata.expiresAt,
-    url: new URL(`/p/${id}`, publicBaseUrl).href,
+    url: pagePublicUrl(id, publicBaseUrl),
   };
 
   if (idempotency.key) {
@@ -416,18 +417,6 @@ async function resolveIdempotency(
     return { ok: false, response: idempotencyConflict(actorType, actorHash) };
   }
   return { ok: true, key, record: existing.record };
-}
-
-function resolvePublicBaseUrl(req: Request, configuredUrl: string | undefined): string | null {
-  try {
-    const url = new URL(configuredUrl ?? new URL(req.url).origin);
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
-      return null;
-    }
-    return url.origin;
-  } catch {
-    return null;
-  }
 }
 
 function idempotencyConflict(actorType: string, actorHash: string): Response {
