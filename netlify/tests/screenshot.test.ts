@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { matchApiRoute } from "../../src/routes.ts";
-import { createScreenshot, getScreenshot } from "./pages.ts";
+import { createScreenshot, getScreenshot } from "../functions/pages.ts";
 import {
   createScreenshotCaptureClient,
   MAX_SCREENSHOT_BYTES,
@@ -9,9 +9,9 @@ import {
   SCREENSHOT_PAGE_LIFETIME_BYTES,
   SCREENSHOT_PAGE_LIFETIME_COUNT,
   ScreenshotCaptureError,
-} from "./screenshot-capture.ts";
-import { cleanupExpiredScreenshotBudgets } from "./cleanup.ts";
-import { createPageStore } from "./storage.ts";
+} from "../functions/screenshot-capture.ts";
+import { cleanupExpiredScreenshotBudgets } from "../functions/cleanup.ts";
+import { createPageStore } from "../functions/storage.ts";
 import type {
   ConditionalWriteResult,
   IdempotencyRecord,
@@ -23,7 +23,7 @@ import type {
   StoredPageMetadata,
   VersionedRecord,
   WriteCondition,
-} from "./storage.ts";
+} from "../functions/storage.ts";
 import type { ScreenshotMetadata } from "../../src/domain.ts";
 
 const NOW = new Date("2026-08-23T08:00:00.000Z");

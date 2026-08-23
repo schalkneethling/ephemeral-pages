@@ -11,10 +11,15 @@ import {
   verifyEditorCapability,
   type CapabilityKeys,
   type TicketConfiguration,
-} from "./collaboration-auth.ts";
-import { createCollaborationRoomDeletionNotifier } from "./collaboration-service.ts";
-import { cleanupExpiredPages } from "./cleanup.ts";
-import { createCollaborationTicket, createPage, deletePage, getPageContent } from "./pages.ts";
+} from "../functions/collaboration-auth.ts";
+import { createCollaborationRoomDeletionNotifier } from "../functions/collaboration-service.ts";
+import { cleanupExpiredPages } from "../functions/cleanup.ts";
+import {
+  createCollaborationTicket,
+  createPage,
+  deletePage,
+  getPageContent,
+} from "../functions/pages.ts";
 import type {
   ConditionalWriteResult,
   IdempotencyRecord,
@@ -23,7 +28,7 @@ import type {
   StoredPageMetadata,
   VersionedRecord,
   WriteCondition,
-} from "./storage.ts";
+} from "../functions/storage.ts";
 
 const KEYS: CapabilityKeys = {
   current: { version: "v2", secret: "current-capability-secret-32-bytes-minimum" },
@@ -209,6 +214,7 @@ describe("collaboration page APIs", () => {
     const verified = await jwtVerify(viewerToken, new TextEncoder().encode(TICKET.secret), {
       audience: TICKET.audience,
       issuer: "ephemeral-pages",
+      currentDate: NOW,
     });
     expect(verified.payload).toMatchObject({
       sub: "room-1",
