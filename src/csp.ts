@@ -28,20 +28,60 @@ export function buildUploadedPageHttpCsp(): string {
   return `sandbox allow-scripts; ${buildUploadedPageCsp()}`;
 }
 
-export function buildAppShellCsp(): string {
+export function buildCollaborativeUploadedPageHttpCsp(): string {
+  return [
+    "sandbox allow-scripts",
+    "default-src 'none'",
+    "script-src 'unsafe-inline'",
+    "style-src 'unsafe-inline'",
+    "img-src data: blob:",
+    "media-src data: blob:",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join("; ");
+}
+
+export function buildAppShellCsp(collaborationWebSocketUrl?: string): string {
+  const collaborationOrigin = collaborationWebSocketUrl
+    ? collaborationConnectOrigin(collaborationWebSocketUrl)
+    : null;
+  const connectSources = ["'self'", ...(collaborationOrigin ? [collaborationOrigin] : [])];
   return [
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self'",
     "img-src 'self' data:",
     "font-src 'self'",
-    "connect-src 'self'",
+    `connect-src ${connectSources.join(" ")}`,
     "frame-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",
     "frame-ancestors 'none'",
   ].join("; ");
+}
+
+function collaborationConnectOrigin(value: string): string {
+  const url = new URL(value);
+  const localDevelopment =
+    url.protocol === "ws:" &&
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]");
+  if (url.protocol !== "wss:" && !localDevelopment) {
+    throw new Error("Collaboration WebSocket URL must use wss:// outside local development");
+  }
+  if (
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    (url.pathname !== "/" && url.pathname !== "")
+  ) {
+    throw new Error(
+      "Collaboration WebSocket CSP source must be an origin without credentials or a path",
+    );
+  }
+  return url.origin;
 }
 
 export function cspMetaTag(): string {

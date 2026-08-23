@@ -18,35 +18,66 @@ export const ALLOWED_EXPIRATIONS: readonly ExpirationOption[] = [
   { hours: 168, label: "7 days" },
 ] as const;
 
-export interface ExpirationOption {
+export type ExpirationOption = {
   hours: number;
   label: string;
   default?: boolean;
-}
+};
 
-export interface PageMetadata {
+export type PageMetadata = {
   id: string;
   createdAt: string;
   expiresAt: string;
   sizeBytes: number;
-}
+  collaboration?: boolean;
+};
 
-export interface CreatePageRequest {
+export type CreatePageRequest = {
   html: string;
   expirationHours?: number;
   encoding?: "identity" | "br+base64";
-}
+  collaboration?: boolean;
+};
 
-export interface CreatePageResponse {
+export type CreatePageResponse = {
   id: string;
   createdAt: string;
   expiresAt: string;
   url: string;
-}
+  collaboration?: {
+    viewUrl: string;
+    editUrl: string;
+  };
+};
 
-export interface ApiErrorResponse {
+export type CollaborationRole = "view" | "edit";
+
+export type CreateCollaborationTicketRequest = {
+  capability?: string;
+};
+
+export type CreateCollaborationTicketResponse = {
+  ticket: string;
+  websocketUrl: string;
+  role: CollaborationRole;
+};
+
+export type ScreenshotMetadata = {
+  id: string;
+  pageId: string;
+  createdAt: string;
+  expiresAt: string;
+  revision: number;
+  sizeBytes: number;
+};
+
+export type CreateScreenshotResponse = ScreenshotMetadata & {
+  url: string;
+};
+
+export type ApiErrorResponse = {
   error: string;
-}
+};
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -62,6 +93,7 @@ export const PAGE_PREFIX = "pages";
 export const EXPIRES_PREFIX = "expires";
 export const RATE_LIMIT_PREFIX = "rate-limits";
 export const IDEMPOTENCY_PREFIX = "idempotency";
+export const SCREENSHOT_BUDGET_PREFIX = "screenshot-budgets";
 
 export function pageHtmlKey(id: string): string {
   return `${PAGE_PREFIX}/${id}/index.html`;
@@ -69,6 +101,27 @@ export function pageHtmlKey(id: string): string {
 
 export function pageMetadataKey(id: string): string {
   return `${PAGE_PREFIX}/${id}/meta.json`;
+}
+
+export function screenshotPngKey(pageId: string, screenshotId: string): string {
+  return `${PAGE_PREFIX}/${pageId}/screenshots/${screenshotId}.png`;
+}
+
+export function screenshotMetadataKey(pageId: string, screenshotId: string): string {
+  return `${PAGE_PREFIX}/${pageId}/screenshots/${screenshotId}.json`;
+}
+
+export function screenshotPrefix(pageId: string): string {
+  return `${PAGE_PREFIX}/${pageId}/screenshots/`;
+}
+
+export function screenshotLockKey(pageId: string): string {
+  return `${screenshotPrefix(pageId)}_capture-lock.json`;
+}
+
+export function screenshotBudgetKey(now: Date): string {
+  const day = now.toISOString().slice(0, 10);
+  return `${SCREENSHOT_BUDGET_PREFIX}/${day}.json`;
 }
 
 export function expirationDate(hours: number, now = new Date()): Date {

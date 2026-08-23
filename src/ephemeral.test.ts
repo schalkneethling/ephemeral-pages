@@ -21,6 +21,7 @@ import {
 import { createPageStore, type PageStore } from "../netlify/functions/storage.ts";
 import {
   buildAppShellCsp,
+  buildCollaborativeUploadedPageHttpCsp,
   buildUploadedPageHttpCsp,
   buildUploadedPageCsp,
   injectCsp,
@@ -141,7 +142,7 @@ describe("page policy", () => {
       status: 413,
       reason: "compressed_size",
     });
-  });
+  }, 15_000);
 
   it("builds storage keys consistently", () => {
     const expiresAt = new Date("2026-05-13T12:00:00Z");
@@ -385,6 +386,15 @@ describe("uploaded page CSP", () => {
     expect(csp).toContain("sandbox allow-scripts");
     expect(csp).toContain("default-src 'none'");
     expect(csp).toContain("form-action 'none'");
+  });
+
+  it("removes every external origin from collaborative uploaded pages", () => {
+    const csp = buildCollaborativeUploadedPageHttpCsp();
+    expect(csp).toContain("sandbox allow-scripts");
+    expect(csp).toContain("script-src 'unsafe-inline'");
+    expect(csp).toContain("style-src 'unsafe-inline'");
+    expect(csp).not.toContain("https:");
+    expect(csp).not.toContain("connect-src");
   });
 
   it("builds a tight app shell CSP", () => {

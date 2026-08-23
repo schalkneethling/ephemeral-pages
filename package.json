@@ -18,6 +18,10 @@
     "dev": "vp dev",
     "build": "tsc && vp build",
     "css:sort": "stylelint \"src/**/*.css\" --fix",
+    "collaboration:check": "tsc -p collaboration-worker/tsconfig.json --noEmit && vp lint collaboration-worker --deny-warnings && vp fmt --check collaboration-worker",
+    "collaboration:deploy:dry": "wrangler deploy --dry-run --config collaboration-worker/wrangler.jsonc",
+    "collaboration:test": "bun run --cwd collaboration-worker test",
+    "collaboration:types": "wrangler types --config collaboration-worker/wrangler.jsonc --env-interface Cloudflare.Env collaboration-worker/worker-configuration.d.ts",
     "knip": "knip",
     "preview": "vp preview",
     "smoke:production": "node scripts/production-smoke.mjs",
@@ -47,7 +51,8 @@
     "varlock": "^1.2.0",
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vite-plus": "latest",
-    "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
+    "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
+    "wrangler": "^4.125.0"
   },
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",

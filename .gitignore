@@ -19,6 +19,8 @@ dist-ssr
 *.local
 playwright-report
 test-results
+collaboration-worker/.dev.vars*
+.wrangler/
 
 # Editor directories and files
 .vscode/*

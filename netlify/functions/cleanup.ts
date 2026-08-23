@@ -2,10 +2,18 @@ import type { Config } from "@netlify/functions";
 
 import { isExpired } from "../../src/domain.ts";
 import {
+  createCollaborationRoomDeletionNotifier,
+  type CollaborationRoomDeletionNotifier,
+} from "./collaboration-service.ts";
+import { captureException, captureSecurityEvent, getEnv } from "./security.ts";
+import {
   createPageStore,
+  getStoredCollaborationSettings,
   type IdempotencyRecord,
   type PageStore,
   type RateLimitRecord,
+  type ScreenshotDailyBudgetRecord,
+  type ScreenshotStore,
 } from "./storage.ts";
 
 export const config: Config = {
@@ -14,23 +22,41 @@ export const config: Config = {
 
 export default async function handler() {
   const store = createPageStore();
-  const pagesDeleted = await cleanupExpiredPages(store);
+  const notifyCollaborationDeleted =
+    createCollaborationRoomDeletionNotifier({
+      serviceUrl: getEnv("COLLABORATION_SERVICE_URL"),
+      serviceToken: getEnv("COLLABORATION_SERVICE_TOKEN"),
+    }) ?? undefined;
+  const pagesDeleted = await cleanupExpiredPages(store, new Date(), {
+    notifyCollaborationDeleted,
+  });
   const rateLimitsDeleted = await cleanupExpiredRateLimits(store);
   const idempotencyDeleted = await cleanupExpiredIdempotency(store);
-  const deleted = pagesDeleted + rateLimitsDeleted + idempotencyDeleted;
+  const screenshotBudgetsDeleted = await cleanupExpiredScreenshotBudgets(store);
+  const deleted = pagesDeleted + rateLimitsDeleted + idempotencyDeleted + screenshotBudgetsDeleted;
 
   console.log(
-    `Cleanup: hard-deleted ${pagesDeleted} page(s), ${rateLimitsDeleted} rate-limit record(s), and ${idempotencyDeleted} idempotency record(s)`,
+    `Cleanup: hard-deleted ${pagesDeleted} page(s), ${rateLimitsDeleted} rate-limit record(s), ${idempotencyDeleted} idempotency record(s), and ${screenshotBudgetsDeleted} screenshot budget record(s)`,
   );
   return new Response(
-    JSON.stringify({ deleted, pagesDeleted, rateLimitsDeleted, idempotencyDeleted }),
+    JSON.stringify({
+      deleted,
+      pagesDeleted,
+      rateLimitsDeleted,
+      idempotencyDeleted,
+      screenshotBudgetsDeleted,
+    }),
     {
       headers: { "Content-Type": "application/json" },
     },
   );
 }
 
-export async function cleanupExpiredPages(store: PageStore, now = new Date()): Promise<number> {
+export async function cleanupExpiredPages(
+  store: PageStore,
+  now = new Date(),
+  dependencies: { notifyCollaborationDeleted?: CollaborationRoomDeletionNotifier } = {},
+): Promise<number> {
   const dateDirs = await store.listExpirationDirectories();
   let deleted = 0;
 
@@ -53,6 +79,21 @@ export async function cleanupExpiredPages(store: PageStore, now = new Date()): P
       }
 
       await store.deletePage(entry.id, metadata?.expiresAt);
+      if (
+        metadata &&
+        getStoredCollaborationSettings(metadata)?.enabled &&
+        dependencies.notifyCollaborationDeleted
+      ) {
+        try {
+          await dependencies.notifyCollaborationDeleted(entry.id, metadata.expiresAt);
+        } catch (error) {
+          captureException(error);
+          captureSecurityEvent("collaboration_room_deletion_failed", "error", {
+            page_id: entry.id,
+            source: "scheduled_cleanup",
+          });
+        }
+      }
       await store.deleteExpirationEntry(entryKey);
       deleted += 1;
     }
@@ -82,6 +123,18 @@ export async function cleanupExpiredIdempotency(
     get: async (key) => (await store.getIdempotency(key))?.record ?? null,
     delete: (key) => store.deleteIdempotency(key),
     isActive: (record) => activeIdempotencyRecord(record, now),
+  });
+}
+
+export async function cleanupExpiredScreenshotBudgets(
+  store: ScreenshotStore,
+  now = Date.now(),
+): Promise<number> {
+  return sweepInactiveRecords({
+    list: () => store.listScreenshotBudgetEntries(),
+    get: async (key) => (await store.getScreenshotBudget(key))?.record ?? null,
+    delete: (key) => store.deleteScreenshotBudget(key),
+    isActive: (record) => activeScreenshotBudgetRecord(record, now),
   });
 }
 
@@ -135,6 +188,20 @@ function activeRateLimitRecord(record: RateLimitRecord | null, now: number): boo
     Number.isFinite(record.count) &&
     typeof record.resetAt === "number" &&
     Number.isFinite(record.resetAt) &&
+    record.resetAt > now
+  );
+}
+
+function activeScreenshotBudgetRecord(
+  record: ScreenshotDailyBudgetRecord | null,
+  now: number,
+): boolean {
+  return (
+    typeof record?.count === "number" &&
+    Number.isSafeInteger(record.count) &&
+    record.count >= 0 &&
+    typeof record.resetAt === "number" &&
+    Number.isSafeInteger(record.resetAt) &&
     record.resetAt > now
   );
 }

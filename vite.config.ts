@@ -7,6 +7,11 @@ export default defineConfig({
   fmt: {},
   lint: { options: { typeAware: true, typeCheck: true } },
   test: {
-    exclude: ["node_modules/**", "tests/e2e/**"],
+    exclude: [
+      "**/node_modules/**",
+      "tests/e2e/**",
+      // This suite runs with the official Vitest Cloudflare pool via the dedicated script.
+      "collaboration-worker/test/room.runtime.test.ts",
+    ],
   },
 });

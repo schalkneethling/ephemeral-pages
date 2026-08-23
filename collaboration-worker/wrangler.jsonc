@@ -1,0 +1,41 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "ephemeral-pages-collaboration",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "COLLABORATION_ROOMS",
+        "class_name": "CollaborationRoom",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["CollaborationRoom"],
+    },
+  ],
+  "browser": {
+    "binding": "BROWSER",
+  },
+  "vars": {
+    "ALLOWED_ORIGINS": "http://localhost:5173",
+    "TICKET_AUDIENCE": "ephemeral-pages-collaboration",
+    "PAGE_CONTENT_ORIGIN": "http://localhost:5173",
+    "PUBLIC_WORKER_ORIGIN": "http://localhost:8787",
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 0.1,
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01,
+    },
+  },
+}
