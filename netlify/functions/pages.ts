@@ -1,24 +1,54 @@
 import type { Config } from "@netlify/functions";
 
 import { NETLIFY_EDGE_RATE_LIMIT } from "../../src/constants.ts";
-import { buildUploadedPageHttpCsp } from "../../src/csp.ts";
+import { injectCollaborationBootstrap } from "../../src/collaboration/bootstrap.ts";
+import { buildCollaborativeUploadedPageHttpCsp, buildUploadedPageHttpCsp } from "../../src/csp.ts";
 import {
   expirationDate,
   htmlByteLength,
   idempotencyKey,
   isExpired,
   PAGE_UNAVAILABLE_REASON,
+  screenshotBudgetKey,
   type ApiErrorResponse,
+  type CollaborationRole,
+  type CreateCollaborationTicketRequest,
+  type CreateCollaborationTicketResponse,
   type CreatePageRequest,
   type CreatePageResponse,
-  type PageMetadata,
+  type CreateScreenshotResponse,
   type PageUnavailableReason,
+  type ScreenshotMetadata,
   validateExpirationHours,
 } from "../../src/domain.ts";
 import { pagePublicUrl, resolvePublicBaseUrl } from "../../src/public-url.ts";
 import { matchApiRoute } from "../../src/routes.ts";
+import {
+  capabilityKeysFromEnv,
+  collaborationWebSocketUrl,
+  createEditorCapability,
+  mintCollaborationTicket,
+  ticketConfigurationFromEnv,
+  verifyEditorCapability,
+  type CapabilityKeys,
+  type TicketConfiguration,
+} from "./collaboration-auth.ts";
+import {
+  createCollaborationRoomDeletionNotifier,
+  type CollaborationRoomDeletionNotifier,
+} from "./collaboration-service.ts";
 import { resolveUploadIdentity, verifyGitHubOidcToken } from "./github-oidc.ts";
 import { decodeAndValidateHtml } from "./html-validation.ts";
+import {
+  createScreenshotCaptureClient,
+  MAX_SCREENSHOT_BYTES,
+  SCREENSHOT_CAPTURE_TIMEOUT_MS,
+  SCREENSHOT_DAILY_BUDGET,
+  SCREENSHOT_PAGE_LIFETIME_BYTES,
+  SCREENSHOT_PAGE_LIFETIME_COUNT,
+  ScreenshotCaptureError,
+  type ScreenshotCapture,
+} from "./screenshot-capture.ts";
 import {
   captureException,
   captureSecurityEvent,
@@ -29,7 +59,14 @@ import {
   initSentry,
   resetRateLimit,
 } from "./security.ts";
-import { createPageStore, type IdempotencyRecord, type PageStore } from "./storage.ts";
+import {
+  createPageStore,
+  getStoredCollaborationSettings,
+  type IdempotencyRecord,
+  type PageStore,
+  type ScreenshotStore,
+  type StoredPageMetadata,
+} from "./storage.ts";
 
 export const config = {
   path: "/api/*",
@@ -56,12 +93,24 @@ export default async function handler(req: Request) {
         return await createPage(req, store);
       case "create-report":
         return await createReport(req, store);
+      case "create-collaboration-ticket":
+        return await createCollaborationTicket(req, route.id, store);
+      case "create-screenshot":
+        return await createScreenshot(req, route.id, store);
+      case "get-screenshot":
+        return await getScreenshot(route.id, route.screenshotId, store);
       case "get-page":
         return await getPageMetadata(route.id, store);
       case "get-page-content":
         return await getPageContent(route.id, store);
       case "delete-page":
-        return await deletePage(req, route.id, store, getAdminDeleteToken());
+        return await deletePage(req, route.id, store, getAdminDeleteToken(), {
+          notifyCollaborationDeleted:
+            createCollaborationRoomDeletionNotifier({
+              serviceUrl: getEnv("COLLABORATION_SERVICE_URL"),
+              serviceToken: getEnv("COLLABORATION_SERVICE_TOKEN"),
+            }) ?? undefined,
+        });
     }
   } catch (error) {
     captureException(error);
@@ -78,6 +127,7 @@ export async function createPage(
     publicBaseUrl?: string;
     now?: () => Date;
     createId?: () => string;
+    capabilityKeys?: CapabilityKeys;
   } = {},
 ): Promise<Response> {
   if (!isJsonRequest(req)) {
@@ -119,7 +169,24 @@ export async function createPage(
     return jsonError(expirationHours.error, 400);
   }
 
-  const requestDigest = await digestRequest(html.value, expirationHours.value);
+  if (body.collaboration !== undefined && typeof body.collaboration !== "boolean") {
+    return jsonError("Collaboration must be a boolean", 400);
+  }
+  const now = dependencies.now?.() ?? new Date();
+  const collaborationEnabled = body.collaboration === true;
+  const configuredCapabilityKeys = collaborationEnabled
+    ? (dependencies.capabilityKeys ?? capabilityKeysFromEnv(getEnv, now))
+    : undefined;
+  if (collaborationEnabled && !configuredCapabilityKeys) {
+    return jsonError("Collaboration is not configured", 503);
+  }
+  const capabilityKeys = configuredCapabilityKeys ?? undefined;
+
+  const requestDigest = await digestRequest(
+    html.value,
+    expirationHours.value,
+    collaborationEnabled,
+  );
   const idempotency = await resolveIdempotency(req, store, actor.type, actorHash, requestDigest);
   if (!idempotency.ok) return idempotency.response;
   if (idempotency.record) {
@@ -127,7 +194,14 @@ export async function createPage(
       actor_type: actor.type,
       actor_hash: actorHash,
     });
-    return json(idempotency.record.response, 200, limit.headers);
+    const replay = await hydrateCreateResponse(
+      idempotency.record.response,
+      store,
+      capabilityKeys,
+      now,
+    );
+    if (!replay) return jsonError("Collaboration is not configured", 503);
+    return json(replay, 200, limit.headers);
   }
 
   const publicBaseUrl = resolvePublicBaseUrl(
@@ -139,29 +213,49 @@ export async function createPage(
   }
 
   const id = dependencies.createId?.() ?? crypto.randomUUID();
-  const now = dependencies.now?.() ?? new Date();
   const expiresAt = expirationDate(expirationHours.value, now);
-  const metadata: PageMetadata = {
+  const storedHtml = collaborationEnabled ? injectCollaborationBootstrap(html.value) : html.value;
+  const metadata: StoredPageMetadata = {
     id,
     createdAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
-    sizeBytes: htmlByteLength(html.value),
+    sizeBytes: htmlByteLength(storedHtml),
+    ...(collaborationEnabled
+      ? {
+          collaboration: {
+            enabled: true as const,
+            capabilityVersion: capabilityKeys!.current.version,
+          },
+        }
+      : {}),
   };
 
-  await store.savePage(html.value, metadata);
+  await store.savePage(storedHtml, metadata);
 
+  const viewUrl = pagePublicUrl(id, publicBaseUrl);
   const responseBody: CreatePageResponse = {
     id,
     createdAt: metadata.createdAt,
     expiresAt: metadata.expiresAt,
-    url: pagePublicUrl(id, publicBaseUrl),
+    url: viewUrl,
   };
+  if (collaborationEnabled) {
+    const capability = await createEditorCapability(
+      id,
+      metadata.expiresAt,
+      capabilityKeys!.current,
+    );
+    responseBody.collaboration = {
+      viewUrl,
+      editUrl: `${viewUrl}#edit=${capability}`,
+    };
+  }
 
   if (idempotency.key) {
     const record: IdempotencyRecord = {
       digest: requestDigest,
       pageId: id,
-      response: responseBody,
+      response: baseCreateResponse(responseBody),
       expiresAt: metadata.expiresAt,
     };
     let claim;
@@ -186,7 +280,14 @@ export async function createPage(
       if (authoritative.record.digest !== requestDigest) {
         return idempotencyConflict(actor.type, actorHash);
       }
-      return json(authoritative.record.response, 200, limit.headers);
+      const replay = await hydrateCreateResponse(
+        authoritative.record.response,
+        store,
+        capabilityKeys,
+        now,
+      );
+      if (!replay) return jsonError("Collaboration is not configured", 503);
+      return json(replay, 200, limit.headers);
     }
   }
 
@@ -253,9 +354,411 @@ export async function getPageMetadata(id: string, store: PageStore): Promise<Res
       id: page.metadata.id,
       createdAt: page.metadata.createdAt,
       expiresAt: page.metadata.expiresAt,
+      collaboration: getStoredCollaborationSettings(page.metadata)?.enabled === true,
     },
     200,
   );
+}
+
+export async function createCollaborationTicket(
+  req: Request,
+  id: string,
+  store: PageStore,
+  dependencies: {
+    capabilityKeys?: CapabilityKeys;
+    ticketConfiguration?: TicketConfiguration;
+    now?: () => Date;
+    createTicketId?: () => string;
+  } = {},
+): Promise<Response> {
+  if (!isJsonRequest(req)) {
+    return jsonError("Content-Type must be application/json", 415);
+  }
+
+  const body = await parseJson<CreateCollaborationTicketRequest>(req);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return jsonError("Request body must be valid JSON", 400);
+  }
+  if (body.capability !== undefined && typeof body.capability !== "string") {
+    return jsonError("Capability must be a string", 400);
+  }
+
+  const now = dependencies.now?.() ?? new Date();
+  const page = await findAvailablePage(id, store, now);
+  if (!page.ok) return jsonError(page.error, page.status);
+  const collaboration = getStoredCollaborationSettings(page.metadata);
+  if (collaboration?.enabled !== true) {
+    return jsonError("Collaboration is not enabled for this page", 409);
+  }
+
+  let role: CollaborationRole = "view";
+  if (body.capability !== undefined) {
+    const keys = dependencies.capabilityKeys ?? capabilityKeysFromEnv(getEnv, now);
+    if (!keys) return jsonError("Collaboration is not configured", 503);
+    const accepted = await verifyEditorCapability(
+      body.capability,
+      id,
+      page.metadata.expiresAt,
+      collaboration.capabilityVersion,
+      keys,
+      now,
+    );
+    if (!accepted) return jsonError("Invalid editor capability", 403);
+    role = "edit";
+  }
+
+  const configuration = dependencies.ticketConfiguration ?? ticketConfigurationFromEnv(getEnv);
+  if (!configuration) return jsonError("Collaboration is not configured", 503);
+
+  const ticket = await mintCollaborationTicket({
+    pageId: id,
+    role,
+    pageExpiresAt: new Date(page.metadata.expiresAt),
+    configuration,
+    now,
+    ticketId: dependencies.createTicketId?.(),
+  });
+  return json<CreateCollaborationTicketResponse>(
+    { ticket, websocketUrl: collaborationWebSocketUrl(configuration.websocketUrl, id), role },
+    200,
+  );
+}
+
+export async function createScreenshot(
+  req: Request,
+  id: string,
+  store: PageStore & ScreenshotStore,
+  dependencies: {
+    capture?: ScreenshotCapture;
+    now?: () => Date;
+    createId?: () => string;
+    timeoutMs?: number;
+    dailyBudget?: number;
+  } = {},
+): Promise<Response> {
+  if (!isJsonRequest(req)) return jsonError("Content-Type must be application/json", 415);
+  const body = await parseJson<Record<string, unknown>>(req);
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length > 0) {
+    return jsonError("Screenshot request body must be an empty JSON object", 400);
+  }
+  if (!validResourceId(id)) return jsonError(PAGE_UNAVAILABLE_REASON.notFound, 404);
+
+  const now = dependencies.now?.() ?? new Date();
+  const page = await findAvailablePage(id, store, now);
+  if (!page.ok) return jsonError(page.error, page.status);
+  if (getStoredCollaborationSettings(page.metadata)?.enabled !== true) {
+    return jsonError("Screenshots require a collaborative page", 409);
+  }
+
+  const limit = await checkRateLimit(req, store, "screenshot", id, now.getTime());
+  if (!limit.ok) return limit.response;
+
+  const capture =
+    dependencies.capture ??
+    createScreenshotCaptureClient({
+      serviceUrl: getEnv("COLLABORATION_SERVICE_URL"),
+      serviceToken: getEnv("COLLABORATION_SERVICE_TOKEN"),
+    });
+  if (!capture) return jsonError("Screenshot capture is not configured", 503);
+
+  const screenshotId = dependencies.createId?.() ?? crypto.randomUUID();
+  if (!validResourceId(screenshotId)) return jsonError("Screenshot identifier is invalid", 500);
+  const timeoutMs = dependencies.timeoutMs ?? SCREENSHOT_CAPTURE_TIMEOUT_MS;
+  if (
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > SCREENSHOT_CAPTURE_TIMEOUT_MS
+  ) {
+    return jsonError("Screenshot timeout is invalid", 500);
+  }
+
+  const lock = await acquireScreenshotLock(store, id, screenshotId, now.getTime(), timeoutMs);
+  if (!lock) return jsonError("A screenshot capture is already in progress", 409);
+
+  let dailyBudgetClaim: ScreenshotBudgetClaim | undefined;
+  let retainDailyBudget = false;
+  try {
+    let usage;
+    try {
+      usage = await store.getScreenshotUsage(id);
+    } catch {
+      captureSecurityEvent("screenshot_usage_unavailable", "error", { reason: "storage" });
+      return jsonError("Screenshot limits are temporarily unavailable", 503, {
+        "Retry-After": "60",
+      });
+    }
+    if (
+      usage.count >= SCREENSHOT_PAGE_LIFETIME_COUNT ||
+      usage.totalBytes >= SCREENSHOT_PAGE_LIFETIME_BYTES
+    ) {
+      captureSecurityEvent("screenshot_page_budget_exhausted", "info", { reason: "lifetime" });
+      return jsonError("This page has reached its screenshot limit", 409);
+    }
+
+    const dailyBudget = dependencies.dailyBudget ?? SCREENSHOT_DAILY_BUDGET;
+    if (
+      !Number.isSafeInteger(dailyBudget) ||
+      dailyBudget < 1 ||
+      dailyBudget > SCREENSHOT_DAILY_BUDGET
+    ) {
+      return jsonError("Screenshot budget is invalid", 500);
+    }
+    const budget = await claimDailyScreenshotBudget(store, now, dailyBudget);
+    if (!budget.ok) {
+      captureSecurityEvent("screenshot_daily_budget_rejected", "warning", {
+        reason: budget.reason,
+      });
+      return jsonError("Daily screenshot capacity is unavailable", 503, {
+        "Retry-After": String(budget.retryAfterSeconds),
+      });
+    }
+    dailyBudgetClaim = budget.claim;
+
+    const captured = await captureWithTimeout(capture, id, page.metadata.expiresAt, timeoutMs);
+    const capturedAt = new Date(captured.capturedAt);
+    if (
+      Number.isNaN(capturedAt.getTime()) ||
+      capturedAt.toISOString() !== captured.capturedAt ||
+      capturedAt < new Date(page.metadata.createdAt) ||
+      capturedAt >= new Date(page.metadata.expiresAt) ||
+      capturedAt.getTime() > now.getTime() + 5 * 60 * 1_000 ||
+      !Number.isSafeInteger(captured.revision) ||
+      captured.revision < 0 ||
+      !validPng(captured.png)
+    ) {
+      return jsonError("Screenshot metadata is invalid", 502);
+    }
+    if (usage.totalBytes + captured.png.byteLength > SCREENSHOT_PAGE_LIFETIME_BYTES) {
+      captureSecurityEvent("screenshot_page_budget_exhausted", "info", { reason: "bytes" });
+      return jsonError("This page has reached its screenshot storage limit", 409);
+    }
+
+    const metadata: ScreenshotMetadata = {
+      id: screenshotId,
+      pageId: id,
+      createdAt: captured.capturedAt,
+      expiresAt: page.metadata.expiresAt,
+      revision: captured.revision,
+      sizeBytes: captured.png.byteLength,
+    };
+    await store.saveScreenshot(captured.png, metadata);
+    retainDailyBudget = true;
+    const response: CreateScreenshotResponse = {
+      ...metadata,
+      url: `/api/pages/${encodeURIComponent(id)}/screenshots/${encodeURIComponent(screenshotId)}`,
+    };
+    return json(response, 201, limit.headers);
+  } catch (error) {
+    if (error instanceof ScreenshotTimeoutError) {
+      return jsonError("Screenshot capture timed out", 504);
+    }
+    if (error instanceof ScreenshotCaptureError) {
+      if (error.kind === "expired") return jsonError(PAGE_UNAVAILABLE_REASON.gone, 410);
+      if (error.kind === "quota") {
+        return jsonError("Screenshot capacity is temporarily exhausted", 503, {
+          "Retry-After": "3600",
+        });
+      }
+      return jsonError("Screenshot service returned an invalid response", 502);
+    }
+    throw error;
+  } finally {
+    if (dailyBudgetClaim && !retainDailyBudget) {
+      await releaseDailyScreenshotBudget(store, dailyBudgetClaim);
+    }
+    await releaseScreenshotLock(store, id, screenshotId, lock.etag);
+  }
+}
+
+type ScreenshotBudgetClaim = {
+  key: string;
+  resetAt: number;
+};
+
+async function claimDailyScreenshotBudget(
+  store: ScreenshotStore,
+  now: Date,
+  limit: number,
+): Promise<
+  | { ok: true; claim: ScreenshotBudgetClaim }
+  | { ok: false; reason: "exhausted" | "unavailable"; retryAfterSeconds: number }
+> {
+  const key = screenshotBudgetKey(now);
+  const resetAt = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  const retryAfterSeconds = Math.max(1, Math.ceil((resetAt - now.getTime()) / 1_000));
+  try {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const existing = await store.getScreenshotBudget(key);
+      if (
+        existing &&
+        (!Number.isSafeInteger(existing.record.count) ||
+          existing.record.count < 0 ||
+          existing.record.resetAt !== resetAt)
+      ) {
+        return { ok: false, reason: "unavailable", retryAfterSeconds: 60 };
+      }
+      const count = existing?.record.count ?? 0;
+      if (count >= limit) return { ok: false, reason: "exhausted", retryAfterSeconds };
+
+      const write = await store.setScreenshotBudget(
+        key,
+        { count: count + 1, resetAt },
+        existing ? { onlyIfMatch: existing.etag } : { onlyIfNew: true },
+      );
+      if (write.modified) return { ok: true, claim: { key, resetAt } };
+    }
+  } catch {
+    return { ok: false, reason: "unavailable", retryAfterSeconds: 60 };
+  }
+  return { ok: false, reason: "unavailable", retryAfterSeconds: 60 };
+}
+
+async function releaseDailyScreenshotBudget(
+  store: ScreenshotStore,
+  claim: ScreenshotBudgetClaim,
+): Promise<void> {
+  try {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const existing = await store.getScreenshotBudget(claim.key);
+      if (
+        !existing ||
+        existing.record.resetAt !== claim.resetAt ||
+        !Number.isSafeInteger(existing.record.count) ||
+        existing.record.count < 1
+      ) {
+        captureSecurityEvent("screenshot_budget_release_failed", "warning", {
+          reason: "invalid",
+        });
+        return;
+      }
+      const write = await store.setScreenshotBudget(
+        claim.key,
+        { count: existing.record.count - 1, resetAt: claim.resetAt },
+        { onlyIfMatch: existing.etag },
+      );
+      if (write.modified) return;
+    }
+  } catch (error) {
+    captureException(error);
+    captureSecurityEvent("screenshot_budget_release_failed", "warning", { reason: "storage" });
+    return;
+  }
+  captureSecurityEvent("screenshot_budget_release_failed", "warning", { reason: "contention" });
+}
+
+async function acquireScreenshotLock(
+  store: ScreenshotStore,
+  pageId: string,
+  token: string,
+  now: number,
+  timeoutMs: number,
+): Promise<{ etag: string } | null> {
+  const existing = await store.getScreenshotLock(pageId);
+  if (
+    typeof existing?.record.expiresAt === "number" &&
+    Number.isFinite(existing.record.expiresAt) &&
+    existing.record.expiresAt > now
+  ) {
+    return null;
+  }
+
+  const write = await store.setScreenshotLock(
+    pageId,
+    { token, expiresAt: now + timeoutMs + 5_000 },
+    existing ? { onlyIfMatch: existing.etag } : { onlyIfNew: true },
+  );
+  return write.modified && write.etag ? { etag: write.etag } : null;
+}
+
+async function releaseScreenshotLock(
+  store: ScreenshotStore,
+  pageId: string,
+  token: string,
+  etag: string,
+): Promise<void> {
+  try {
+    await store.setScreenshotLock(pageId, { token, expiresAt: 0 }, { onlyIfMatch: etag });
+  } catch (error) {
+    captureException(error);
+    captureSecurityEvent("screenshot_lock_release_failed", "warning", { reason: "storage" });
+  }
+}
+
+class ScreenshotTimeoutError extends Error {}
+
+async function captureWithTimeout(
+  capture: ScreenshotCapture,
+  pageId: string,
+  pageExpiresAt: string,
+  timeoutMs: number,
+) {
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      reject(new ScreenshotTimeoutError("Screenshot capture timed out"));
+      controller.abort();
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([capture(pageId, pageExpiresAt, controller.signal), timeoutPromise]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function validPng(png: ArrayBuffer): boolean {
+  if (png.byteLength < 8 || png.byteLength > MAX_SCREENSHOT_BYTES) return false;
+  const bytes = new Uint8Array(png, 0, 8);
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+  return signature.every((value, index) => bytes[index] === value);
+}
+
+function validResourceId(value: string): boolean {
+  return /^[A-Za-z0-9_-]{1,128}$/.test(value);
+}
+
+export async function getScreenshot(
+  pageId: string,
+  screenshotId: string,
+  store: PageStore & ScreenshotStore,
+  now = new Date(),
+): Promise<Response> {
+  if (!validResourceId(pageId) || !validResourceId(screenshotId)) {
+    return jsonError(PAGE_UNAVAILABLE_REASON.notFound, 404);
+  }
+  const page = await findAvailablePage(pageId, store, now);
+  if (!page.ok) return jsonError(page.error, page.status);
+  if (getStoredCollaborationSettings(page.metadata)?.enabled !== true) {
+    return jsonError(PAGE_UNAVAILABLE_REASON.notFound, 404);
+  }
+
+  const metadata = await store.getScreenshotMetadata(pageId, screenshotId);
+  if (
+    !metadata ||
+    metadata.id !== screenshotId ||
+    metadata.pageId !== pageId ||
+    metadata.expiresAt !== page.metadata.expiresAt ||
+    isExpired(metadata.expiresAt, now)
+  ) {
+    return jsonError(PAGE_UNAVAILABLE_REASON.notFound, 404);
+  }
+  const png = await store.getScreenshotPng(pageId, screenshotId);
+  if (!png || png.byteLength !== metadata.sizeBytes || !validPng(png)) {
+    return jsonError(PAGE_UNAVAILABLE_REASON.notFound, 404);
+  }
+
+  return new Response(png, {
+    status: 200,
+    headers: {
+      "Content-Type": "image/png",
+      "Content-Length": String(png.byteLength),
+      "Content-Disposition": `inline; filename="ephemeral-page-${pageId}-${screenshotId}.png"`,
+      "Cache-Control": "no-store",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }
 
 export async function getPageContent(id: string, store: PageStore): Promise<Response> {
@@ -272,7 +775,8 @@ export async function getPageContent(id: string, store: PageStore): Promise<Resp
     });
   }
 
-  return new Response(html, { status: 200, headers: htmlHeaders() });
+  const collaboration = getStoredCollaborationSettings(page.metadata)?.enabled === true;
+  return new Response(html, { status: 200, headers: htmlHeaders(collaboration) });
 }
 
 export async function deletePage(
@@ -280,6 +784,7 @@ export async function deletePage(
   id: string,
   store: PageStore,
   adminToken: string | undefined,
+  dependencies: { notifyCollaborationDeleted?: CollaborationRoomDeletionNotifier } = {},
 ): Promise<Response> {
   const limit = await checkRateLimit(req, store, "failedDelete", id);
   if (!limit.ok) {
@@ -311,14 +816,28 @@ export async function deletePage(
   const metadata = await store.getMetadata(id);
   await store.deletePage(id, metadata?.expiresAt);
 
+  if (
+    metadata &&
+    getStoredCollaborationSettings(metadata)?.enabled &&
+    dependencies.notifyCollaborationDeleted
+  ) {
+    try {
+      await dependencies.notifyCollaborationDeleted(id, metadata.expiresAt);
+    } catch (error) {
+      captureException(error);
+      captureSecurityEvent("collaboration_room_deletion_failed", "error", { page_id: id });
+    }
+  }
+
   return json({ deleted: true, id, existed: Boolean(metadata) }, 200);
 }
 
 async function findAvailablePage(
   id: string,
   store: PageStore,
+  now = new Date(),
 ): Promise<
-  | { ok: true; metadata: PageMetadata }
+  | { ok: true; metadata: StoredPageMetadata }
   | { ok: false; status: 404 | 410; error: PageUnavailableReason }
 > {
   const metadata = await store.getMetadata(id);
@@ -326,7 +845,7 @@ async function findAvailablePage(
     return { ok: false, status: 404, error: PAGE_UNAVAILABLE_REASON.notFound };
   }
 
-  if (isExpired(metadata.expiresAt)) {
+  if (isExpired(metadata.expiresAt, now)) {
     return { ok: false, status: 410, error: PAGE_UNAVAILABLE_REASON.gone };
   }
 
@@ -352,10 +871,57 @@ async function parseJson<T>(req: Request): Promise<T | null> {
   }
 }
 
-async function digestRequest(html: string, expirationHours: number): Promise<string> {
-  const data = JSON.stringify({ html, expirationHours });
+async function digestRequest(
+  html: string,
+  expirationHours: number,
+  collaboration: boolean,
+): Promise<string> {
+  const data = JSON.stringify({ html, expirationHours, collaboration });
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function baseCreateResponse(response: CreatePageResponse): IdempotencyRecord["response"] {
+  return {
+    id: response.id,
+    createdAt: response.createdAt,
+    expiresAt: response.expiresAt,
+    url: response.url,
+  };
+}
+
+async function hydrateCreateResponse(
+  response: IdempotencyRecord["response"],
+  store: PageStore,
+  keys: CapabilityKeys | undefined,
+  now: Date,
+): Promise<CreatePageResponse | null> {
+  const metadata = await store.getMetadata(response.id);
+  if (!metadata) return response;
+  const collaboration = getStoredCollaborationSettings(metadata);
+  if (collaboration?.enabled !== true) return response;
+  if (!keys) return null;
+
+  const key =
+    keys.current.version === collaboration.capabilityVersion
+      ? keys.current
+      : keys.previous?.version === collaboration.capabilityVersion
+        ? keys.previous
+        : undefined;
+  if (!key) return null;
+  if (keys.previous?.version === collaboration.capabilityVersion) {
+    const validUntil = new Date(keys.previous.validUntil);
+    if (Number.isNaN(validUntil.getTime()) || now >= validUntil) return null;
+  }
+
+  const capability = await createEditorCapability(response.id, metadata.expiresAt, key);
+  return {
+    ...response,
+    collaboration: {
+      viewUrl: response.url,
+      editUrl: `${response.url}#edit=${capability}`,
+    },
+  };
 }
 
 async function resolveIdempotency(
@@ -450,12 +1016,14 @@ function jsonError(
   return json<ApiErrorResponse>({ error }, status, headers);
 }
 
-function htmlHeaders(): HeadersInit {
+function htmlHeaders(collaboration = false): HeadersInit {
   return {
     "Content-Type": "text/html; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Robots-Tag": "noindex",
-    "Content-Security-Policy": buildUploadedPageHttpCsp(),
+    "Content-Security-Policy": collaboration
+      ? buildCollaborativeUploadedPageHttpCsp()
+      : buildUploadedPageHttpCsp(),
     "X-Content-Type-Options": "nosniff",
   };
 }

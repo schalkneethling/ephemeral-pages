@@ -16,6 +16,7 @@ declare const Netlify:
 export const RATE_LIMITS = {
   upload: { limit: 10, windowMs: 600000 },
   report: { limit: 10, windowMs: 600000 },
+  screenshot: { limit: 3, windowMs: 600000 },
   failedDelete: { limit: 5, windowMs: 900000 },
 } as const;
 

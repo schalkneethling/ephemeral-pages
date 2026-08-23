@@ -3,6 +3,9 @@ import "urlpattern-polyfill";
 export type ApiRoute =
   | { name: "create-page" }
   | { name: "create-report" }
+  | { name: "create-collaboration-ticket"; id: string }
+  | { name: "create-screenshot"; id: string }
+  | { name: "get-screenshot"; id: string; screenshotId: string }
   | { name: "delete-page"; id: string }
   | { name: "get-page"; id: string }
   | { name: "get-page-content"; id: string };
@@ -12,6 +15,21 @@ const apiPatterns = [
     name: "delete-page",
     method: "DELETE",
     pattern: new URLPattern({ pathname: "/api/admin/pages/:id" }),
+  },
+  {
+    name: "create-collaboration-ticket",
+    method: "POST",
+    pattern: new URLPattern({ pathname: "/api/pages/:id/collaboration-ticket" }),
+  },
+  {
+    name: "create-screenshot",
+    method: "POST",
+    pattern: new URLPattern({ pathname: "/api/pages/:id/screenshots" }),
+  },
+  {
+    name: "get-screenshot",
+    method: "GET",
+    pattern: new URLPattern({ pathname: "/api/pages/:id/screenshots/:screenshotId" }),
   },
   {
     name: "create-page",
@@ -68,6 +86,11 @@ export function matchApiRoute(req: Request): ApiRoute | null {
     const id = match.pathname.groups.id;
     if (!id) {
       return null;
+    }
+
+    if (route.name === "get-screenshot") {
+      const screenshotId = match.pathname.groups.screenshotId;
+      return screenshotId ? { name: route.name, id, screenshotId } : null;
     }
 
     return { name: route.name, id };

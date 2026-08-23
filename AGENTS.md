@@ -13,3 +13,14 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 - [ ] Check if there are `vite.config.ts` tasks or `package.json` scripts necessary for validation, run via `vp run <script>`.
 
 <!--VITE PLUS END-->
+
+## TypeScript types and interfaces
+
+Use a TypeScript `interface` when it is truly fit for purpose and provides a concrete benefit over
+a type alias, or when a type alias cannot serve the intended purpose. Otherwise, use a `type`
+alias.
+
+Prefer type aliases for closed data shapes, wire contracts, unions, intersections, mapped types,
+and conditional types. Interface-specific behavior such as intentional declaration merging, module
+augmentation, or a deliberately extensible public contract may justify an interface; make that
+benefit clear in the surrounding code or change description.
