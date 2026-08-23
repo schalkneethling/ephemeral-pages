@@ -135,6 +135,7 @@ async function readHeadJson(pr, path) {
 
 async function githubFetch(path, allowNotFound = false) {
   const response = await fetch(`${apiUrl}${path}`, {
+    signal: AbortSignal.timeout(30_000),
     headers: {
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${token}`,
