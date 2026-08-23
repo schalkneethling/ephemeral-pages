@@ -16,9 +16,12 @@ const policy = JSON.parse(
   await readFile(new URL("../.github/security-policy.json", import.meta.url), "utf8"),
 );
 const defaultSetup = await githubFetch(`/repos/${repository}/code-scanning/default-setup`);
-const rulesets = await githubFetch(`/repos/${repository}/rulesets`);
+const rulesets = await githubFetch(
+  `/repos/${repository}/rulesets?per_page=100&includes_parents=false`,
+);
 const summary = rulesets.find(
-  ({ name, target }) => name === policy.ruleset.name && target === "branch",
+  ({ name, target, source_type }) =>
+    name === policy.ruleset.name && target === "branch" && source_type === "Repository",
 );
 if (!summary) throw new Error(`Ruleset ${policy.ruleset.name} was not found`);
 const ruleset = await githubFetch(`/repos/${repository}/rulesets/${summary.id}`);

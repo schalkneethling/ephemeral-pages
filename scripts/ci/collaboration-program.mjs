@@ -7,8 +7,12 @@ export function pathMatches(pattern, filename) {
 }
 
 export function isCollaborationPullRequest(manifest, files) {
-  return files.some(({ filename }) =>
-    manifest.triggerPaths.some((pattern) => pathMatches(pattern, filename)),
+  return files.some(({ filename, previous_filename }) =>
+    manifest.triggerPaths.some(
+      (pattern) =>
+        pathMatches(pattern, filename) ||
+        (typeof previous_filename === "string" && pathMatches(pattern, previous_filename)),
+    ),
   );
 }
 

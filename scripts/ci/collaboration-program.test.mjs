@@ -2,7 +2,10 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { validateCollaborationPullRequest } from "./collaboration-program.mjs";
+import {
+  isCollaborationPullRequest,
+  validateCollaborationPullRequest,
+} from "./collaboration-program.mjs";
 
 const manifest = JSON.parse(
   await readFile(new URL("../../.github/collaboration-program.json", import.meta.url), "utf8"),
@@ -105,5 +108,18 @@ describe("collaboration program gate", () => {
         files: [{ filename: "README.md", additions: 1, deletions: 0 }],
       }),
     ).toEqual({ applies: false, errors: [] });
+  });
+
+  it("applies collaboration governance when a trigger path is renamed away", () => {
+    expect(
+      isCollaborationPullRequest(manifest, [
+        {
+          filename: "archive/reducer.ts",
+          previous_filename: "collaboration-worker/src/reducer.ts",
+          additions: 0,
+          deletions: 0,
+        },
+      ]),
+    ).toBe(true);
   });
 });

@@ -88,7 +88,12 @@ async function listPullRequestFiles(repo, number) {
       `/repos/${repo}/pulls/${number}/files?per_page=100&page=${page}`,
     );
     files.push(
-      ...batch.map(({ filename, additions, deletions }) => ({ filename, additions, deletions })),
+      ...batch.map(({ filename, previous_filename, additions, deletions }) => ({
+        filename,
+        previous_filename,
+        additions,
+        deletions,
+      })),
     );
     if (batch.length < 100) return files;
   }
