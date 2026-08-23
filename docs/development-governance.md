@@ -29,6 +29,7 @@ A successful CodeQL analysis job only means the scanner ran; the ruleset evaluat
 
 The `Collaboration governance` workflow runs on `pull_request_target`. It checks out and executes the
 base revision, never code from the pull request, and reads the proposed files through GitHub's API.
+All third-party workflow actions are pinned to verified full commit SHAs.
 
 Any PR touching a path in `.github/collaboration-program.json` must:
 

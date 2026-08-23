@@ -8,11 +8,12 @@ import {
   validateCollaborationPullRequest,
 } from "./collaboration-program.mjs";
 
-const eventPath = process.env.GITHUB_EVENT_PATH;
 const prArgumentIndex = process.argv.indexOf("--pr");
 const repositoryArgumentIndex = process.argv.indexOf("--repo");
 const requestedPullRequest =
-  prArgumentIndex === -1 ? undefined : Number(process.argv[prArgumentIndex + 1]);
+  prArgumentIndex === -1
+    ? Number(process.env.GOVERNANCE_PR_NUMBER)
+    : Number(process.argv[prArgumentIndex + 1]);
 const token =
   process.env.GITHUB_TOKEN ??
   process.env.GH_TOKEN ??
@@ -21,20 +22,19 @@ const apiUrl = process.env.GITHUB_API_URL ?? "https://api.github.com";
 
 if (!token) throw new Error("Authenticate gh or set GITHUB_TOKEN/GH_TOKEN");
 
-const event = eventPath ? JSON.parse(await readFile(eventPath, "utf8")) : undefined;
 const repository =
-  event?.repository?.full_name ??
-  (repositoryArgumentIndex === -1
+  repositoryArgumentIndex === -1
     ? (process.env.GITHUB_REPOSITORY ?? "schalkneethling/ephemeral-pages")
-    : process.argv[repositoryArgumentIndex + 1]);
-const pullRequest =
-  event?.pull_request ??
-  (Number.isSafeInteger(requestedPullRequest)
-    ? await githubFetch(`/repos/${repository}/pulls/${requestedPullRequest}`)
-    : undefined);
-if (!pullRequest || typeof repository !== "string") {
+    : process.argv[repositoryArgumentIndex + 1];
+if (
+  !Number.isSafeInteger(requestedPullRequest) ||
+  requestedPullRequest <= 0 ||
+  typeof repository !== "string" ||
+  !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository)
+) {
   throw new Error("Run for pull_request_target or pass --pr <number> [--repo <owner/repo>]");
 }
+const pullRequest = await githubFetch(`/repos/${repository}/pulls/${requestedPullRequest}`);
 
 const manifest = JSON.parse(
   await readFile(new URL("../../.github/collaboration-program.json", import.meta.url), "utf8"),
@@ -50,9 +50,9 @@ const issue = declared.length === 1 ? declared[0] : undefined;
 const definition = issue === undefined ? undefined : manifest.issues[String(issue)];
 const dependencyStates = {};
 if (definition) {
+  const issues = await listIssues(repository);
   for (const dependency of definition.dependencies) {
-    const response = await githubFetch(`/repos/${repository}/issues/${dependency}`);
-    dependencyStates[String(dependency)] = response.state;
+    dependencyStates[String(dependency)] = issues.get(dependency);
   }
 }
 
@@ -95,8 +95,25 @@ async function listPullRequestFiles(repo, number) {
   throw new Error("PR file pagination exceeded the supported 1,000-file safety limit");
 }
 
+async function listIssues(repo) {
+  const issues = new Map();
+  for (let page = 1; page <= 10; page += 1) {
+    const batch = await githubFetch(`/repos/${repo}/issues?state=all&per_page=100&page=${page}`);
+    for (const issue of batch) issues.set(issue.number, issue.state);
+    if (batch.length < 100) return issues;
+  }
+  throw new Error("Issue pagination exceeded the supported 1,000-item safety limit");
+}
+
 async function readHeadJson(pr, path) {
-  if (!pr.head?.repo?.full_name || !pr.head?.sha) return undefined;
+  if (
+    typeof pr.head?.repo?.full_name !== "string" ||
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(pr.head.repo.full_name) ||
+    typeof pr.head?.sha !== "string" ||
+    !/^[a-f0-9]{40}$/u.test(pr.head.sha)
+  ) {
+    return undefined;
+  }
   const encodedPath = path.split("/").map(encodeURIComponent).join("/");
   const response = await githubFetch(
     `/repos/${pr.head.repo.full_name}/contents/${encodedPath}?ref=${encodeURIComponent(pr.head.sha)}`,
