@@ -55,6 +55,13 @@ function applyOperation(root: JsonObject, operation: CollaborationOperation): vo
     return;
   }
 
+  if (
+    finalSegment === "__proto__" ||
+    finalSegment === "constructor" ||
+    finalSegment === "prototype"
+  ) {
+    throw new InvalidOperationPathError("Object path segment is forbidden");
+  }
   if (operation.type === "set") {
     parent[finalSegment] = structuredClone(operation.value);
   } else {
@@ -79,6 +86,9 @@ function resolveParent(root: JsonObject, path: readonly string[]): JsonObject | 
       throw new InvalidOperationPathError("Path traverses a non-container value");
     }
 
+    if (segment === "__proto__" || segment === "constructor" || segment === "prototype") {
+      throw new InvalidOperationPathError("Object path segment is forbidden");
+    }
     const child = current[segment];
     if (child === undefined) {
       const created: JsonObject = {};

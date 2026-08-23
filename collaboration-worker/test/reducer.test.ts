@@ -54,6 +54,19 @@ describe("applyOperations", () => {
     ).toThrow(InvalidOperationPathError);
   });
 
+  it.each(["__proto__", "constructor", "prototype"])(
+    "rejects the forbidden object path segment %s at the mutation boundary",
+    (segment) => {
+      expect(() =>
+        applyOperations({}, [{ type: "set", path: [segment, "polluted"], value: true }]),
+      ).toThrow(InvalidOperationPathError);
+      expect(() => applyOperations({ safe: true }, [{ type: "delete", path: [segment] }])).toThrow(
+        InvalidOperationPathError,
+      );
+      expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    },
+  );
+
   it("rejects projected state above the shared state limit", () => {
     expect(() =>
       applyOperations({}, [
