@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "epic": 19,
+  "maxChangedFiles": 25,
+  "maxChangedLines": 5000,
+  "grandfatheredPullRequests": {
+    "33": "The collaboration implementation predates this gate; CodeQL merge protection still applies."
+  },
+  "generatedPaths": ["collaboration-worker/worker-configuration.d.ts"],
+  "triggerPaths": [
+    "collaboration-worker/**",
+    "docs/collaboration.md",
+    "netlify/functions/cleanup.ts",
+    "netlify/functions/collaboration-auth.ts",
+    "netlify/functions/collaboration-service.ts",
+    "netlify/functions/pages.ts",
+    "netlify/functions/screenshot-capture.ts",
+    "netlify/functions/storage.ts",
+    "src/collaboration/**",
+    "src/csp.ts",
+    "src/domain.ts",
+    "src/upload.ts",
+    "src/view.ts",
+    "tests/e2e/collaboration.spec.ts",
+    "tests/e2e/screenshot.spec.ts",
+    "tests/fixtures/collaborative-kanban.html"
+  ],
+  "issues": {
+    "20": { "phase": 1, "dependencies": [22, 23] },
+    "21": { "phase": 0, "dependencies": [], "behaviorNeutral": true },
+    "22": { "phase": 1, "dependencies": [23] },
+    "23": { "phase": 1, "dependencies": [21] },
+    "24": { "phase": 2, "dependencies": [22, 23, 25] },
+    "25": { "phase": 1, "dependencies": [23] },
+    "26": { "phase": 2, "dependencies": [22, 23] },
+    "27": { "phase": 2, "dependencies": [20, 24, 25] },
+    "28": { "phase": 3, "dependencies": [24, 25, 26, 27, 29, 30] },
+    "29": { "phase": 3, "dependencies": [24, 26, 27, 30] },
+    "30": { "phase": 2, "dependencies": [20, 24, 26, 27] },
+    "31": { "phase": 4, "dependencies": [28] },
+    "32": { "phase": 4, "dependencies": [31] }
+  }
+}

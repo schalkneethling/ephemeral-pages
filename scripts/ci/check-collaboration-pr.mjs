@@ -1,0 +1,125 @@
+import { execFileSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
+
+import {
+  evidencePath,
+  isCollaborationPullRequest,
+  parseCollaborationIssues,
+  validateCollaborationPullRequest,
+} from "./collaboration-program.mjs";
+
+const eventPath = process.env.GITHUB_EVENT_PATH;
+const prArgumentIndex = process.argv.indexOf("--pr");
+const repositoryArgumentIndex = process.argv.indexOf("--repo");
+const requestedPullRequest =
+  prArgumentIndex === -1 ? undefined : Number(process.argv[prArgumentIndex + 1]);
+const token =
+  process.env.GITHUB_TOKEN ??
+  process.env.GH_TOKEN ??
+  execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).trim();
+const apiUrl = process.env.GITHUB_API_URL ?? "https://api.github.com";
+
+if (!token) throw new Error("Authenticate gh or set GITHUB_TOKEN/GH_TOKEN");
+
+const event = eventPath ? JSON.parse(await readFile(eventPath, "utf8")) : undefined;
+const repository =
+  event?.repository?.full_name ??
+  (repositoryArgumentIndex === -1
+    ? (process.env.GITHUB_REPOSITORY ?? "schalkneethling/ephemeral-pages")
+    : process.argv[repositoryArgumentIndex + 1]);
+const pullRequest =
+  event?.pull_request ??
+  (Number.isSafeInteger(requestedPullRequest)
+    ? await githubFetch(`/repos/${repository}/pulls/${requestedPullRequest}`)
+    : undefined);
+if (!pullRequest || typeof repository !== "string") {
+  throw new Error("Run for pull_request_target or pass --pr <number> [--repo <owner/repo>]");
+}
+
+const manifest = JSON.parse(
+  await readFile(new URL("../../.github/collaboration-program.json", import.meta.url), "utf8"),
+);
+const files = await listPullRequestFiles(repository, pullRequest.number);
+if (!isCollaborationPullRequest(manifest, files)) {
+  console.log("Collaboration governance does not apply to this PR.");
+  process.exit(0);
+}
+
+const declared = parseCollaborationIssues(pullRequest.body ?? "");
+const issue = declared.length === 1 ? declared[0] : undefined;
+const definition = issue === undefined ? undefined : manifest.issues[String(issue)];
+const dependencyStates = {};
+if (definition) {
+  for (const dependency of definition.dependencies) {
+    const response = await githubFetch(`/repos/${repository}/issues/${dependency}`);
+    dependencyStates[String(dependency)] = response.state;
+  }
+}
+
+let evidence;
+if (issue !== undefined) {
+  evidence = await readHeadJson(pullRequest, evidencePath(issue));
+}
+
+const result = validateCollaborationPullRequest({
+  manifest,
+  body: pullRequest.body ?? "",
+  files,
+  evidence,
+  dependencyStates,
+  pullRequestNumber: pullRequest.number,
+});
+if (result.errors.length > 0) {
+  console.error("Collaboration program gate failed:\n");
+  for (const error of result.errors) console.error(`- ${error}`);
+  process.exit(1);
+}
+
+console.log(
+  result.exception
+    ? `PR #${pullRequest.number} is explicitly grandfathered: ${result.exception}`
+    : `Collaboration issue #${result.issue} satisfies the program gate.`,
+);
+
+async function listPullRequestFiles(repo, number) {
+  const files = [];
+  for (let page = 1; page <= 10; page += 1) {
+    const batch = await githubFetch(
+      `/repos/${repo}/pulls/${number}/files?per_page=100&page=${page}`,
+    );
+    files.push(
+      ...batch.map(({ filename, additions, deletions }) => ({ filename, additions, deletions })),
+    );
+    if (batch.length < 100) return files;
+  }
+  throw new Error("PR file pagination exceeded the supported 1,000-file safety limit");
+}
+
+async function readHeadJson(pr, path) {
+  if (!pr.head?.repo?.full_name || !pr.head?.sha) return undefined;
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  const response = await githubFetch(
+    `/repos/${pr.head.repo.full_name}/contents/${encodedPath}?ref=${encodeURIComponent(pr.head.sha)}`,
+    true,
+  );
+  if (!response) return undefined;
+  if (response.type !== "file" || typeof response.content !== "string") return undefined;
+  try {
+    return JSON.parse(Buffer.from(response.content, "base64").toString("utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+async function githubFetch(path, allowNotFound = false) {
+  const response = await fetch(`${apiUrl}${path}`, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "X-GitHub-Api-Version": "2026-03-10",
+    },
+  });
+  if (allowNotFound && response.status === 404) return undefined;
+  if (!response.ok) throw new Error(`GitHub API ${path} failed with ${response.status}`);
+  return response.json();
+}

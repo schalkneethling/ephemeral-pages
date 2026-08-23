@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "codeql": {
+    "state": "configured",
+    "languages": ["actions", "javascript-typescript"],
+    "query_suite": "extended",
+    "threat_model": "remote"
+  },
+  "ruleset": {
+    "name": "main",
+    "tool": "CodeQL",
+    "alerts_threshold": "errors_and_warnings",
+    "security_alerts_threshold": "medium_or_higher"
+  }
+}

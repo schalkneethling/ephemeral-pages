@@ -1,5 +1,8 @@
 # Ephemeral Pages
 
+Development and security gates are documented in
+[development governance](docs/development-governance.md).
+
 Ephemeral Pages lets users publish short-lived HTML pages that expire automatically.
 
 ## Public API
