@@ -36,7 +36,10 @@ test("captures by keyboard, prevents concurrent requests, and exposes a safe dow
   await expect(button).toBeDisabled();
   await expect(page.getByRole("status")).toHaveText("Capturing the current shared page…");
   await button.evaluate((element) => {
-    if (element instanceof HTMLElement) element.click();
+    if (element instanceof HTMLButtonElement) {
+      element.disabled = false;
+      element.click();
+    }
   });
   expect(requestCount).toBe(1);
 

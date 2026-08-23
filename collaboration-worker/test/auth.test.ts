@@ -28,9 +28,15 @@ describe("collaboration ticket authorization", () => {
 
   it("rejects tampering, audience mismatch, expiry, and excessive lifetime", async () => {
     const token = await signTicket(validClaims());
+    const unsigned = `${encodeJson({ alg: "none", typ: "JWT" })}.${encodeJson(validClaims())}.`;
     expect(
       await verifyTicket(`${token.slice(0, -1)}x`, SECRET, "ephemeral-pages-collaboration", NOW),
     ).toMatchObject({ ok: false });
+    expect(
+      await verifyTicket(unsigned, SECRET, "ephemeral-pages-collaboration", NOW),
+    ).toMatchObject({
+      ok: false,
+    });
     expect(await verifyTicket(token, SECRET, "another-audience", NOW)).toMatchObject({ ok: false });
     expect(
       await verifyTicket(

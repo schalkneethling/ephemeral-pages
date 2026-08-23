@@ -475,6 +475,8 @@ export async function createScreenshot(
   const lock = await acquireScreenshotLock(store, id, screenshotId, now.getTime(), timeoutMs);
   if (!lock) return jsonError("A screenshot capture is already in progress", 409);
 
+  let dailyBudgetClaim: ScreenshotBudgetClaim | undefined;
+  let retainDailyBudget = false;
   try {
     let usage;
     try {
@@ -510,6 +512,7 @@ export async function createScreenshot(
         "Retry-After": String(budget.retryAfterSeconds),
       });
     }
+    dailyBudgetClaim = budget.claim;
 
     const captured = await captureWithTimeout(capture, id, page.metadata.expiresAt, timeoutMs);
     const capturedAt = new Date(captured.capturedAt);
@@ -539,6 +542,7 @@ export async function createScreenshot(
       sizeBytes: captured.png.byteLength,
     };
     await store.saveScreenshot(captured.png, metadata);
+    retainDailyBudget = true;
     const response: CreateScreenshotResponse = {
       ...metadata,
       url: `/api/pages/${encodeURIComponent(id)}/screenshots/${encodeURIComponent(screenshotId)}`,
@@ -559,16 +563,25 @@ export async function createScreenshot(
     }
     throw error;
   } finally {
+    if (dailyBudgetClaim && !retainDailyBudget) {
+      await releaseDailyScreenshotBudget(store, dailyBudgetClaim);
+    }
     await releaseScreenshotLock(store, id, screenshotId, lock.etag);
   }
 }
+
+type ScreenshotBudgetClaim = {
+  key: string;
+  resetAt: number;
+};
 
 async function claimDailyScreenshotBudget(
   store: ScreenshotStore,
   now: Date,
   limit: number,
 ): Promise<
-  { ok: true } | { ok: false; reason: "exhausted" | "unavailable"; retryAfterSeconds: number }
+  | { ok: true; claim: ScreenshotBudgetClaim }
+  | { ok: false; reason: "exhausted" | "unavailable"; retryAfterSeconds: number }
 > {
   const key = screenshotBudgetKey(now);
   const resetAt = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
@@ -592,12 +605,45 @@ async function claimDailyScreenshotBudget(
         { count: count + 1, resetAt },
         existing ? { onlyIfMatch: existing.etag } : { onlyIfNew: true },
       );
-      if (write.modified) return { ok: true };
+      if (write.modified) return { ok: true, claim: { key, resetAt } };
     }
   } catch {
     return { ok: false, reason: "unavailable", retryAfterSeconds: 60 };
   }
   return { ok: false, reason: "unavailable", retryAfterSeconds: 60 };
+}
+
+async function releaseDailyScreenshotBudget(
+  store: ScreenshotStore,
+  claim: ScreenshotBudgetClaim,
+): Promise<void> {
+  try {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const existing = await store.getScreenshotBudget(claim.key);
+      if (
+        !existing ||
+        existing.record.resetAt !== claim.resetAt ||
+        !Number.isSafeInteger(existing.record.count) ||
+        existing.record.count < 1
+      ) {
+        captureSecurityEvent("screenshot_budget_release_failed", "warning", {
+          reason: "invalid",
+        });
+        return;
+      }
+      const write = await store.setScreenshotBudget(
+        claim.key,
+        { count: existing.record.count - 1, resetAt: claim.resetAt },
+        { onlyIfMatch: existing.etag },
+      );
+      if (write.modified) return;
+    }
+  } catch (error) {
+    captureException(error);
+    captureSecurityEvent("screenshot_budget_release_failed", "warning", { reason: "storage" });
+    return;
+  }
+  captureSecurityEvent("screenshot_budget_release_failed", "warning", { reason: "contention" });
 }
 
 async function acquireScreenshotLock(

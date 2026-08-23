@@ -9,6 +9,7 @@ import {
   SCREENSHOT_PAGE_LIFETIME_BYTES,
   SCREENSHOT_PAGE_LIFETIME_COUNT,
   ScreenshotCaptureError,
+  type ScreenshotCaptureResult,
 } from "../functions/screenshot-capture.ts";
 import { cleanupExpiredScreenshotBudgets } from "../functions/cleanup.ts";
 import { createPageStore } from "../functions/storage.ts";
@@ -220,7 +221,59 @@ describe("screenshot page APIs", () => {
     });
     expect(timeout.status).toBe(504);
     expect(timeoutStore.locks.get("page-1")?.record).toEqual({ token: "timed-out", expiresAt: 0 });
+    expect(dailyBudgetCount(timeoutStore)).toBe(0);
   });
+
+  it("releases the daily budget after upstream capture failures", async () => {
+    const store = screenshotStore();
+    store.seedPage(true);
+    const response = await createScreenshot(screenshotRequest({}), "page-1", store, {
+      capture: async () => {
+        throw new ScreenshotCaptureError("worker unavailable", "upstream");
+      },
+      now: () => NOW,
+    });
+
+    expect(response.status).toBe(502);
+    expect(dailyBudgetCount(store)).toBe(0);
+  });
+
+  it.each([
+    ["unparseable capture time", { png: PNG, revision: 0, capturedAt: "invalid" }],
+    ["non-canonical capture time", { png: PNG, revision: 0, capturedAt: "2026-08-23T08:00:00Z" }],
+    [
+      "capture before page creation",
+      { png: PNG, revision: 0, capturedAt: "2026-08-23T07:59:59.000Z" },
+    ],
+    ["capture at page expiry", { png: PNG, revision: 0, capturedAt: PAGE_EXPIRY }],
+    [
+      "capture too far in the future",
+      { png: PNG, revision: 0, capturedAt: "2026-08-23T08:05:01.000Z" },
+    ],
+    ["fractional revision", { png: PNG, revision: 0.5, capturedAt: NOW.toISOString() }],
+    ["negative revision", { png: PNG, revision: -1, capturedAt: NOW.toISOString() }],
+    [
+      "invalid PNG",
+      {
+        png: new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]).buffer,
+        revision: 0,
+        capturedAt: NOW.toISOString(),
+      },
+    ],
+  ] satisfies Array<[string, ScreenshotCaptureResult]>)(
+    "releases the daily budget after %s",
+    async (_name, captured) => {
+      const store = screenshotStore();
+      store.seedPage(true);
+      const response = await createScreenshot(screenshotRequest({}), "page-1", store, {
+        capture: async () => captured,
+        now: () => NOW,
+      });
+
+      expect(response.status).toBe(502);
+      expect(dailyBudgetCount(store)).toBe(0);
+    },
+  );
 
   it("enforces the application-wide daily budget with conditional retries", async () => {
     expect(SCREENSHOT_DAILY_BUDGET).toBe(25);
@@ -285,6 +338,7 @@ describe("screenshot page APIs", () => {
     });
     expect(projected.status).toBe(409);
     expect(capture).toHaveBeenCalledOnce();
+    expect(dailyBudgetCount(byteStore)).toBe(0);
   });
 
   it("cleans expired and malformed global budget records without page state", async () => {
@@ -352,6 +406,10 @@ function screenshotRequest(body: unknown): Request {
     },
     body: JSON.stringify(body),
   });
+}
+
+function dailyBudgetCount(store: ReturnType<typeof screenshotStore>): number | undefined {
+  return [...store.budgets.values()][0]?.record.count;
 }
 
 function screenshotStore(): PageStore &

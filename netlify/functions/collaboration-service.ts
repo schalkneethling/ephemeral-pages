@@ -3,16 +3,28 @@ export type CollaborationRoomDeletionNotifier = (
   pageExpiresAt: string,
 ) => Promise<void>;
 
+export const COLLABORATION_ROOM_DELETION_TIMEOUT_MS = 5_000;
+
 export function createCollaborationRoomDeletionNotifier({
   serviceUrl,
   serviceToken,
   fetchImpl = fetch,
+  timeoutMs = COLLABORATION_ROOM_DELETION_TIMEOUT_MS,
 }: {
   serviceUrl: string | undefined;
   serviceToken: string | undefined;
   fetchImpl?: typeof fetch;
+  timeoutMs?: number;
 }): CollaborationRoomDeletionNotifier | null {
-  if (!serviceUrl || !serviceToken) return null;
+  if (
+    !serviceUrl ||
+    !serviceToken ||
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > COLLABORATION_ROOM_DELETION_TIMEOUT_MS
+  ) {
+    return null;
+  }
 
   let baseUrl: URL;
   try {
@@ -36,6 +48,7 @@ export function createCollaborationRoomDeletionNotifier({
         Authorization: `Bearer ${serviceToken}`,
         "X-Ephemeral-Page-Expires-At": String(expiresAtSeconds),
       },
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok && response.status !== 404) {
       throw new Error(`Collaboration room deletion failed with status ${response.status}`);

@@ -299,6 +299,27 @@ describe("collaboration service", () => {
       Authorization: "Bearer internal-secret",
       "X-Ephemeral-Page-Expires-At": "1787472000",
     });
+    expect(requests[0].init?.signal).toBeInstanceOf(AbortSignal);
+    expect(requests[0].init?.signal?.aborted).toBe(false);
+  });
+
+  it("aborts an unresponsive room deletion request", async () => {
+    const fetchImpl: typeof fetch = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) return reject(new Error("missing abort signal"));
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    const notify = createCollaborationRoomDeletionNotifier({
+      serviceUrl: "https://collaboration.example.com",
+      serviceToken: "internal-secret",
+      fetchImpl,
+      timeoutMs: 5,
+    });
+
+    await expect(notify!("room-one", "2026-08-23T08:00:00.000Z")).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
   });
 
   it("keeps scheduled deletion successful when room notification fails", async () => {
