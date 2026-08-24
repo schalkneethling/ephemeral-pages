@@ -105,8 +105,13 @@ Pi does not ship MCP. Install the community [pi-mcp](https://github.com/dmmulroy
 extension, which negotiates MCP 2026-07-28:
 
 ```bash
-pi install git:github.com/dmmulroy/pi-mcp
+pi install git:github.com/dmmulroy/pi-mcp@acd1428863dd6ce8ee30371b30f0958e8fb8fbe2
 ```
+
+That commit is intentionally pinned because Pi extensions run with full system access. To update
+it, review the target commit and dependency changes, run the extension's checks, then replace the
+full SHA above and run the same `pi install` command. Pi does not move pinned Git sources during
+normal updates.
 
 Then add `~/.pi/agent/mcp.json` or a project `.pi/mcp.json`:
 
