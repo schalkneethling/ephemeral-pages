@@ -101,24 +101,27 @@ remote entry.
 
 ### Pi
 
-Pi does not ship MCP. Install the community
-[pi-mcp-extension](https://pi.dev/packages/pi-mcp-extension), then add
-`~/.pi/agent/mcp.json` or a project `.pi/mcp.json`:
+Pi does not ship MCP. Install the community [pi-mcp](https://github.com/dmmulroy/pi-mcp)
+extension, which negotiates MCP 2026-07-28:
+
+```bash
+pi install git:github.com/dmmulroy/pi-mcp
+```
+
+Then add `~/.pi/agent/mcp.json` or a project `.pi/mcp.json`:
 
 ```json
 {
-  "mcpServers": {
+  "mcp": {
     "ephemeral-pages": {
-      "transport": "streamable-http",
-      "url": "https://ephemeral.schalkneethling.com/mcp",
-      "lifecycle": "eager"
+      "type": "remote",
+      "url": "https://ephemeral.schalkneethling.com/mcp"
     }
   }
 }
 ```
 
-That extension documents MCP 2025-03-26. This server rejects 2025-era clients, so the
-connection only works if the client negotiates 2026-07-28.
+The extension defaults to lazy startup. Open `/mcp`, select `ephemeral-pages`, and connect it.
 
 ### Other clients
 
