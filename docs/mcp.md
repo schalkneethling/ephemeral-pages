@@ -15,8 +15,11 @@ Production URL:
 https://ephemeral.schalkneethling.com/mcp
 ```
 
-This is a public Streamable HTTP endpoint. No API key, OAuth, or GitHub OIDC is required or
-accepted. Clients that only speak 2025-era MCP will fail.
+This endpoint uses the MCP `2026-07-28` **Streamable HTTP** transport in buffered JSON mode. Despite
+the transport's name, the specification permits either a single JSON response or a request-scoped
+SSE stream; this deployment returns one `application/json` response for each normal request and
+does not send mid-call progress or logging notifications. No API key, OAuth, or GitHub OIDC is
+required or accepted. Clients that only speak 2025-era MCP will fail.
 
 Each client has its own config file and field names. Use the official docs for the client you
 run; the snippets below are the minimum working shapes for this URL.
@@ -123,8 +126,9 @@ connection only works if the client negotiates 2026-07-28.
   workspace `.vscode/mcp.json` uses `"type": "http"` and `url` under `servers`.
 - [Model Context Protocol](https://modelcontextprotocol.io/) lists other clients.
 
-Look for a remote / HTTP / Streamable HTTP server. Point it at the production URL. Do not
-invent an API key, OAuth client, or stdio `command` for this service.
+Look for a remote, HTTP, or Streamable HTTP server. Streamable HTTP is the specification's formal
+transport name even when a server chooses its permitted buffered JSON response mode. Point it at
+the production URL. Do not invent an API key, OAuth client, or stdio `command` for this service.
 
 ### MCP Inspector
 
