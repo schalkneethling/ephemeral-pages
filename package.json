@@ -23,6 +23,7 @@
     "smoke:production": "node scripts/production-smoke.mjs",
     "test": "vp test",
     "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit",
     "prepare": "vp config"
   },
   "dependencies": {

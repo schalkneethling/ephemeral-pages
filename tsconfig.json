@@ -5,6 +5,7 @@
     "lib": ["ES2023", "DOM"],
     "types": ["vite/client", "vitest/globals"],
     "skipLibCheck": true,
+    "strict": true,
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -19,5 +20,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "netlify/functions"]
+  "include": ["src", "netlify/functions", "tests", "playwright.config.ts", "vite.config.ts"]
 }
