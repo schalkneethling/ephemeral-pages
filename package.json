@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2",
-    "@netlify/blobs": "^10.7.6",
+    "@netlify/blobs": "^11.0.1",
     "@netlify/functions": "^5.2.1",
     "@sentry/node": "^10.53.1",
     "jose": "^6.1.0",
