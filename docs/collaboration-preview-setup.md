@@ -26,7 +26,7 @@ that ticket authentication, shared editing, or screenshots work. The remaining s
 
 Completed (user-confirmed on 2026-09-09). All five values below were saved with All scopes and a
 branch override for `codex/ephemeral-pages-collaboration`. Existing production values were retained.
-Deployment verification remains pending. Free-plan variables use all scopes; deploy context is a
+The preview smoke below verified the deployment. Free-plan variables use all scopes; deploy context is a
 separate setting.
 
 - `COLLABORATION_CAPABILITY_CURRENT_VERSION`: `v1`
@@ -69,11 +69,24 @@ The uploaded-page CSP is unchanged: uploaded HTML communicates through the trust
 
 ## 5. Redeploy and verify the full path
 
-In progress. The user confirmed collaborative upload, editor mutation, live viewer synchronization,
-read-only viewing, and persistence/editor access after refresh. Screenshot capture failed with a 502. A zero-byte POST reproduced a Worker 400: an empty body stream was incorrectly rejected.
-A regression test and fix now accept an empty stream while rejecting body content. Screenshot
-validation must be repeated after deployment and the three-attempt/ten-minute rate limit clears.
+Preview collaboration and screenshot smoke passed on 2026-09-09. The user confirmed collaborative
+upload, editor mutation, live viewer synchronization, read-only viewing, and persistence/editor
+access after refresh. A screenshot request returned HTTP 201 at 19:52 UTC, capturing revision 5
+as a 46,754-byte PNG. Download and visual inspection confirmed the current Kanban cards and
+read-only controls. Browser Run did not return its usage-time header for this successful capture;
+its browser-time cost remains unmeasured.
+
+During troubleshooting, a zero-byte POST reproduced a Worker 400: an empty body stream was
+incorrectly rejected. A regression test and fix now accept an empty stream while rejecting body
+content. A subsequent Browser Run 422 was followed by the successful capture; its cause was not
+established. Rendering errors now return 502 rather than being reported as exhausted capacity.
+Bounded diagnostic logging records fixed error categories without capture tokens or upstream URLs.
 The browser also blocked Netlify preview script injection in uploaded HTML, as intended by CSP.
+
+The current three-attempt/ten-minute limit counts failed attempts too. The agreed next adjustment
+is a shorter per-IP/per-page cooldown, service-wide admission control for Browser Run, and
+propagating upstream retry timing. Keep the daily and page-lifetime budgets while evaluating
+actual browser usage. This rate-limit adjustment has not yet been applied.
 
 Netlify environment changes require a new deployment. Check the response CSP, create a
 collaborative fixture, open two editor sessions and one viewer, and verify editing, read-only access,

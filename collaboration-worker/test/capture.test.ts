@@ -59,6 +59,31 @@ describe("captureRoomScreenshot", () => {
     expect(room.finished).toHaveLength(1);
   });
 
+  it("reports rendering failures separately from quota without logging capture tokens", async () => {
+    const room = new FakeRoom();
+    const logs = captureConsoleLogs();
+    try {
+      const browser = new FakeBrowser(
+        Response.json(
+          {
+            errors: [{ message: `Navigation timeout for /captures/${TOKEN}/render` }],
+          },
+          { status: 422 },
+        ),
+      );
+      const response = await captureRoomScreenshot("room-1", room, browser, {
+        pageContentOrigin: "https://pages.example",
+        publicWorkerOrigin: "https://collaboration.example",
+      });
+      expect(response.status).toBe(502);
+      expect(logs.text()).toContain("navigation");
+      expect(logs.text()).not.toContain(TOKEN);
+      expect(room.finished).toHaveLength(1);
+    } finally {
+      logs.restore();
+    }
+  });
+
   it("rejects an oversized declared output before buffering it", async () => {
     const room = new FakeRoom();
     const browser = new FakeBrowser(

@@ -70,14 +70,19 @@ export async function captureRoomScreenshot(
 
     const browserMilliseconds = readNonNegativeInteger(screenshot.headers.get("X-Browser-Ms-Used"));
     if (!screenshot.ok) {
-      await cancelQuietly(screenshot.body);
+      const failure = await browserFailureCategory(screenshot.body);
       logMetric("capture_rejected", {
         room_id: roomId,
         reason: "browser_response",
         browser_status: screenshot.status,
+        browser_failure: failure,
         ...(browserMilliseconds === null ? {} : { browser_ms: browserMilliseconds }),
       });
-      return errorResponse("Screenshot service is unavailable", 503, retryAfterHeader(screenshot));
+      return errorResponse(
+        "Screenshot service is unavailable",
+        screenshot.status === 429 || screenshot.status === 503 ? 503 : 502,
+        retryAfterHeader(screenshot),
+      );
     }
     if (!screenshot.headers.get("Content-Type")?.toLowerCase().startsWith("image/png")) {
       await cancelQuietly(screenshot.body);
@@ -307,6 +312,18 @@ function readNonNegativeInteger(value: string | null): number | null {
   if (!value || !/^\d+$/.test(value)) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+async function browserFailureCategory(body: ReadableStream<Uint8Array> | null): Promise<string> {
+  // Upstream errors can contain the single-use render URL. Log fixed categories only.
+  const output = await readBoundedBody(body, 16 * 1024);
+  if (!output.ok) return "unknown";
+  const text = new TextDecoder().decode(output.bytes).toLowerCase();
+  if (text.includes("selector")) return "selector";
+  if (text.includes("navigation")) return "navigation";
+  if (text.includes("timeout") || text.includes("timed out")) return "timeout";
+  if (text.includes("validation")) return "validation";
+  return "unknown";
 }
 
 function retryAfterHeader(response: Response): HeadersInit | undefined {
