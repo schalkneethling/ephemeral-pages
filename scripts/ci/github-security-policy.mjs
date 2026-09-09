@@ -1,4 +1,4 @@
-export function securityPolicyDrift(policy, defaultSetup, ruleset) {
+export function codeqlPolicyDrift(policy, defaultSetup) {
   const drift = [];
   const desiredLanguages = [...policy.codeql.languages].sort((left, right) =>
     left.localeCompare(right),
@@ -17,6 +17,35 @@ export function securityPolicyDrift(policy, defaultSetup, ruleset) {
     );
   }
 
+  return drift;
+}
+
+export function rulesetProtectionDrift(ruleset, defaultBranch) {
+  const drift = [];
+  if (ruleset.target !== "branch" || ruleset.enforcement !== "active") {
+    drift.push("The ruleset must actively enforce branch rules.");
+  }
+  const refs = ruleset.conditions?.ref_name;
+  const accepted = ["~DEFAULT_BRANCH", "~ALL"];
+  if (defaultBranch) accepted.push(`refs/heads/${defaultBranch}`);
+  if (!refs?.include?.some((ref) => accepted.includes(ref)) || refs?.exclude?.length !== 0) {
+    drift.push(
+      "The ruleset must explicitly include the default branch and have no exclusions; other patterns are not verified.",
+    );
+  }
+  if (!Array.isArray(ruleset.bypass_actors)) {
+    drift.push("Cannot verify bypass actors; use credentials with write access to the ruleset.");
+  } else if (ruleset.bypass_actors.length > 0) {
+    drift.push("The ruleset must have no bypass actors.");
+  }
+  return drift;
+}
+
+export function securityPolicyDrift(policy, defaultSetup, ruleset, defaultBranch) {
+  const drift = [
+    ...codeqlPolicyDrift(policy, defaultSetup),
+    ...rulesetProtectionDrift(ruleset, defaultBranch),
+  ];
   const codeScanning = ruleset.rules?.find(({ type }) => type === "code_scanning");
   const tool = codeScanning?.parameters?.code_scanning_tools?.find(
     (candidate) => candidate.tool === policy.ruleset.tool,
@@ -40,6 +69,10 @@ export function withCodeScanningRule(policy, ruleset) {
     type: "code_scanning",
     parameters: {
       code_scanning_tools: [
+        ...(ruleset.rules ?? [])
+          .filter(({ type }) => type === "code_scanning")
+          .flatMap((existing) => existing.parameters?.code_scanning_tools ?? [])
+          .filter(({ tool }) => tool !== policy.ruleset.tool),
         {
           tool: policy.ruleset.tool,
           alerts_threshold: policy.ruleset.alerts_threshold,
@@ -52,7 +85,7 @@ export function withCodeScanningRule(policy, ruleset) {
     name: ruleset.name,
     target: ruleset.target,
     enforcement: ruleset.enforcement,
-    bypass_actors: ruleset.bypass_actors ?? [],
+    bypass_actors: ruleset.bypass_actors,
     conditions: ruleset.conditions,
     rules: [...(ruleset.rules ?? []).filter(({ type }) => type !== "code_scanning"), rule],
   };
