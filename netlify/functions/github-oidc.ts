@@ -5,10 +5,10 @@ import { captureSecurityEvent, getEnv } from "./security.ts";
 const GITHUB_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 const githubJwks = createRemoteJWKSet(new URL(`${GITHUB_OIDC_ISSUER}/.well-known/jwks`));
 
-export interface GitHubActionsIdentity {
+export type GitHubActionsIdentity = {
   type: "github";
   repositoryId: string;
-}
+};
 
 export type UploadIdentity = GitHubActionsIdentity | { type: "anonymous"; ip: string };
 

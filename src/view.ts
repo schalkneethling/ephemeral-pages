@@ -1,12 +1,23 @@
 import { html, render } from "lit";
 
 import { API_BASE, mapUnavailableStatus, type PageMetadata } from "./domain.ts";
+import {
+  CollaborationBridge,
+  consumeEditorCapability,
+  type CollaborationStatus,
+} from "./collaboration/bridge.ts";
 import { icon } from "./icons.ts";
+import { setupScreenshotCapture } from "./collaboration/screenshot.ts";
+
+let activeBridge: CollaborationBridge | undefined;
 
 export async function renderViewPage(container: HTMLDivElement, pageId: string) {
+  activeBridge?.stop();
+  activeBridge = undefined;
+  const capability = consumeEditorCapability(pageId);
   render(viewPageTemplate(pageId), container);
   bindReportPage(pageId);
-  await loadPage(pageId);
+  await loadPage(pageId, capability);
 }
 
 function viewPageTemplate(pageId: string) {
@@ -59,8 +70,14 @@ function viewPageTemplate(pageId: string) {
             <span class="page-id-label">${icon("fileCode")} Page</span>
             <span class="page-id-value">${pageId}</span>
             <span class="page-expires" id="page-expires-label">${icon("clock")}</span>
+            <span id="collaboration-status" class="collaboration-status" aria-live="polite" hidden>
+              Collaboration unavailable
+            </span>
           </div>
           <div class="page-bar-actions">
+            <button type="button" id="capture-page" class="btn-secondary" hidden>
+              ${icon("fileCode", "icon btn-icon")} Capture screenshot
+            </button>
             <button type="button" id="flag-page" class="btn-secondary btn-danger">
               ${icon("flag", "icon btn-icon")} Flag this URL
             </button>
@@ -68,6 +85,10 @@ function viewPageTemplate(pageId: string) {
               ${icon("externalLink", "icon btn-icon")} Create your own
             </a>
           </div>
+        </div>
+        <div id="capture-result" class="capture-result" hidden>
+          <p id="capture-message" class="page-bar-message" aria-live="polite" hidden></p>
+          <a id="capture-download" class="capture-download" hidden></a>
         </div>
         <p id="flag-page-message" class="page-bar-message" aria-live="polite"></p>
         <iframe
@@ -127,7 +148,7 @@ function bindReportPage(pageId: string) {
   });
 }
 
-async function loadPage(pageId: string) {
+async function loadPage(pageId: string, capability?: string) {
   const loadingEl = document.getElementById("view-loading")!;
   const expiredEl = document.getElementById("view-expired")!;
   const notFoundEl = document.getElementById("view-notfound")!;
@@ -171,6 +192,16 @@ async function loadPage(pageId: string) {
     }
 
     const iframe = document.getElementById("page-iframe") as HTMLIFrameElement;
+    if (meta.collaboration) {
+      setupScreenshotCapture(pageId);
+      activeBridge = new CollaborationBridge({
+        iframe,
+        pageId,
+        capability,
+        onStatus: renderCollaborationStatus,
+      });
+      activeBridge.start();
+    }
     iframe.src = `${API_BASE}/pages/${pageId}/content`;
 
     // Set expiration label
@@ -188,6 +219,21 @@ async function loadPage(pageId: string) {
     errorText.textContent = "Failed to load the page. It may have expired or been deleted.";
     focusVisibleState(errorEl);
   }
+}
+
+function renderCollaborationStatus(status: CollaborationStatus) {
+  const element = document.getElementById("collaboration-status");
+  if (!element) return;
+  const labels: Record<CollaborationStatus, string> = {
+    connected: "Collaboration connected — editing",
+    connecting: "Connecting collaboration…",
+    reconnecting: "Collaboration disconnected — reconnecting…",
+    "read-only": "Collaboration connected — view only",
+    unavailable: "Collaboration unavailable",
+  };
+  element.textContent = labels[status];
+  element.dataset.status = status;
+  element.hidden = false;
 }
 
 function focusVisibleState(element: HTMLElement) {

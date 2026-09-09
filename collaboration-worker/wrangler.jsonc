@@ -1,0 +1,74 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "ephemeral-pages-collaboration",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "secrets": { "required": ["TICKET_HMAC_SECRET", "ADMIN_TOKEN"] },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "COLLABORATION_ROOMS",
+        "class_name": "CollaborationRoom",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["CollaborationRoom"],
+    },
+  ],
+  "browser": {
+    "binding": "BROWSER",
+  },
+  "env": {
+    "production": {
+      "name": "ephemeral-pages-collaboration",
+      "secrets": { "required": ["TICKET_HMAC_SECRET", "ADMIN_TOKEN"] },
+      "workers_dev": true,
+      "durable_objects": {
+        "bindings": [{ "name": "COLLABORATION_ROOMS", "class_name": "CollaborationRoom" }],
+      },
+      "browser": { "binding": "BROWSER" },
+      "vars": {
+        "ALLOWED_ORIGINS": "https://ephemeral.schalkneethling.com",
+        "TICKET_AUDIENCE": "ephemeral-pages-collaboration",
+        "PAGE_CONTENT_ORIGIN": "https://ephemeral.schalkneethling.com",
+        "PUBLIC_WORKER_ORIGIN": "https://ephemeral-pages-collaboration.volume4-schalk.workers.dev",
+      },
+    },
+    "preview": {
+      "name": "ephemeral-pages-collaboration-preview",
+      "secrets": { "required": ["TICKET_HMAC_SECRET", "ADMIN_TOKEN"] },
+      "workers_dev": true,
+      "durable_objects": {
+        "bindings": [{ "name": "COLLABORATION_ROOMS", "class_name": "CollaborationRoom" }],
+      },
+      "browser": { "binding": "BROWSER" },
+      "vars": {
+        "ALLOWED_ORIGINS": "https://deploy-preview-33--ephemeral-pages.netlify.app",
+        "TICKET_AUDIENCE": "ephemeral-pages-collaboration-preview",
+        "PAGE_CONTENT_ORIGIN": "https://deploy-preview-33--ephemeral-pages.netlify.app",
+        "PUBLIC_WORKER_ORIGIN": "https://ephemeral-pages-collaboration-preview.volume4-schalk.workers.dev",
+      },
+    },
+  },
+  "vars": {
+    "ALLOWED_ORIGINS": "http://localhost:5173",
+    "TICKET_AUDIENCE": "ephemeral-pages-collaboration",
+    "PAGE_CONTENT_ORIGIN": "http://localhost:5173",
+    "PUBLIC_WORKER_ORIGIN": "http://localhost:8787",
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 0.1,
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01,
+    },
+  },
+}

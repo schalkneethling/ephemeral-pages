@@ -5,6 +5,22 @@ Development and security gates are documented in
 
 Ephemeral Pages lets users publish short-lived HTML pages that expire automatically.
 
+## Opt-in collaboration
+
+Collaboration-enabled uploads can share a small persisted JSON document in real time. Uploaded HTML
+uses the injected `window.ephemeralCollab` API while remaining inside the same network-blocked
+sandbox. The trusted parent owns the WebSocket; viewer links are read-only and secret editor
+capabilities stay in the URL fragment/session storage.
+
+```mermaid
+flowchart LR
+  H[Sandboxed uploaded HTML] -- validated postMessage --> P[Trusted page viewer]
+  P -- authorized WebSocket --> C[Cloudflare Durable Object]
+```
+
+See [the collaboration architecture and page API](docs/collaboration.md), including its security
+boundary, backend contract, limits, configuration, and Kanban example.
+
 ## Using it
 
 The server is a public Streamable HTTP endpoint. There is no API key, bearer token, or OAuth flow
@@ -104,6 +120,10 @@ Allowed external loading is limited to declarative script, stylesheet, and font 
 Programmatic network access is blocked. Uploaded pages do not define `connect-src`, so `fetch`,
 XHR, WebSocket, and similar requests fall back to `default-src 'none'`, even when the target
 origin is allowed for `script-src` or `style-src`.
+
+Collaboration-enabled pages are stricter still: external script, style, font, and image origins are
+removed because shared state could otherwise be encoded into a declarative resource URL. Their
+representative fixtures must therefore be fully self-contained.
 
 That means this is allowed when the origin is on the approved script list:
 

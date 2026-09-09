@@ -20,14 +20,33 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - name: Install dependencies
+      - name: Install application dependencies
         run: bun install --frozen-lockfile
 
-      - name: Check formatting, lint, and types
+      - name: Install isolated Cloudflare test runner
+        working-directory: collaboration-worker
+        run: bun install --frozen-lockfile
+
+      - name: Check application
         run: bunx vp check
 
-      - name: Run tests
+      - name: Test application
         run: bunx vp test
+
+      - name: Check and dry-run the collaboration Worker
+        run: |
+          bun run collaboration:check
+          bun run collaboration:deploy:dry
+
+      - name: Test the Durable Object runtime
+        working-directory: collaboration-worker
+        run: bunx vitest run --config vitest.config.ts
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Test browser flows
+        run: bun run test:e2e
 
       - name: Build production application
         run: bun run build

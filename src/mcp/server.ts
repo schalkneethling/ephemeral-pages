@@ -19,11 +19,11 @@ import {
 } from "./definitions.ts";
 import { publishPage, readPage, type PageToolDependencies } from "./tools.ts";
 
-export interface CreateEphemeralPagesMcpServerOptions {
+export type CreateEphemeralPagesMcpServerOptions = {
   incoming: Request;
   store: PageStore;
   dependencies?: PageToolDependencies;
-}
+};
 
 function toolResponse(result: Awaited<ReturnType<typeof publishPage>>) {
   if (result.isError) {

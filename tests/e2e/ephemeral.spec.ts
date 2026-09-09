@@ -3,6 +3,104 @@ import { expect, test } from "@playwright/test";
 import { buildUploadedPageHttpCsp } from "../../src/csp.ts";
 import { PAGE_UNAVAILABLE_REASON } from "../../src/domain.ts";
 
+test("opts into collaboration and presents distinct viewer and editor links", async ({ page }) => {
+  const id = "collaborative-page";
+  let uploadBody: { collaboration?: boolean; html?: string } = {};
+  await page.route("**/api/pages", async (route) => {
+    uploadBody = route.request().postDataJSON() as typeof uploadBody;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        url: `/p/${id}`,
+        collaboration: {
+          viewUrl: `/p/${id}`,
+          editUrl: `/p/${id}#edit=v1.${"a".repeat(43)}`,
+        },
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.setInputFiles("#file-input", {
+    name: "kanban.html",
+    mimeType: "text/html",
+    buffer: Buffer.from("<html><head><title>Board</title></head><body></body></html>"),
+  });
+  await page.getByRole("checkbox", { name: /enable collaboration/i }).press("Space");
+  await page.getByRole("button", { name: /deploy a page/i }).click();
+
+  expect(uploadBody.collaboration).toBe(true);
+  expect(uploadBody.html).toBe("<html><head><title>Board</title></head><body></body></html>");
+  await expect(page.locator("#share-url")).toHaveValue(new RegExp(`/p/${id}$`));
+  await expect(page.locator("#editor-url")).toHaveValue(new RegExp(`#edit=v1.${"a".repeat(43)}$`));
+  await expect(page.locator("#editor-link-group")).toContainText(/anyone with this secret link/i);
+});
+
+test("consumes the editor fragment before loading a collaborative page", async ({ page }) => {
+  const id = "editor-page";
+  const capability = `v1.${"b".repeat(43)}`;
+  const ticketBodies: Array<{ capability?: string }> = [];
+  await page.addInitScript(() => {
+    class TestWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      readonly readyState = TestWebSocket.OPEN;
+      constructor() {
+        super();
+        queueMicrotask(() => this.dispatchEvent(new Event("open")));
+      }
+      close() {}
+      send() {}
+    }
+    Object.defineProperty(window, "WebSocket", { value: TestWebSocket });
+  });
+  await page.route(`**/api/pages/${id}`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        collaboration: true,
+      }),
+    }),
+  );
+  await page.route(`**/api/pages/${id}/content`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: "<html><body><h1>Board</h1></body></html>",
+    }),
+  );
+  await page.route(`**/api/pages/${id}/collaboration-ticket`, async (route) => {
+    ticketBodies.push(route.request().postDataJSON() as { capability?: string });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ticket: "signed-ticket",
+        websocketUrl: "ws://127.0.0.1:8787",
+        role: "edit",
+      }),
+    });
+  });
+
+  await page.goto(`/p/${id}#edit=${capability}`);
+
+  await expect.poll(() => new URL(page.url()).hash).toBe("");
+  await expect(page.locator("#collaboration-status")).toContainText(/editing/i);
+  expect(ticketBodies).toContainEqual({ capability });
+  await expect
+    .poll(() =>
+      page.evaluate((key) => sessionStorage.getItem(key), `ephemeral-pages:edit-capability:${id}`),
+    )
+    .toBe(capability);
+});
+
 test("uploads valid HTML and renders the shared page", async ({ page }) => {
   const id = "page-123";
   const html = '<html><body><h1 id="shared-title">Shared page</h1></body></html>';
@@ -58,6 +156,7 @@ test("uploads valid HTML and renders the shared page", async ({ page }) => {
     "title",
     `Shared ephemeral page ${id}`,
   );
+  await expect(page.locator("#capture-page")).toBeHidden();
 });
 
 test("flags a shared page through the abuse report form", async ({ page }) => {

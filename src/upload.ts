@@ -85,6 +85,22 @@ function uploadPageTemplate() {
             </select>
           </div>
 
+          <fieldset class="collaboration-option">
+            <div class="collaboration-option-heading">
+              <legend>Collaboration</legend>
+              <label class="toggle-control" for="collaboration-toggle">
+                <input type="checkbox" id="collaboration-toggle" />
+                <span class="toggle-track" aria-hidden="true"><span></span></span>
+                <span>Enable collaboration</span>
+              </label>
+            </div>
+            <p id="collaboration-help">
+              Adds a shared JSON state layer for pages built with
+              <code>window.ephemeralCollab</code>. Anyone with the editor link can change the shared
+              state; keep that link private.
+            </p>
+          </fieldset>
+
           <div class="form-actions">
             <button type="submit" class="btn-primary" id="upload-btn">
               ${icon("rocket", "icon btn-icon")} Deploy a page
@@ -117,9 +133,24 @@ function uploadPageTemplate() {
           <div class="result-icon" aria-hidden="true">${icon("checkCircle")}</div>
           <h2>Page deployed</h2>
           <p class="expires-info" id="expires-info">Share the URL before the TTL runs out.</p>
-          <div class="share-url-container">
-            <input type="text" id="share-url" class="share-url-input" readonly />
-            <button id="copy-btn" class="btn-copy">${icon("copy", "icon btn-icon")} Copy</button>
+          <div class="share-link-group">
+            <label for="share-url" id="share-url-label">Page URL</label>
+            <div class="share-url-container">
+              <input type="text" id="share-url" class="share-url-input" readonly />
+              <button id="copy-btn" class="btn-copy" data-copy-target="share-url">
+                ${icon("copy", "icon btn-icon")} Copy
+              </button>
+            </div>
+          </div>
+          <div id="editor-link-group" class="share-link-group share-link-sensitive" hidden>
+            <label for="editor-url">Editor link</label>
+            <p>Anyone with this secret link can change the page. Do not post it publicly.</p>
+            <div class="share-url-container">
+              <input type="text" id="editor-url" class="share-url-input" readonly />
+              <button id="copy-editor-btn" class="btn-copy" data-copy-target="editor-url">
+                ${icon("copy", "icon btn-icon")} Copy
+              </button>
+            </div>
           </div>
         </div>
       </main>
@@ -177,8 +208,9 @@ function setupUploadForm(container: HTMLDivElement) {
       return;
     }
 
-    if (target.closest("#copy-btn")) {
-      copyShareUrl();
+    const copyButton = target.closest<HTMLButtonElement>("[data-copy-target]");
+    if (copyButton) {
+      copyShareUrl(copyButton);
     }
   });
 
@@ -298,7 +330,11 @@ function setupUploadForm(container: HTMLDivElement) {
       const response = await fetch(`${API_BASE}/pages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ html: fileHtml, expirationHours }),
+        body: JSON.stringify({
+          html: fileHtml,
+          expirationHours,
+          collaboration: elements.collaborationToggle.checked,
+        }),
       });
 
       if (!response.ok) {
@@ -313,8 +349,13 @@ function setupUploadForm(container: HTMLDivElement) {
 
       const data = (await response.json()) as CreatePageResponse;
 
-      const fullUrl = new URL(data.url, window.location.origin).href;
+      const fullUrl = new URL(data.collaboration?.viewUrl ?? data.url, window.location.origin).href;
       elements.shareUrl.value = fullUrl;
+      elements.shareUrlLabel.textContent = data.collaboration ? "Viewer link" : "Page URL";
+      elements.editorLinkGroup.hidden = !data.collaboration;
+      elements.editorUrl.value = data.collaboration
+        ? new URL(data.collaboration.editUrl, window.location.origin).href
+        : "";
 
       startExpirySnippet(data.expiresAt);
 
@@ -335,17 +376,20 @@ function setupUploadForm(container: HTMLDivElement) {
     }
   }
 
-  function copyShareUrl() {
+  function copyShareUrl(button: HTMLButtonElement) {
+    const targetId = button.dataset.copyTarget;
+    const input = targetId ? document.getElementById(targetId) : null;
+    if (!(input instanceof HTMLInputElement)) return;
     navigator.clipboard
-      .writeText(elements.shareUrl.value)
+      .writeText(input.value)
       .then(() => {
-        elements.copyButton.innerHTML = `${htmlIcon("check", "icon btn-icon")} Copied`;
+        button.innerHTML = `${htmlIcon("check", "icon btn-icon")} Copied`;
         setTimeout(() => {
-          elements.copyButton.innerHTML = `${htmlIcon("copy", "icon btn-icon")} Copy`;
+          button.innerHTML = `${htmlIcon("copy", "icon btn-icon")} Copy`;
         }, 2000);
       })
       .catch(() => {
-        elements.shareUrl.select();
+        input.select();
       });
   }
 
@@ -404,7 +448,7 @@ function expirationTrack(hours: number) {
   });
 }
 
-interface UploadElements {
+type UploadElements = {
   form: HTMLFormElement;
   dropZone: HTMLDivElement;
   fileInput: HTMLInputElement;
@@ -416,10 +460,13 @@ interface UploadElements {
   progress: HTMLDivElement;
   result: HTMLDivElement;
   shareUrl: HTMLInputElement;
-  copyButton: HTMLButtonElement;
+  collaborationToggle: HTMLInputElement;
+  shareUrlLabel: HTMLLabelElement;
+  editorLinkGroup: HTMLDivElement;
+  editorUrl: HTMLInputElement;
   expiresInfo: HTMLParagraphElement;
   expirationSelect: HTMLSelectElement;
-}
+};
 
 function getUploadElements(root: HTMLElement): UploadElements {
   return {
@@ -434,7 +481,10 @@ function getUploadElements(root: HTMLElement): UploadElements {
     progress: query(root, "#upload-progress"),
     result: query(root, "#result-section"),
     shareUrl: query(root, "#share-url"),
-    copyButton: query(root, "#copy-btn"),
+    collaborationToggle: query(root, "#collaboration-toggle"),
+    shareUrlLabel: query(root, "#share-url-label"),
+    editorLinkGroup: query(root, "#editor-link-group"),
+    editorUrl: query(root, "#editor-url"),
     expiresInfo: query(root, "#expires-info"),
     expirationSelect: query(root, "#expiration-select"),
   };

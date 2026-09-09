@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Collaborative Kanban</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        background: #f5f3ff;
+        color: #241b35;
+        margin: 0;
+        padding: 1.5rem;
+      }
+      header,
+      main {
+        margin-inline: auto;
+        max-width: 70rem;
+      }
+      h1 {
+        margin-block: 0 0.25rem;
+      }
+      #connection {
+        color: #5a5168;
+        margin-block: 0 1rem;
+      }
+      form {
+        align-items: end;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-block: 1.25rem;
+      }
+      label {
+        display: grid;
+        font-weight: 700;
+        gap: 0.25rem;
+      }
+      input,
+      select,
+      button {
+        font: inherit;
+      }
+      input,
+      select {
+        border: 1px solid #8e83a2;
+        border-radius: 0.4rem;
+        padding: 0.55rem;
+      }
+      button {
+        background: #5b21b6;
+        border: 0;
+        border-radius: 0.4rem;
+        color: white;
+        cursor: pointer;
+        padding: 0.55rem 0.75rem;
+      }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible {
+        outline: 3px solid #f59e0b;
+        outline-offset: 2px;
+      }
+      .board {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .lane {
+        background: #e9e5f5;
+        border-radius: 0.65rem;
+        min-height: 12rem;
+        padding: 1rem;
+      }
+      .lane h2 {
+        font-size: 1rem;
+        margin-block: 0 0.75rem;
+      }
+      .cards {
+        display: grid;
+        gap: 0.65rem;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .card {
+        background: white;
+        border: 1px solid #c8c0d8;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 8px #30204418;
+        padding: 0.75rem;
+      }
+      .card p {
+        margin-block: 0 0.65rem;
+        overflow-wrap: anywhere;
+      }
+      .card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+      }
+      .card-actions button {
+        background: #ede9fe;
+        color: #4c1d95;
+        font-size: 0.8rem;
+        padding: 0.35rem 0.5rem;
+      }
+      @media (max-width: 44rem) {
+        .board {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Collaborative Kanban</h1>
+      <p id="connection" role="status" aria-live="polite">Connecting to shared board…</p>
+      <form id="new-card-form">
+        <label>
+          Card title
+          <input id="card-title" name="title" maxlength="120" required />
+        </label>
+        <label>
+          Lane
+          <select id="card-lane" name="lane">
+            <option value="backlog">Backlog</option>
+            <option value="doing">In progress</option>
+            <option value="done">Done</option>
+          </select>
+        </label>
+        <button type="submit">Add card</button>
+      </form>
+    </header>
+    <main>
+      <div id="board" class="board" aria-label="Kanban board"></div>
+    </main>
+    <script>
+      (() => {
+        const lanes = [
+          { id: "backlog", title: "Backlog" },
+          { id: "doing", title: "In progress" },
+          { id: "done", title: "Done" },
+        ];
+        const initialState = {
+          cards: {
+            welcome: { title: "Invite someone with the editor link", laneId: "backlog" },
+          },
+        };
+        const board = document.querySelector("#board");
+        const form = document.querySelector("#new-card-form");
+        const addCardButton = form.querySelector('button[type="submit"]');
+        const connection = document.querySelector("#connection");
+        let state = initialState;
+
+        function setEditable(editable) {
+          for (const control of form.elements) control.disabled = !editable;
+        }
+
+        function render() {
+          board.replaceChildren(
+            ...lanes.map((lane, laneIndex) => {
+              const section = document.createElement("section");
+              section.className = "lane";
+              section.setAttribute("aria-labelledby", `lane-${lane.id}`);
+              const heading = document.createElement("h2");
+              heading.id = `lane-${lane.id}`;
+              const cards = Object.entries(state.cards || {}).filter(
+                ([, card]) => card.laneId === lane.id,
+              );
+              heading.textContent = `${lane.title} (${cards.length})`;
+              const list = document.createElement("ul");
+              list.className = "cards";
+              for (const [cardId, card] of cards) {
+                const item = document.createElement("li");
+                item.className = "card";
+                const title = document.createElement("p");
+                title.textContent = card.title;
+                const actions = document.createElement("div");
+                actions.className = "card-actions";
+                actions.setAttribute("aria-label", `Move ${card.title}`);
+                for (const offset of [-1, 1]) {
+                  const target = lanes[laneIndex + offset];
+                  if (!target) continue;
+                  const button = document.createElement("button");
+                  button.type = "button";
+                  button.disabled = window.ephemeralCollab.mode !== "edit";
+                  button.textContent = `Move to ${target.title}`;
+                  button.addEventListener("click", () => {
+                    window.ephemeralCollab
+                      .transact([
+                        { type: "set", path: ["cards", cardId, "laneId"], value: target.id },
+                      ])
+                      .catch(showError);
+                  });
+                  actions.append(button);
+                }
+                item.append(title, actions);
+                list.append(item);
+              }
+              section.append(heading, list);
+              return section;
+            }),
+          );
+        }
+
+        function showError(error) {
+          connection.textContent = error instanceof Error ? error.message : "Change was not saved";
+        }
+
+        function addCard() {
+          try {
+            const title = document.querySelector("#card-title").value.trim();
+            const laneId = document.querySelector("#card-lane").value;
+            if (!title) return;
+            const cardId = crypto.randomUUID();
+            window.ephemeralCollab
+              .transact([{ type: "set", path: ["cards", cardId], value: { title, laneId } }])
+              .then(() => form.reset())
+              .catch(showError);
+          } catch (error) {
+            showError(error);
+          }
+        }
+
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          addCard();
+        });
+        addCardButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          addCard();
+        });
+
+        window.ephemeralCollab.ready
+          .then(async (snapshot) => {
+            if (
+              Object.keys(snapshot.state).length === 0 &&
+              window.ephemeralCollab.mode === "edit"
+            ) {
+              snapshot = await window.ephemeralCollab.initialize(initialState);
+            }
+            state = snapshot.state;
+            setEditable(window.ephemeralCollab.mode === "edit");
+            connection.textContent =
+              window.ephemeralCollab.mode === "edit"
+                ? "Connected — editing"
+                : "Connected — view only";
+            render();
+            window.ephemeralCollab.subscribe((next) => {
+              state = next.state;
+              render();
+            });
+          })
+          .catch(showError);
+      })();
+    </script>
+  </body>
+</html>

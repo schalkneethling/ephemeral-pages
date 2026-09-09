@@ -5,14 +5,39 @@ import {
   IDEMPOTENCY_PREFIX,
   pageHtmlKey,
   pageMetadataKey,
-  type PageMetadata,
+  screenshotLockKey,
+  screenshotMetadataKey,
+  screenshotPngKey,
+  screenshotPrefix,
+  SCREENSHOT_BUDGET_PREFIX,
+  type ScreenshotMetadata,
 } from "../../src/domain.ts";
+import type { PageMetadata } from "../../src/domain.ts";
 
 const STORE_NAME = "ephemeral-pages";
 
-export interface PageStore {
-  savePage(html: string, metadata: PageMetadata): Promise<void>;
-  getMetadata(id: string): Promise<PageMetadata | null>;
+export type StoredPageMetadata = Omit<PageMetadata, "collaboration"> & {
+  collaboration?:
+    | boolean
+    | {
+        enabled: true;
+        capabilityVersion: string;
+      };
+};
+
+export type StoredCollaborationSettings = NonNullable<
+  Exclude<StoredPageMetadata["collaboration"], boolean>
+>;
+
+export function getStoredCollaborationSettings(
+  metadata: StoredPageMetadata | null,
+): StoredCollaborationSettings | null {
+  return metadata && typeof metadata.collaboration === "object" ? metadata.collaboration : null;
+}
+
+export type PageStore = {
+  savePage(html: string, metadata: StoredPageMetadata): Promise<void>;
+  getMetadata(id: string): Promise<StoredPageMetadata | null>;
   getHtml(id: string): Promise<string | null>;
   deletePage(id: string, expiresAt?: string): Promise<void>;
   getRateLimit(key: string): Promise<VersionedRecord<RateLimitRecord> | null>;
@@ -35,14 +60,50 @@ export interface PageStore {
   listExpirationEntries(dayKey: string): Promise<string[]>;
   getExpirationEntry(key: string): Promise<{ id: string } | null>;
   deleteExpirationEntry(key: string): Promise<void>;
-}
+};
 
-export interface RateLimitRecord {
+export type ScreenshotCaptureLock = {
+  token: string;
+  expiresAt: number;
+};
+
+export type ScreenshotDailyBudgetRecord = {
   count: number;
   resetAt: number;
-}
+};
 
-export interface IdempotencyRecord {
+export type ScreenshotUsage = {
+  count: number;
+  totalBytes: number;
+};
+
+export type ScreenshotStore = {
+  saveScreenshot(png: ArrayBuffer, metadata: ScreenshotMetadata): Promise<void>;
+  getScreenshotMetadata(pageId: string, screenshotId: string): Promise<ScreenshotMetadata | null>;
+  getScreenshotPng(pageId: string, screenshotId: string): Promise<ArrayBuffer | null>;
+  getScreenshotLock(pageId: string): Promise<VersionedRecord<ScreenshotCaptureLock> | null>;
+  setScreenshotLock(
+    pageId: string,
+    record: ScreenshotCaptureLock,
+    condition: WriteCondition,
+  ): Promise<ConditionalWriteResult>;
+  getScreenshotUsage(pageId: string): Promise<ScreenshotUsage>;
+  getScreenshotBudget(key: string): Promise<VersionedRecord<ScreenshotDailyBudgetRecord> | null>;
+  setScreenshotBudget(
+    key: string,
+    record: ScreenshotDailyBudgetRecord,
+    condition: WriteCondition,
+  ): Promise<ConditionalWriteResult>;
+  listScreenshotBudgetEntries(): Promise<string[]>;
+  deleteScreenshotBudget(key: string): Promise<void>;
+};
+
+export type RateLimitRecord = {
+  count: number;
+  resetAt: number;
+};
+
+export type IdempotencyRecord = {
   digest: string;
   pageId: string;
   response: {
@@ -52,22 +113,22 @@ export interface IdempotencyRecord {
     url: string;
   };
   expiresAt: string;
-}
+};
 
-export interface VersionedRecord<T> {
+export type VersionedRecord<T> = {
   record: T;
   etag: string;
-}
+};
 
 export type WriteCondition = { onlyIfNew: true } | { onlyIfMatch: string };
-export interface ConditionalWriteResult {
+export type ConditionalWriteResult = {
   modified: boolean;
   etag?: string;
-}
+};
 
 export function createPageStore(
   store = getStore({ name: STORE_NAME, consistency: "strong" }),
-): PageStore {
+): PageStore & ScreenshotStore {
   return {
     async savePage(html, metadata) {
       const expirationKey = expirationIndexKey(metadata.id, new Date(metadata.expiresAt));
@@ -96,7 +157,7 @@ export function createPageStore(
     },
 
     async getMetadata(id) {
-      return getJson<PageMetadata>(store, pageMetadataKey(id));
+      return getJson<StoredPageMetadata>(store, pageMetadataKey(id));
     },
 
     async getHtml(id) {
@@ -106,6 +167,10 @@ export function createPageStore(
     async deletePage(id, expiresAt) {
       await store.delete(pageHtmlKey(id));
       await store.delete(pageMetadataKey(id));
+
+      for await (const page of store.list({ prefix: screenshotPrefix(id), paginate: true })) {
+        await Promise.all(page.blobs.map((blob) => store.delete(blob.key)));
+      }
 
       if (expiresAt) {
         await store.delete(expirationIndexKey(id, new Date(expiresAt)));
@@ -161,6 +226,90 @@ export function createPageStore(
     },
 
     async deleteExpirationEntry(key) {
+      await store.delete(key);
+    },
+
+    async saveScreenshot(png, metadata) {
+      const pngKey = screenshotPngKey(metadata.pageId, metadata.id);
+      const metadataKey = screenshotMetadataKey(metadata.pageId, metadata.id);
+      await store.set(pngKey, png);
+      try {
+        await store.setJSON(metadataKey, metadata);
+      } catch (error) {
+        await store.delete(pngKey).catch(() => {
+          console.error(
+            JSON.stringify({
+              event: "screenshot_storage_compensation_failure",
+            }),
+          );
+        });
+        throw error;
+      }
+    },
+
+    async getScreenshotMetadata(pageId, screenshotId) {
+      return getJson<ScreenshotMetadata>(store, screenshotMetadataKey(pageId, screenshotId));
+    },
+
+    async getScreenshotPng(pageId, screenshotId) {
+      return store.get(screenshotPngKey(pageId, screenshotId), { type: "arrayBuffer" });
+    },
+
+    async getScreenshotLock(pageId) {
+      return getVersionedJson<ScreenshotCaptureLock>(store, screenshotLockKey(pageId));
+    },
+
+    async setScreenshotLock(pageId, record, condition) {
+      return store.setJSON(screenshotLockKey(pageId), record, condition);
+    },
+
+    async getScreenshotUsage(pageId) {
+      let count = 0;
+      let totalBytes = 0;
+      for await (const page of store.list({ prefix: screenshotPrefix(pageId), paginate: true })) {
+        const metadataKeys = page.blobs
+          .map((blob) => blob.key)
+          .filter((key) => key.endsWith(".json") && key !== screenshotLockKey(pageId));
+        for (const key of metadataKeys) {
+          const metadata = await getJson<ScreenshotMetadata>(store, key);
+          if (
+            !metadata ||
+            metadata.pageId !== pageId ||
+            !Number.isSafeInteger(metadata.sizeBytes) ||
+            metadata.sizeBytes < 0
+          ) {
+            throw new Error("Screenshot usage metadata is invalid");
+          }
+          count += 1;
+          totalBytes += metadata.sizeBytes;
+          if (!Number.isSafeInteger(totalBytes)) {
+            throw new Error("Screenshot usage exceeds the supported range");
+          }
+        }
+      }
+      return { count, totalBytes };
+    },
+
+    async getScreenshotBudget(key) {
+      return getVersionedJson<ScreenshotDailyBudgetRecord>(store, key);
+    },
+
+    async setScreenshotBudget(key, record, condition) {
+      return store.setJSON(key, record, condition);
+    },
+
+    async listScreenshotBudgetEntries() {
+      const keys: string[] = [];
+      for await (const page of store.list({
+        prefix: `${SCREENSHOT_BUDGET_PREFIX}/`,
+        paginate: true,
+      })) {
+        keys.push(...page.blobs.map((blob) => blob.key));
+      }
+      return keys;
+    },
+
+    async deleteScreenshotBudget(key) {
       await store.delete(key);
     },
   };
