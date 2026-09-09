@@ -63,8 +63,6 @@ describe("MCP tool and prompt definitions", () => {
     expect(getPageInputSchema.shape.id).toBeDefined();
     expect(GET_PAGE_TOOL_ANNOTATIONS).toEqual({
       readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
       openWorldHint: false,
     });
   });

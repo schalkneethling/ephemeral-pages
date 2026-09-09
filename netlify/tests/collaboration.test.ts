@@ -117,48 +117,58 @@ describe("collaboration capabilities", () => {
 
 describe("collaboration page APIs", () => {
   it("creates an opt-in page without persisting its capability and replays it idempotently", async () => {
-    const store = memoryStore();
-    const request = () =>
-      jsonRequest({ html: "<html><body>Board</body></html>", collaboration: true }, "/api/pages", {
-        "Idempotency-Key": "board-upload",
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    try {
+      const store = memoryStore();
+      const request = () =>
+        jsonRequest(
+          { html: "<html><body>Board</body></html>", collaboration: true },
+          "/api/pages",
+          {
+            "Idempotency-Key": "board-upload",
+          },
+        );
+      const dependencies = {
+        publicBaseUrl: "https://pages.example.com",
+        createId: () => "board-1",
+        now: () => NOW,
+        capabilityKeys: KEYS,
+      };
+
+      const first = await createPage(request(), store, dependencies);
+      const replay = await createPage(request(), store, {
+        ...dependencies,
+        capabilityKeys: ROTATED_KEYS,
       });
-    const dependencies = {
-      publicBaseUrl: "https://pages.example.com",
-      createId: () => "board-1",
-      now: () => NOW,
-      capabilityKeys: KEYS,
-    };
+      const firstBody = await first.json();
+      const replayBody = await replay.json();
 
-    const first = await createPage(request(), store, dependencies);
-    const replay = await createPage(request(), store, {
-      ...dependencies,
-      capabilityKeys: ROTATED_KEYS,
-    });
-    const firstBody = await first.json();
-    const replayBody = await replay.json();
-
-    expect(first.status).toBe(201);
-    expect(replay.status).toBe(200);
-    expect(firstBody).toEqual(replayBody);
-    expect(firstBody).toMatchObject({
-      url: "https://pages.example.com/p/board-1",
-      collaboration: {
-        viewUrl: "https://pages.example.com/p/board-1",
-      },
-    });
-    expect(firstBody.collaboration.editUrl).toMatch(
-      /^https:\/\/pages\.example\.com\/p\/board-1#edit=v2\.[A-Za-z0-9_-]{43}$/,
-    );
-    expect(JSON.stringify(await store.getMetadata("board-1"))).not.toContain(
-      firstBody.collaboration.editUrl,
-    );
-    expect(JSON.stringify(store.values.get(pageMetadataKey("board-1")))).not.toContain("edit=");
-    expect(JSON.stringify([...store.idempotency.values()])).not.toContain("edit=");
-    expect(await store.getHtml("board-1")).toContain("data-ephemeral-collaboration-sdk");
-    const content = await getPageContent("board-1", store);
-    expect(content.headers.get("Content-Security-Policy")).toBe(
-      buildCollaborativeUploadedPageHttpCsp(),
-    );
+      expect(first.status).toBe(201);
+      expect(replay.status).toBe(200);
+      expect(firstBody).toEqual(replayBody);
+      expect(firstBody).toMatchObject({
+        url: "https://pages.example.com/p/board-1",
+        collaboration: {
+          viewUrl: "https://pages.example.com/p/board-1",
+        },
+      });
+      expect(firstBody.collaboration.editUrl).toMatch(
+        /^https:\/\/pages\.example\.com\/p\/board-1#edit=v2\.[A-Za-z0-9_-]{43}$/,
+      );
+      expect(JSON.stringify(await store.getMetadata("board-1"))).not.toContain(
+        firstBody.collaboration.editUrl,
+      );
+      expect(JSON.stringify(store.values.get(pageMetadataKey("board-1")))).not.toContain("edit=");
+      expect(JSON.stringify([...store.idempotency.values()])).not.toContain("edit=");
+      expect(await store.getHtml("board-1")).toContain("data-ephemeral-collaboration-sdk");
+      const content = await getPageContent("board-1", store);
+      expect(content.headers.get("Content-Security-Policy")).toBe(
+        buildCollaborativeUploadedPageHttpCsp(),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("mints short-lived viewer and editor tickets and rejects invalid or expired access", async () => {

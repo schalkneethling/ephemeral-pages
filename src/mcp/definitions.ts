@@ -23,8 +23,6 @@ export const CREATE_PAGE_TOOL_ANNOTATIONS = Object.freeze({
 
 export const GET_PAGE_TOOL_ANNOTATIONS = Object.freeze({
   readOnlyHint: true,
-  destructiveHint: false,
-  idempotentHint: true,
   openWorldHint: false,
 });
 

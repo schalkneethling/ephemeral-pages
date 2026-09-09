@@ -47,3 +47,6 @@ jobs:
 
       - name: Test browser flows
         run: bun run test:e2e
+
+      - name: Build production application
+        run: bun run build
