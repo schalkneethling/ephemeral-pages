@@ -91,6 +91,13 @@ is longer; missing/invalid upstream timing falls back to 60 seconds. The UI desc
 unavailability without incorrectly attributing every 503 to a daily quota. Daily and page-lifetime
 budgets remain unchanged. The shared gate cannot coordinate other apps on the Cloudflare account.
 
+Deployment of `303c50e` verified the new cooldown: an immediate retry returned HTTP 429,
+`X-RateLimit-Limit: 1`, and `Retry-After: 25`. CI, 184 unit tests, four screenshot browser tests,
+and the build passed. Live capture attempts also reproduced an intermittent rendering failure:
+the Worker logged `capture_rendered`, followed by Browser Run HTTP 422 with the fixed diagnostic
+category `selector`. Earlier successful captures remain valid evidence, but rendering reliability
+needs follow-up before the full preview smoke is considered complete.
+
 Netlify environment changes require a new deployment. Check the response CSP, create a
 collaborative fixture, open two editor sessions and one viewer, and verify editing, read-only access,
 refresh, and reconnect. Then request a real screenshot and verify its revision and download.
