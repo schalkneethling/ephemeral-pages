@@ -104,7 +104,7 @@ async function deleteRoom(request: Request, env: Env, roomId: string): Promise<R
 async function capture(request: Request, env: Env, roomId: string): Promise<Response> {
   const url = new URL(request.url);
   if (request.method !== "POST") return errorResponse("Method not allowed", 405, { Allow: "POST" });
-  if (url.search || request.body !== null) {
+  if (url.search || (await hasBodyContent(request))) {
     return errorResponse("Capture requests must not include a query or body", 400);
   }
   if (!(await hasValidAdminToken(request, env.ADMIN_TOKEN))) {
@@ -132,6 +132,19 @@ async function renderCapture(
     env.COLLABORATION_ROOMS.getByName(roomId),
     env.PAGE_CONTENT_ORIGIN,
   );
+}
+
+async function hasBodyContent(request: Request): Promise<boolean> {
+  if (!request.body) return false;
+  const reader = request.body.getReader();
+  try {
+    // An empty HTTP POST may still have a stream. Inspect bytes, not stream presence.
+    const { done } = await reader.read();
+    return !done;
+  } finally {
+    await reader.cancel();
+    reader.releaseLock();
+  }
 }
 
 async function hasValidAdminToken(request: Request, expected: string): Promise<boolean> {

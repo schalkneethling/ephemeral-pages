@@ -54,7 +54,9 @@ separate from the application's existing admin deletion and rate-limiting secret
 
 ## 4. Permit the preview WebSocket in the app-shell CSP
 
-Implemented; deployed-header verification pending. CSP is a browser-enforced policy sent with the Netlify page. Its `connect-src` directive
+Verified on 2026-09-09 after preview deployment of commit `3ac2113`. The live response returned
+HTTP 200 and a CSP allowing only the preview Worker origin alongside self in `connect-src`.
+Permissions-Policy, Referrer-Policy, and X-Content-Type-Options were also present. CSP is a browser-enforced policy sent with the Netlify page. Its `connect-src` directive
 must permit the exact preview WSS origin. The Worker independently checks the browser's Origin
 header against `ALLOWED_ORIGINS`; both sides must agree.
 
@@ -67,7 +69,13 @@ The uploaded-page CSP is unchanged: uploaded HTML communicates through the trust
 
 ## 5. Redeploy and verify the full path
 
-Pending. Netlify environment changes require a new deployment. Check the response CSP, create a
+In progress. The user confirmed collaborative upload, editor mutation, live viewer synchronization,
+read-only viewing, and persistence/editor access after refresh. Screenshot capture failed with a 502. A zero-byte POST reproduced a Worker 400: an empty body stream was incorrectly rejected.
+A regression test and fix now accept an empty stream while rejecting body content. Screenshot
+validation must be repeated after deployment and the three-attempt/ten-minute rate limit clears.
+The browser also blocked Netlify preview script injection in uploaded HTML, as intended by CSP.
+
+Netlify environment changes require a new deployment. Check the response CSP, create a
 collaborative fixture, open two editor sessions and one viewer, and verify editing, read-only access,
 refresh, and reconnect. Then request a real screenshot and verify its revision and download.
 Record results here without capability URLs or tickets.

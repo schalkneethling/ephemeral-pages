@@ -3,6 +3,7 @@ import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import type { ServerCollaborationMessage } from "../../src/collaboration/protocol.ts";
+import worker from "../src/index.ts";
 import { CollaborationRoom, INTERNAL_ROOM_HEADERS } from "../src/room.ts";
 
 describe("CollaborationRoom", () => {
@@ -344,3 +345,29 @@ function nextMessage(socket: WebSocket): Promise<ServerCollaborationMessage> {
     queue.waiters.push(consume);
   });
 }
+
+describe("capture request bodies", () => {
+  it("accepts an empty streamed POST and proceeds to authentication", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close();
+      },
+    });
+    const request = new Request("https://worker.example/rooms/body-test/captures", {
+      method: "POST",
+      body,
+    });
+    expect(request.body).not.toBeNull();
+    const response = await worker.fetch(request, env);
+    expect(response.status).toBe(401);
+  });
+  it("rejects body content even when content length claims zero", async () => {
+    const request = new Request("https://worker.example/rooms/body-test/captures", {
+      method: "POST",
+      body: "unexpected",
+      headers: { "Content-Length": "0" },
+    });
+    const response = await worker.fetch(request, env);
+    expect(response.status).toBe(400);
+  });
+});
