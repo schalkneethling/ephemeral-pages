@@ -4,6 +4,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-23",
   "compatibility_flags": ["nodejs_compat"],
+  "secrets": { "required": ["TICKET_HMAC_SECRET", "ADMIN_TOKEN"] },
   "durable_objects": {
     "bindings": [
       {
@@ -22,8 +23,24 @@
     "binding": "BROWSER",
   },
   "env": {
+    "production": {
+      "name": "ephemeral-pages-collaboration",
+      "secrets": { "required": ["TICKET_HMAC_SECRET", "ADMIN_TOKEN"] },
+      "workers_dev": true,
+      "durable_objects": {
+        "bindings": [{ "name": "COLLABORATION_ROOMS", "class_name": "CollaborationRoom" }],
+      },
+      "browser": { "binding": "BROWSER" },
+      "vars": {
+        "ALLOWED_ORIGINS": "https://ephemeral.schalkneethling.com",
+        "TICKET_AUDIENCE": "ephemeral-pages-collaboration",
+        "PAGE_CONTENT_ORIGIN": "https://ephemeral.schalkneethling.com",
+        "PUBLIC_WORKER_ORIGIN": "https://ephemeral-pages-collaboration.volume4-schalk.workers.dev",
+      },
+    },
     "preview": {
       "name": "ephemeral-pages-collaboration-preview",
+      "secrets": { "required": ["TICKET_HMAC_SECRET", "ADMIN_TOKEN"] },
       "workers_dev": true,
       "durable_objects": {
         "bindings": [{ "name": "COLLABORATION_ROOMS", "class_name": "CollaborationRoom" }],
