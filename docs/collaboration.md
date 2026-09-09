@@ -252,6 +252,11 @@ is account-wide. Upstream retry seconds are passed through, increased when our r
 per-IP/page cooldown is longer; missing or invalid upstream timing falls back to 60 seconds.
 Transient unavailability is not described as a daily quota exhaustion in the UI.
 
+Browser Run allows four seconds for wrapper navigation, ten seconds for the embedded page's
+readiness marker, and eight seconds for its action. The Netlify API retains an overall 20-second
+capture timeout. These are bounded waits, not fixed delays: ready pages can finish sooner.
+The readiness marker remains required, so a timeout cannot silently return an unfinished capture.
+
 Successful screenshots retain a fixed 25/day global budget and 12 captures/96 MiB per page, with no
 paid fallback. Failed captures release the daily budget claim. These count limits do not measure
 Browser Run's daily browser-time allowance. Rotate capability keys with the bounded previous-key window and rotate ticket/admin keys

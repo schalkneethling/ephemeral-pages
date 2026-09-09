@@ -101,7 +101,15 @@ Deployment of `303c50e` verified the new cooldown: an immediate retry returned H
 and the build passed. Live capture attempts also reproduced an intermittent rendering failure:
 the Worker logged `capture_rendered`, followed by Browser Run HTTP 422 with the fixed diagnostic
 category `selector`. Earlier successful captures remain valid evidence, but rendering reliability
-needs follow-up before the full preview smoke is considered complete.
+was addressed in the follow-up below.
+
+The timeout follow-up on 2026-09-09 reproduced a failure with a five-second embedded-page response
+in a real-browser regression. Readiness now allows ten seconds instead of four, and Browser Run's
+action allowance is eight seconds instead of two. Increasing only readiness still failed live;
+after increasing the action allowance, three spaced preview captures returned HTTP 201 in 6.6,
+4.8, and 5.0 seconds. Each saved revision 5 as a 46,754-byte PNG. The API retains its overall
+20-second timeout, and capture still requires the readiness marker. No fallback captures an
+unfinished page. All 188 unit tests, 32 Worker tests, 15 browser tests, and the build passed.
 
 Netlify environment changes require a new deployment. Check the response CSP, create a
 collaborative fixture, open two editor sessions and one viewer, and verify editing, read-only access,

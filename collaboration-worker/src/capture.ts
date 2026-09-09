@@ -53,8 +53,9 @@ export async function captureRoomScreenshot(
           deviceScaleFactor: 1,
         },
         gotoOptions: { timeout: 4_000, waitUntil: "domcontentloaded" },
-        waitForSelector: { selector: READY_SELECTOR, timeout: 4_000 },
-        actionTimeout: 2_000,
+        // The sandboxed page loads separately after wrapper navigation.
+        waitForSelector: { selector: READY_SELECTOR, timeout: 10_000 },
+        actionTimeout: 8_000,
         cacheTTL: 0,
         screenshotOptions: {
           type: "png",

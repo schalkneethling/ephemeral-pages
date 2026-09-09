@@ -34,8 +34,8 @@ describe("captureRoomScreenshot", () => {
     expect(browser.options).toMatchObject({
       viewport: { width: 1440, height: 900, deviceScaleFactor: 1 },
       gotoOptions: { timeout: 4_000 },
-      waitForSelector: { selector: "#ephemeral-capture-ready", timeout: 4_000 },
-      actionTimeout: 2_000,
+      waitForSelector: { selector: "#ephemeral-capture-ready", timeout: 10_000 },
+      actionTimeout: 8_000,
       cacheTTL: 0,
     });
     expect(room.finished).toEqual([{ roomId: "room-1", token: TOKEN }]);
