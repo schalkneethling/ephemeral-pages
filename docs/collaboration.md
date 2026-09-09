@@ -197,6 +197,8 @@ delay and fresh tickets, and replaces local state with the server snapshot after
 
 ## Configuration and operations
 
+For the staged setup of PR #33, follow the [preview connection runbook](collaboration-preview-setup.md).
+
 The app-shell CSP must add exactly the configured WebSocket origin to `connect-src`; the uploaded
 page CSP must remain unchanged. Production requires:
 
