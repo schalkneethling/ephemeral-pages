@@ -40,10 +40,12 @@ Netlify's secret designation.
 
 1. Production Worker configuration and initial health check: complete.
 2. Netlify production secrets: saved, user-confirmed on 2026-09-09. The production gate remains unset.
-3. Matching Worker secrets: pending. Enter them interactively with
+3. Matching Worker secrets: saved, user-confirmed and secret names verified on 2026-09-09.
+   The production version containing both secrets is `4b747f21-d3a0-4566-8026-8dae1ea13109`.
+   Enter or rotate them interactively with
    `bunx wrangler secret put TICKET_HMAC_SECRET --config collaboration-worker/wrangler.jsonc --env production`
    and the same command with `ADMIN_TOKEN` for the service token.
-4. Remaining Netlify production values: pending.
+4. Remaining Netlify production values: saved, user-confirmed on 2026-09-09. Gate remains unset.
 5. Preview rollback drill: complete. Restored version `872b6a39-e8b9-4560-af53-f28906ab6f68`,
    verified health, then restored `9cd69e53-93b1-4604-9989-1c870e0bbe3f` and verified health again.
    This exercised version rollback without reverting Durable Object storage or migrations.
