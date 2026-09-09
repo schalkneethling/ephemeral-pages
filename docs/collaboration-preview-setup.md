@@ -20,14 +20,14 @@ screenshot capture; WSS is the encrypted, persistent connection used for collabo
 
 Status on 2026-09-09: the Worker was deployed with the Durable Object and Browser Run bindings.
 Its `/healthz` endpoint returned `{"status":"ok"}`. This establishes that the Worker responds, not
-that ticket authentication, shared editing, or screenshots work. Matching secrets and the preview
-application's socket CSP have not been configured as part of this setup.
+that ticket authentication, shared editing, or screenshots work. The remaining setup status is recorded below.
 
 ## 2. Configure preview environment values
 
-Pending. In Netlify, target the branch above so its Deploy Preview receives the values. Keep
-production values unchanged. Free-plan variables use all scopes; deploy context is a separate
-setting. Start with these non-secret values:
+Completed (user-confirmed on 2026-09-09). All five values below were saved with All scopes and a
+branch override for `codex/ephemeral-pages-collaboration`. Existing production values were retained.
+Deployment verification remains pending. Free-plan variables use all scopes; deploy context is a
+separate setting.
 
 - `COLLABORATION_CAPABILITY_CURRENT_VERSION`: `v1`
 - `COLLABORATION_TICKET_AUDIENCE`: the preview audience above
@@ -39,8 +39,10 @@ Verify the selected branch context before saving. These values alone do not enab
 
 ## 3. Configure matching secrets
 
-Pending. Generate independent preview-only values and retain them in the password manager. Never
-put secret values in this document, Git, screenshots, or PR descriptions.
+Completed (user-confirmed on 2026-09-09). The three Netlify secrets were saved for the preview
+branch. Both matching Worker secrets were added with Wrangler to the preview environment.
+Values are retained in the user's password manager and have not been read or recorded here.
+Never put secret values in this document, Git, screenshots, or PR descriptions.
 
 - Netlify `COLLABORATION_CAPABILITY_CURRENT_SECRET`: editor capability key; Netlify only.
 - Netlify `COLLABORATION_TICKET_SECRET` and Worker `TICKET_HMAC_SECRET`: the same ticket-signing value.
@@ -52,14 +54,16 @@ separate from the application's existing admin deletion and rate-limiting secret
 
 ## 4. Permit the preview WebSocket in the app-shell CSP
 
-Pending. CSP is a browser-enforced policy sent with the Netlify page. Its `connect-src` directive
+Implemented; deployed-header verification pending. CSP is a browser-enforced policy sent with the Netlify page. Its `connect-src` directive
 must permit the exact preview WSS origin. The Worker independently checks the browser's Origin
 header against `ALLOWED_ORIGINS`; both sides must agree.
 
-The existing global CSP permits the production socket origin only. Generate a deployment-specific
-`_headers` file in the publish directory and remove the corresponding global declarations from
-`netlify.toml`. Preserve the other security headers and the uploaded-page CSP. Uploaded HTML must
-continue communicating through the trusted parent rather than opening its own network connections.
+The build now runs `scripts/write-netlify-headers.mjs` after Vite to write `dist/_headers`.
+It reads the non-secret `COLLABORATION_WEBSOCKET_URL` available during the build. Production and
+local builds retain the previous production origin when unset; other contexts omit external socket
+access unless configured. Invalid or non-WSS origins fail the build. The global header declarations
+were removed from `netlify.toml`, and the other security headers remain in the generated file.
+The uploaded-page CSP is unchanged: uploaded HTML communicates through the trusted parent.
 
 ## 5. Redeploy and verify the full path
 

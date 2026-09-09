@@ -16,7 +16,7 @@
   "type": "module",
   "scripts": {
     "dev": "vp dev",
-    "build": "tsc && vp build",
+    "build": "tsc && vp build && node scripts/write-netlify-headers.mjs",
     "css:sort": "stylelint \"src/**/*.css\" --fix",
     "collaboration:check": "tsc -p collaboration-worker/tsconfig.json --noEmit && vp lint collaboration-worker --deny-warnings && vp fmt --check collaboration-worker",
     "collaboration:deploy:dry": "wrangler deploy --dry-run --config collaboration-worker/wrangler.jsonc",

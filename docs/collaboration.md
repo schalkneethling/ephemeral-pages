@@ -206,7 +206,8 @@ page CSP must remain unchanged. Production requires:
   URL.
 - Cloudflare: the corresponding ticket verification key, exact allowed Netlify origin, Durable
   Object binding, and SQLite migration.
-- `netlify.toml`: `connect-src 'self' wss://<exact-worker-origin>` (no wildcard).
+- The generated `dist/_headers` app-shell CSP permits the exact `COLLABORATION_WEBSOCKET_URL`
+  origin in `connect-src` (no wildcard).
 
 Use `ws://localhost` only in local development. Monitor active rooms, connections, rejected
 messages, authentication failures, state size, cleanup, and quota exhaustion without logging page
