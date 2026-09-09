@@ -197,8 +197,6 @@ delay and fresh tickets, and replaces local state with the server snapshot after
 
 ## Configuration and operations
 
-For the staged setup of PR #33, follow the [preview connection runbook](collaboration-preview-setup.md).
-
 The app-shell CSP must add exactly the configured WebSocket origin to `connect-src`; the uploaded
 page CSP must remain unchanged. Production requires:
 
@@ -209,13 +207,38 @@ page CSP must remain unchanged. Production requires:
 - The generated `dist/_headers` app-shell CSP permits the exact `COLLABORATION_WEBSOCKET_URL`
   origin in `connect-src` (no wildcard).
 
+For each deployment, choose an exact Netlify HTTPS origin, Worker HTTPS origin, corresponding WSS
+origin, and ticket audience. Set Netlify's `PUBLIC_BASE_URL` to the Netlify origin,
+`COLLABORATION_SERVICE_URL` to the Worker HTTPS origin, `COLLABORATION_WEBSOCKET_URL` to its WSS
+origin, and `COLLABORATION_TICKET_AUDIENCE` to the audience. Set the Worker's `ALLOWED_ORIGINS`
+and `PAGE_CONTENT_ORIGIN` to the Netlify origin, `PUBLIC_WORKER_ORIGIN` to the Worker origin,
+and `TICKET_AUDIENCE` to the same audience. Scope preview values to the intended preview branch.
+
+Match Netlify's `COLLABORATION_TICKET_SECRET` with the Worker's `TICKET_HMAC_SECRET`, and
+`COLLABORATION_SERVICE_TOKEN` with `ADMIN_TOKEN`. Capability keys remain Netlify-only and authorize
+editor access. Configure them independently from the rollout gate.
+
+`COLLABORATION_ENABLED` defaults to disabled. Set its exact value to `true` in Netlify's environment
+settings only for a deployment ready to serve collaboration. Both collaborative uploads and ticket
+minting require this gate; having capability or ticket keys alone does not enable either endpoint.
+Use a branch override for preview and leave production unset until rollout is approved. Function
+environment changes require a new deployment. Ordinary uploads are unaffected.
+
+The build script runs `scripts/write-netlify-headers.mjs` after Vite. It calls `buildAppShellCsp()`
+from `src/csp.ts` and writes `dist/_headers` using the deployment's socket configuration. Production
+retains the established production socket fallback when unset; unconfigured previews permit only
+self. The same generated file preserves Permissions-Policy, Referrer-Policy, and
+X-Content-Type-Options. `netlify.toml` has no duplicate global header declarations. Uploaded-page
+CSP remains independently applied by the content endpoint. The CSP allowance does not enable
+collaboration; the server-side gate does.
+
 Use `ws://localhost` only in local development. Monitor active rooms, connections, rejected
 messages, authentication failures, state size, cleanup, and quota exhaustion without logging page
 state or credentials. Feature rollout should remain disabled until the two-editor/one-viewer E2E,
 CSP, expiry, deletion, hibernation, and capacity tests pass.
 
 Deploy the Worker first, run the Wrangler dry-run and health check, configure matching secrets and
-origins in Netlify, then enable the upload switch. Keep the Worker on a hard-limited Free account for
+origins in Netlify, then set `COLLABORATION_ENABLED=true` for the chosen deployment. Keep the Worker on a hard-limited Free account for
 the hobby deployment; quota exhaustion must return `503` rather than fall through to paid capacity.
 Screenshot requests have a 30-second cooldown per IP/page and a shared admission gate allowing
 one attempt every 10 seconds across pages and clients in the Netlify site's store. Both use
@@ -234,8 +257,10 @@ paid fallback. Failed captures release the daily budget claim. These count limit
 Browser Run's daily browser-time allowance. Rotate capability keys with the bounded previous-key window and rotate ticket/admin keys
 by deploying both issuers/validators together.
 
-To disable the feature, hide/reject new collaborative uploads first, retain read access until page
-TTLs drain, and then remove the socket origin from the app CSP. To roll back a Worker version, deploy
+To disable new collaborative uploads and tickets, unset `COLLABORATION_ENABLED` or set it to
+`false`, then redeploy Netlify. This does not revoke already-issued tickets or disconnect existing
+WebSockets; ordinary page content and stored screenshots remain readable until expiry. Drain or
+close existing rooms before removing the socket origin from the app CSP. To roll back a Worker version, deploy
 the last known-good bundle without reverting SQLite migration tags; Durable Object schema changes
 are forward-only. If authorization or isolation is suspect, disable ticket minting immediately,
 close/delete affected rooms through the authenticated service route, and rotate ticket/admin keys.

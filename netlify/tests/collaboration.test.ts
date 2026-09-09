@@ -1,5 +1,5 @@
 import { jwtVerify } from "jose";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { pageMetadataKey } from "../../src/domain.ts";
 import { buildCollaborativeUploadedPageHttpCsp } from "../../src/csp.ts";
@@ -116,6 +116,75 @@ describe("collaboration capabilities", () => {
 });
 
 describe("collaboration page APIs", () => {
+  beforeEach(() => {
+    vi.stubGlobal("Netlify", {
+      env: {
+        get: (name: string) =>
+          ({
+            COLLABORATION_ENABLED: "true",
+            RATE_LIMIT_SECRET: "test-rate-secret",
+          })[name],
+      },
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([undefined, "false", "TRUE", "1"])(
+    "disables collaboration unless explicitly enabled (%s)",
+    async (enabled) => {
+      vi.stubGlobal("Netlify", {
+        env: {
+          get: (name: string) =>
+            name === "COLLABORATION_ENABLED"
+              ? enabled
+              : name === "RATE_LIMIT_SECRET"
+                ? "test-rate-secret"
+                : undefined,
+        },
+      });
+      const store = memoryStore();
+      const upload = await createPage(
+        jsonRequest({ html: "<html><body>Board</body></html>", collaboration: true }, "/api/pages"),
+        store,
+        {
+          capabilityKeys: KEYS,
+          now: () => NOW,
+          createId: () => "disabled-board",
+        },
+      );
+      expect(upload.status).toBe(503);
+      expect(await store.getMetadata("disabled-board")).toBeNull();
+      expect(await store.getHtml("disabled-board")).toBeNull();
+      await store.savePage("<html></html>", {
+        id: "existing-board",
+        createdAt: NOW.toISOString(),
+        expiresAt: new Date(NOW.getTime() + 60_000).toISOString(),
+        sizeBytes: 13,
+        collaboration: { enabled: true, capabilityVersion: KEYS.current.version },
+      });
+      const capability = await createEditorCapability(
+        "existing-board",
+        new Date(NOW.getTime() + 60_000).toISOString(),
+        KEYS.current,
+      );
+      for (const body of [{}, { capability }]) {
+        const ticket = await createCollaborationTicket(
+          jsonRequest(body, "/api/pages/existing-board/collaboration-ticket"),
+          "existing-board",
+          store,
+          { capabilityKeys: KEYS, ticketConfiguration: TICKET, now: () => NOW },
+        );
+        expect(ticket.status).toBe(503);
+        expect(await ticket.json()).toEqual({ error: "Collaboration is disabled" });
+      }
+      const ordinary = await createPage(
+        jsonRequest({ html: "<html><body>Ordinary page</body></html>" }, "/api/pages"),
+        store,
+        { now: () => NOW, createId: () => "ordinary-page" },
+      );
+      expect(ordinary.status).toBe(201);
+    },
+  );
   it("creates an opt-in page without persisting its capability and replays it idempotently", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);

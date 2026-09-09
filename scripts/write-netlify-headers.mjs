@@ -1,4 +1,5 @@
 import { writeFile } from "node:fs/promises";
+import { buildAppShellCsp } from "../src/csp.ts";
 
 const productionSocket = "wss://collaboration.ephemeral.schalkneethling.com";
 const configuredSocket = process.env.COLLABORATION_WEBSOCKET_URL;
@@ -20,19 +21,7 @@ if (socket) {
   }
   socketOrigin = url.origin;
 }
-const csp = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  `connect-src 'self'${socketOrigin ? ` ${socketOrigin}` : ""}`,
-  "frame-src 'self'",
-  "object-src 'none'",
-  "base-uri 'none'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-].join("; ");
+const csp = buildAppShellCsp(socketOrigin || undefined);
 await writeFile(
   "dist/_headers",
   `/*

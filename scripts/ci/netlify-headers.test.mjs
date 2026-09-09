@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
+import { buildAppShellCsp } from "../../src/csp.ts";
 
 function buildHeaders(context, socket = "") {
   const directory = mkdtempSync(join(tmpdir(), "netlify-headers-"));
@@ -39,6 +40,9 @@ it("preserves production headers", () => {
 });
 it("allows only the configured preview socket", () => {
   const headers = buildHeaders("deploy-preview", "wss://preview.example.com");
+  expect(headers).toContain(
+    `Content-Security-Policy: ${buildAppShellCsp("wss://preview.example.com")}\n`,
+  );
   expect(headers).toContain("connect-src 'self' wss://preview.example.com;");
   expect(headers).not.toContain("collaboration.ephemeral.schalkneethling.com");
 });

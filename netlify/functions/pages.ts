@@ -174,6 +174,9 @@ export async function createPage(
   }
   const now = dependencies.now?.() ?? new Date();
   const collaborationEnabled = body.collaboration === true;
+  if (collaborationEnabled && getEnv("COLLABORATION_ENABLED") !== "true") {
+    return jsonError("Collaboration is disabled", 503);
+  }
   const configuredCapabilityKeys = collaborationEnabled
     ? (dependencies.capabilityKeys ?? capabilityKeysFromEnv(getEnv, now))
     : undefined;
@@ -371,6 +374,9 @@ export async function createCollaborationTicket(
     createTicketId?: () => string;
   } = {},
 ): Promise<Response> {
+  if (getEnv("COLLABORATION_ENABLED") !== "true") {
+    return jsonError("Collaboration is disabled", 503);
+  }
   if (!isJsonRequest(req)) {
     return jsonError("Content-Type must be application/json", 415);
   }

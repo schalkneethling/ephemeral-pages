@@ -37,6 +37,11 @@ separate setting.
 
 Verify the selected branch context before saving. These values alone do not enable collaboration.
 
+The separate `COLLABORATION_ENABLED=true` branch override was saved by the user on 2026-09-09
+for `codex/ephemeral-pages-collaboration`, with All scopes and no secret designation. Production
+remains unset and therefore disabled. This gate controls collaborative uploads and new tickets;
+capability keys only authorize editor access. Redeploy after changing the gate.
+
 ## 3. Configure matching secrets
 
 Completed (user-confirmed on 2026-09-09). The three Netlify secrets were saved for the preview
@@ -105,8 +110,8 @@ Record results here without capability URLs or tickets.
 
 Continue with expiry, deletion, capacity, isolation, and rollback validation in
 [issue #28](https://github.com/schalkneethling/ephemeral-pages/issues/28) before production rollout.
-There is currently no explicit production feature flag; capability-key configuration alone allows
-collaborative page creation, so production enablement needs a separate deliberate step.
+Production requires a deliberate `COLLABORATION_ENABLED=true` opt-in after validation; capability-key
+configuration alone no longer enables collaborative uploads or ticket minting.
 
 ## References
 
