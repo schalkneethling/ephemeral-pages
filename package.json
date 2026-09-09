@@ -24,12 +24,13 @@
     "smoke:production": "node scripts/production-smoke.mjs",
     "test": "vp test",
     "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit",
     "prepare": "vp config"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2",
-    "@netlify/blobs": "^10.7.6",
-    "@netlify/functions": "^5.2.1",
+    "@netlify/blobs": "^11.0.3",
+    "@netlify/functions": "^6.0.0",
     "@sentry/node": "^10.53.1",
     "jose": "^6.1.0",
     "lit": "^3.3.2",

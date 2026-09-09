@@ -15,8 +15,11 @@ Production URL:
 https://ephemeral.schalkneethling.com/mcp
 ```
 
-This is a public Streamable HTTP endpoint. No API key, OAuth, or GitHub OIDC is required or
-accepted. Clients that only speak 2025-era MCP will fail.
+This endpoint uses the MCP `2026-07-28` **Streamable HTTP** transport in buffered JSON mode. Despite
+the transport's name, the specification permits either a single JSON response or a request-scoped
+SSE stream; this deployment returns one `application/json` response for each normal request and
+does not send mid-call progress or logging notifications. No API key, OAuth, or GitHub OIDC is
+required or accepted. Clients that only speak 2025-era MCP will fail.
 
 Each client has its own config file and field names. Use the official docs for the client you
 run; the snippets below are the minimum working shapes for this URL.
@@ -98,24 +101,32 @@ remote entry.
 
 ### Pi
 
-Pi does not ship MCP. Install the community
-[pi-mcp-extension](https://pi.dev/packages/pi-mcp-extension), then add
-`~/.pi/agent/mcp.json` or a project `.pi/mcp.json`:
+Pi does not ship MCP. Install the community [pi-mcp](https://github.com/dmmulroy/pi-mcp)
+extension, which negotiates MCP 2026-07-28:
+
+```bash
+pi install git:github.com/dmmulroy/pi-mcp@acd1428863dd6ce8ee30371b30f0958e8fb8fbe2
+```
+
+That commit is intentionally pinned because Pi extensions run with full system access. To update
+it, review the target commit and dependency changes, run the extension's checks, then replace the
+full SHA above and run the same `pi install` command. Pi does not move pinned Git sources during
+normal updates.
+
+Then add `~/.pi/agent/mcp.json` or a project `.pi/mcp.json`:
 
 ```json
 {
-  "mcpServers": {
+  "mcp": {
     "ephemeral-pages": {
-      "transport": "streamable-http",
-      "url": "https://ephemeral.schalkneethling.com/mcp",
-      "lifecycle": "eager"
+      "type": "remote",
+      "url": "https://ephemeral.schalkneethling.com/mcp"
     }
   }
 }
 ```
 
-That extension documents MCP 2025-03-26. This server rejects 2025-era clients, so the
-connection only works if the client negotiates 2026-07-28.
+The extension defaults to lazy startup. Open `/mcp`, select `ephemeral-pages`, and connect it.
 
 ### Other clients
 
@@ -123,8 +134,9 @@ connection only works if the client negotiates 2026-07-28.
   workspace `.vscode/mcp.json` uses `"type": "http"` and `url` under `servers`.
 - [Model Context Protocol](https://modelcontextprotocol.io/) lists other clients.
 
-Look for a remote / HTTP / Streamable HTTP server. Point it at the production URL. Do not
-invent an API key, OAuth client, or stdio `command` for this service.
+Look for a remote, HTTP, or Streamable HTTP server. Streamable HTTP is the specification's formal
+transport name even when a server chooses its permitted buffered JSON response mode. Point it at
+the production URL. Do not invent an API key, OAuth client, or stdio `command` for this service.
 
 ### MCP Inspector
 
