@@ -11,7 +11,10 @@ For behavior changes, add or update tests that demonstrate the intended behavior
 confirm that the regression test fails without the fix where practical. For behavior-neutral changes,
 use existing checks to establish that behavior is preserved.
 
-In the PR description, explain what changed, why, and how you validated it. Include relevant commands,
+Start the PR description with a review question: the question the PR answers. Make it specific enough
+to focus the review on the proposed solution or decision.
+
+Then explain what changed, why, and how you validated it. Include relevant commands,
 results, and any limitations. Prefer concise, useful evidence over a prescribed reporting format.
 
 Review the final version after refactoring and rerun the checks relevant to the change.
