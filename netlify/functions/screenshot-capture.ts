@@ -20,11 +20,17 @@ export type ScreenshotCapture = (
 
 export class ScreenshotCaptureError extends Error {
   readonly kind: "expired" | "quota" | "upstream" | "invalid_response";
+  readonly retryAfterSeconds: number | undefined;
 
-  constructor(message: string, kind: "expired" | "quota" | "upstream" | "invalid_response") {
+  constructor(
+    message: string,
+    kind: "expired" | "quota" | "upstream" | "invalid_response",
+    retryAfterSeconds?: number,
+  ) {
     super(message);
     this.name = "ScreenshotCaptureError";
     this.kind = kind;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -72,7 +78,13 @@ export function createScreenshotCaptureClient({
         throw new ScreenshotCaptureError("Collaborative page has expired", "expired");
       }
       if (response.status === 429 || response.status === 503) {
-        throw new ScreenshotCaptureError("Screenshot capacity is exhausted", "quota");
+        const value = response.headers.get("Retry-After");
+        const seconds = value && /^\d+$/.test(value) ? Number(value) : NaN;
+        throw new ScreenshotCaptureError(
+          "Screenshot capacity is exhausted",
+          "quota",
+          Number.isSafeInteger(seconds) && seconds >= 0 ? Math.max(1, seconds) : undefined,
+        );
       }
       throw new ScreenshotCaptureError("Screenshot service request failed", "upstream");
     }

@@ -16,12 +16,13 @@ declare const Netlify:
 export const RATE_LIMITS = {
   upload: { limit: 10, windowMs: 600000 },
   report: { limit: 10, windowMs: 600000 },
-  screenshot: { limit: 3, windowMs: 600000 },
+  screenshot: { limit: 1, windowMs: 30_000 },
+  screenshotService: { limit: 1, windowMs: 10_000 },
   failedDelete: { limit: 5, windowMs: 900000 },
 } as const;
 
 export type RateLimitName = keyof typeof RATE_LIMITS;
-export type RateLimitActor = { type: "anonymous" | "github"; subject: string };
+export type RateLimitActor = { type: "anonymous" | "github" | "service"; subject: string };
 const MAX_RATE_LIMIT_RETRIES = 12;
 
 let sentryInitialized = false;
@@ -211,7 +212,9 @@ function activeRecord(
 }
 
 function rateLimitKey(name: RateLimitName, actorHash: string, subjectHash: string): string {
-  return `${RATE_LIMIT_PREFIX}/${name}/${actorHash}/${subjectHash}.json`;
+  // Start the shorter cooldown without retaining an old ten-minute screenshot window.
+  const namespace = name === "screenshot" ? "screenshot-v2" : name;
+  return `${RATE_LIMIT_PREFIX}/${namespace}/${actorHash}/${subjectHash}.json`;
 }
 
 function clientIp(req: Request): string {

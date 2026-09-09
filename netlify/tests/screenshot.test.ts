@@ -190,18 +190,16 @@ describe("screenshot page APIs", () => {
     ).toBe(409);
   });
 
-  it("enforces per-page/IP quotas and releases the lock after timeout", async () => {
+  it("enforces the per-page/IP cooldown and releases the lock after timeout", async () => {
     const store = screenshotStore();
     store.seedPage(true);
     const capture = async () => ({ png: PNG, revision: 0, capturedAt: NOW.toISOString() });
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const response = await createScreenshot(screenshotRequest({}), "page-1", store, {
-        capture,
-        now: () => NOW,
-        createId: () => `shot-${attempt}`,
-      });
-      expect(response.status).toBe(201);
-    }
+    const response = await createScreenshot(screenshotRequest({}), "page-1", store, {
+      capture,
+      now: () => NOW,
+      createId: () => "shot-1",
+    });
+    expect(response.status).toBe(201);
     expect(
       (
         await createScreenshot(screenshotRequest({}), "page-1", store, {
@@ -235,6 +233,81 @@ describe("screenshot page APIs", () => {
     });
 
     expect(response.status).toBe(502);
+    expect(dailyBudgetCount(store)).toBe(0);
+  });
+
+  it("admits only one simultaneous capture across different pages and IPs", async () => {
+    const store = screenshotStore();
+    store.seedPage(true);
+    store.seedPage(true, PAGE_EXPIRY, "page-2");
+    const capture = vi.fn(async () => ({ png: PNG, revision: 0, capturedAt: NOW.toISOString() }));
+    const responses = await Promise.all(
+      ["page-1", "page-2"].map((pageId, index) => {
+        const request = screenshotRequest({});
+        request.headers.set("x-nf-client-connection-ip", `203.0.113.${index + 1}`);
+        return createScreenshot(request, pageId, store, { capture, now: () => NOW });
+      }),
+    );
+    expect(responses.map((response) => response.status).sort((a, b) => a - b)).toEqual([201, 429]);
+    expect(responses.find((response) => response.status === 429)?.headers.get("Retry-After")).toBe(
+      "30",
+    );
+    expect(capture).toHaveBeenCalledTimes(1);
+    expect(dailyBudgetCount(store)).toBe(1);
+
+    const request = screenshotRequest({});
+    request.headers.set("x-nf-client-connection-ip", "203.0.113.100");
+    const next = await createScreenshot(request, "page-2", store, {
+      capture,
+      now: () => new Date(NOW.getTime() + 10_000),
+    });
+    expect(next.status).toBe(201);
+  });
+
+  it("allows retry after 30 seconds even after failed captures", async () => {
+    const store = screenshotStore();
+    store.seedPage(true);
+    const capture = vi.fn(async () => {
+      throw new ScreenshotCaptureError("failure", "upstream");
+    });
+    const attempt = (milliseconds: number) =>
+      createScreenshot(screenshotRequest({}), "page-1", store, {
+        capture,
+        now: () => new Date(NOW.getTime() + milliseconds),
+      });
+    expect((await attempt(0)).status).toBe(502);
+    const rejected = await attempt(29_000);
+    expect(rejected.status).toBe(429);
+    expect(rejected.headers.get("Retry-After")).toBe("1");
+    expect((await attempt(30_000)).status).toBe(502);
+    expect(capture).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["17", "30"],
+    ["0", "30"],
+    ["45", "45"],
+    ["invalid", "60"],
+    ["99999999999999999999", "60"],
+    [null, "60"],
+  ])("preserves safe upstream retry timing (%s) through the API", async (upstream, expected) => {
+    const store = screenshotStore();
+    store.seedPage(true);
+    const capture = createScreenshotCaptureClient({
+      serviceUrl: "https://collaboration.example",
+      serviceToken: "test-secret",
+      fetchImpl: async () =>
+        new Response(null, {
+          status: 503,
+          headers: upstream === null ? {} : { "Retry-After": upstream },
+        }),
+    })!;
+    const response = await createScreenshot(screenshotRequest({}), "page-1", store, {
+      capture,
+      now: () => NOW,
+    });
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe(expected);
     expect(dailyBudgetCount(store)).toBe(0);
   });
 
@@ -287,7 +360,7 @@ describe("screenshot page APIs", () => {
         (
           await createScreenshot(screenshotRequest({}), "page-1", store, {
             capture,
-            now: () => NOW,
+            now: () => new Date(NOW.getTime() + attempt * 30_000),
             createId: () => `budget-${attempt}`,
             dailyBudget: 2,
           })
@@ -296,12 +369,12 @@ describe("screenshot page APIs", () => {
     }
     const exhausted = await createScreenshot(screenshotRequest({}), "page-1", store, {
       capture,
-      now: () => NOW,
+      now: () => new Date(NOW.getTime() + 60_000),
       dailyBudget: 2,
     });
 
     expect(exhausted.status).toBe(503);
-    expect(exhausted.headers.get("Retry-After")).toBe("57600");
+    expect(exhausted.headers.get("Retry-After")).toBe("57540");
     expect(capture).toHaveBeenCalledTimes(2);
     expect([...store.budgets.entries()]).toEqual([
       [

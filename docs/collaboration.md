@@ -217,8 +217,21 @@ CSP, expiry, deletion, hibernation, and capacity tests pass.
 Deploy the Worker first, run the Wrangler dry-run and health check, configure matching secrets and
 origins in Netlify, then enable the upload switch. Keep the Worker on a hard-limited Free account for
 the hobby deployment; quota exhaustion must return `503` rather than fall through to paid capacity.
-Screenshot attempts also have a fixed 25/day global budget, 12 captures/96 MiB per page, and no paid
-fallback. Rotate capability keys with the bounded previous-key window and rotate ticket/admin keys
+Screenshot requests have a 30-second cooldown per IP/page and a shared admission gate allowing
+one attempt every 10 seconds across pages and clients in the Netlify site's store. Both use
+conditional storage writes, so concurrent function instances share the limits. Failed attempts
+consume the cooldown; repeated rejected requests do not extend it. A new screenshot counter
+namespace avoids retaining the former ten-minute window after deployment.
+
+The gate coordinates this site's traffic, not other sites or Workers on the same Cloudflare
+account. Cloudflare's [Free Quick Actions limit](https://developers.cloudflare.com/browser-run/limits/)
+is account-wide. Upstream retry seconds are passed through, increased when our remaining
+per-IP/page cooldown is longer; missing or invalid upstream timing falls back to 60 seconds.
+Transient unavailability is not described as a daily quota exhaustion in the UI.
+
+Successful screenshots retain a fixed 25/day global budget and 12 captures/96 MiB per page, with no
+paid fallback. Failed captures release the daily budget claim. These count limits do not measure
+Browser Run's daily browser-time allowance. Rotate capability keys with the bounded previous-key window and rotate ticket/admin keys
 by deploying both issuers/validators together.
 
 To disable the feature, hide/reject new collaborative uploads first, retain read access until page

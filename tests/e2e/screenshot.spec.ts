@@ -71,10 +71,10 @@ const failureScenarios: Array<{
     disabled: false,
   },
   {
-    name: "daily quota",
+    name: "temporary unavailability",
     status: 503,
-    headers: {},
-    message: "The daily screenshot quota is exhausted. Try again later.",
+    headers: { "Retry-After": "45" },
+    message: "Screenshot capture is temporarily unavailable. Try again in 45 seconds.",
     disabled: false,
   },
   {

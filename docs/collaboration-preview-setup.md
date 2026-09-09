@@ -83,10 +83,13 @@ established. Rendering errors now return 502 rather than being reported as exhau
 Bounded diagnostic logging records fixed error categories without capture tokens or upstream URLs.
 The browser also blocked Netlify preview script injection in uploaded HTML, as intended by CSP.
 
-The current three-attempt/ten-minute limit counts failed attempts too. The agreed next adjustment
-is a shorter per-IP/per-page cooldown, service-wide admission control for Browser Run, and
-propagating upstream retry timing. Keep the daily and page-lifetime budgets while evaluating
-actual browser usage. This rate-limit adjustment has not yet been applied.
+The user independently confirmed screenshot success. The former three-attempt/ten-minute limit
+has been replaced with a 30-second per-IP/page cooldown and shared admission allowing one
+attempt every 10 seconds across this site's pages and clients. Failed attempts consume the short
+cooldown. Responses preserve valid upstream retry seconds, increased if our remaining cooldown
+is longer; missing/invalid upstream timing falls back to 60 seconds. The UI describes temporary
+unavailability without incorrectly attributing every 503 to a daily quota. Daily and page-lifetime
+budgets remain unchanged. The shared gate cannot coordinate other apps on the Cloudflare account.
 
 Netlify environment changes require a new deployment. Check the response CSP, create a
 collaborative fixture, open two editor sessions and one viewer, and verify editing, read-only access,

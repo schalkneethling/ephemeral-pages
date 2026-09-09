@@ -47,9 +47,15 @@ describe("screenshot browser contract", () => {
       terminal: false,
     });
     expect(captureFailure(503, null)).toEqual({
-      message: "The daily screenshot quota is exhausted. Try again later.",
+      message: "Screenshot capture is temporarily unavailable. Try again later.",
       terminal: false,
     });
+    expect(captureFailure(503, "17").message).toBe(
+      "Screenshot capture is temporarily unavailable. Try again in 17 seconds.",
+    );
+    expect(captureFailure(503, "99999999999999999999").message).toBe(
+      "Screenshot capture is temporarily unavailable. Try again later.",
+    );
     expect(captureFailure(410, null)).toEqual({
       message: "This page expired before the screenshot could be captured.",
       terminal: true,

@@ -74,6 +74,8 @@ export function captureFailure(
   responseStatus: number,
   retryAfter: string | null,
 ): { message: string; terminal: boolean } {
+  const parsedSeconds = retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) : NaN;
+  const seconds = Number.isSafeInteger(parsedSeconds) && parsedSeconds > 0 ? parsedSeconds : null;
   if (responseStatus === 410) {
     return {
       message: "This page expired before the screenshot could be captured.",
@@ -81,7 +83,6 @@ export function captureFailure(
     };
   }
   if (responseStatus === 429) {
-    const seconds = retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) : null;
     return {
       message: seconds
         ? `Too many screenshot requests. Try again in ${seconds} seconds.`
@@ -91,7 +92,9 @@ export function captureFailure(
   }
   if (responseStatus === 503) {
     return {
-      message: "The daily screenshot quota is exhausted. Try again later.",
+      message: seconds
+        ? `Screenshot capture is temporarily unavailable. Try again in ${seconds} seconds.`
+        : "Screenshot capture is temporarily unavailable. Try again later.",
       terminal: false,
     };
   }

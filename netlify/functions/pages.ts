@@ -452,6 +452,14 @@ export async function createScreenshot(
 
   const limit = await checkRateLimit(req, store, "screenshot", id, now.getTime());
   if (!limit.ok) return limit.response;
+  const retryDelaySeconds = (upstream: number) =>
+    Math.max(
+      upstream,
+      Math.ceil(
+        Number(limit.headers["X-RateLimit-Reset"]) -
+          (dependencies.now?.() ?? new Date()).getTime() / 1_000,
+      ),
+    );
 
   const capture =
     dependencies.capture ??
@@ -514,6 +522,23 @@ export async function createScreenshot(
     }
     dailyBudgetClaim = budget.claim;
 
+    // A fixed actor and subject share admission across pages and clients in this store.
+    const admission = await checkRateLimit(
+      req,
+      store,
+      "screenshotService",
+      "global",
+      (dependencies.now?.() ?? new Date()).getTime(),
+      { type: "service", subject: "screenshots" },
+    );
+    if (!admission.ok) {
+      admission.response.headers.set(
+        "Retry-After",
+        String(retryDelaySeconds(Number(admission.response.headers.get("Retry-After") ?? 1))),
+      );
+      return admission.response;
+    }
+
     const captured = await captureWithTimeout(capture, id, page.metadata.expiresAt, timeoutMs);
     const capturedAt = new Date(captured.capturedAt);
     if (
@@ -556,7 +581,7 @@ export async function createScreenshot(
       if (error.kind === "expired") return jsonError(PAGE_UNAVAILABLE_REASON.gone, 410);
       if (error.kind === "quota") {
         return jsonError("Screenshot capacity is temporarily exhausted", 503, {
-          "Retry-After": "3600",
+          "Retry-After": String(retryDelaySeconds(error.retryAfterSeconds ?? 60)),
         });
       }
       return jsonError("Screenshot service returned an invalid response", 502);
