@@ -69,17 +69,24 @@ export async function configureGitHubSecurity({ policy, client, apply = false, s
     throw new Error(
       `Fix ruleset protection before applying CodeQL policy:\n${protectionDrift.join("\n")}`,
     );
-  await client.updateDefaultSetup(policy.codeql);
+  const appliedPolicy = {
+    ...policy,
+    codeql: {
+      ...policy.codeql,
+      languages: [...new Set([...policy.codeql.languages, ...(defaultSetup.languages ?? [])])],
+    },
+  };
+  await client.updateDefaultSetup(appliedPolicy.codeql);
   await client.updateRuleset(summary.id, withCodeScanningRule(policy, ruleset));
   let verifiedDefaultSetup;
   for (let attempt = 0; attempt < 24; attempt += 1) {
     verifiedDefaultSetup = await client.getDefaultSetup();
-    if (codeqlPolicyDrift(policy, verifiedDefaultSetup).length === 0) break;
+    if (codeqlPolicyDrift(appliedPolicy, verifiedDefaultSetup).length === 0) break;
     if (attempt < 23) await sleep(5_000);
   }
   const verifiedRuleset = await client.getRuleset(summary.id);
   return securityPolicyDrift(
-    policy,
+    appliedPolicy,
     verifiedDefaultSetup,
     verifiedRuleset,
     repository.default_branch,

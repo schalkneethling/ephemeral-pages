@@ -50,6 +50,41 @@ describe("reusable GitHub security configuration", () => {
     expect(await configureGitHubSecurity({ policy, client, apply: true })).toEqual([]);
     expect(writes).toEqual(["setup", "ruleset"]);
   });
+  it("applies when the API omits exclusions", async () => {
+    const { client, writes } = harness({
+      ruleset: { ...base, conditions: { ref_name: { include: ["~DEFAULT_BRANCH"] } } },
+    });
+    expect(await configureGitHubSecurity({ policy, client, apply: true })).toEqual([]);
+    expect(writes).toEqual(["setup", "ruleset"]);
+  });
+  it("preserves configured languages and adds missing required languages", async () => {
+    const setup = { ...policy.codeql, languages: ["python", "actions"] };
+    const { client } = harness({ setup });
+    expect(await configureGitHubSecurity({ policy, client, apply: true })).toEqual([]);
+    const configured = await client.getDefaultSetup();
+    expect([...configured.languages].sort()).toEqual([
+      "actions",
+      "javascript-typescript",
+      "python",
+    ]);
+    expect(setup.languages).toEqual(["python", "actions"]);
+    expect(policy.codeql.languages).toEqual(["actions", "javascript-typescript"]);
+  });
+  it("reports when readback loses a previously configured language", async () => {
+    const { client } = harness({ setup: { ...policy.codeql, languages: ["python"] } });
+    client.updateDefaultSetup = async () => {
+      client.getDefaultSetup = async () => policy.codeql;
+    };
+    const drift = await configureGitHubSecurity({
+      policy,
+      client,
+      apply: true,
+      sleep: async () => {},
+    });
+    expect(drift).toContain(
+      "CodeQL languages are actions, javascript-typescript; expected at least actions, javascript-typescript, python.",
+    );
+  });
   it("reports non-convergence after bounded polling", async () => {
     const { client } = harness({
       setup: { ...policy.codeql, query_suite: "default" },

@@ -28,7 +28,7 @@ export function rulesetProtectionDrift(ruleset, defaultBranch) {
   const refs = ruleset.conditions?.ref_name;
   const accepted = ["~DEFAULT_BRANCH", "~ALL"];
   if (defaultBranch) accepted.push(`refs/heads/${defaultBranch}`);
-  if (!refs?.include?.some((ref) => accepted.includes(ref)) || refs?.exclude?.length !== 0) {
+  if (!refs?.include?.some((ref) => accepted.includes(ref)) || (refs?.exclude?.length ?? 0) !== 0) {
     drift.push(
       "The ruleset must explicitly include the default branch and have no exclusions; other patterns are not verified.",
     );
