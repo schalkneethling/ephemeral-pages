@@ -18,6 +18,7 @@
     "dev": "vp dev",
     "build": "tsc && vp build",
     "css:sort": "stylelint \"src/**/*.css\" --fix",
+    "governance:security": "node scripts/configure-github-security.mjs",
     "knip": "knip",
     "preview": "vp preview",
     "smoke:production": "node scripts/production-smoke.mjs",

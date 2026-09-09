@@ -1,3 +1,7 @@
+# Pull requests
+
+Read and follow [PR.md](PR.md) when preparing or reviewing pull requests.
+
 <!--VITE PLUS START-->
 
 # Using Vite+, the Unified Toolchain for the Web
