@@ -38,6 +38,21 @@
         "PUBLIC_WORKER_ORIGIN": "https://ephemeral-pages-collaboration.volume4-schalk.workers.dev",
       },
     },
+    "staging": {
+      "name": "ephemeral-pages-collaboration-staging",
+      "secrets": { "required": ["TICKET_HMAC_SECRET", "ADMIN_TOKEN"] },
+      "workers_dev": true,
+      "durable_objects": {
+        "bindings": [{ "name": "COLLABORATION_ROOMS", "class_name": "CollaborationRoom" }],
+      },
+      "browser": { "binding": "BROWSER" },
+      "vars": {
+        "ALLOWED_ORIGINS": "https://ephemeral-pages-staging.netlify.app",
+        "TICKET_AUDIENCE": "ephemeral-pages-collaboration-staging",
+        "PAGE_CONTENT_ORIGIN": "https://ephemeral-pages-staging.netlify.app",
+        "PUBLIC_WORKER_ORIGIN": "https://ephemeral-pages-collaboration-staging.volume4-schalk.workers.dev",
+      },
+    },
     "preview": {
       "name": "ephemeral-pages-collaboration-preview",
       "secrets": { "required": ["TICKET_HMAC_SECRET", "ADMIN_TOKEN"] },

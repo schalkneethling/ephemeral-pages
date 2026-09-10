@@ -1,0 +1,13 @@
+{
+  "accountId": "5ad7250d11b73b30fd9f052f",
+  "accountSlug": "schalkneethling",
+  "siteName": "ephemeral-pages-staging",
+  "nonSecretVariables": {
+    "PUBLIC_BASE_URL": "https://ephemeral-pages-staging.netlify.app",
+    "COLLABORATION_SERVICE_URL": "https://ephemeral-pages-collaboration-staging.volume4-schalk.workers.dev",
+    "COLLABORATION_WEBSOCKET_URL": "wss://ephemeral-pages-collaboration-staging.volume4-schalk.workers.dev",
+    "COLLABORATION_TICKET_AUDIENCE": "ephemeral-pages-collaboration-staging",
+    "COLLABORATION_CAPABILITY_CURRENT_VERSION": "v1",
+    "COLLABORATION_ENABLED": "true"
+  }
+}

@@ -50,3 +50,8 @@ Then explain what changed, why, and how you validated it. Include relevant comma
 results, and any limitations. Prefer concise, useful evidence over a prescribed reporting format.
 
 Review the final version after refactoring and rerun the checks relevant to the change.
+
+Run `bun run security:secrets` with the pinned Gitleaks binary before pushing changes. CI also scans
+history and current files. Investigate findings without copying matched values into PRs, logs, or
+review comments. See [secret scanning](docs/secret-scanning.md) for installation and the narrow
+historical fixture exception. Passing this check does not replace the release evidence restrictions.

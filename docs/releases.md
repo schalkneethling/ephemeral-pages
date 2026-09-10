@@ -15,7 +15,14 @@ The repository owns the `release:plan` and `release:status` scripts. They use pi
 27.5.0 and Wrangler 4.125.0 installations, with explicit provider targets from
 [`scripts/release/environments.json`](../scripts/release/environments.json). The staging targets
 remain `null` until dedicated resources have been provisioned and their assigned identifiers
-recorded. Missing targets block inspection; the runner does not substitute production targets.
+recorded and the first cross-platform smoke has passed. Missing targets block inspection; the runner
+does not substitute production targets.
+
+The root `bunfig.toml` selects Bun's isolated dependency layout. This keeps Netlify's function
+packager on its supported TypeScript dependency while preserving the application's TypeScript 7
+compiler. Use the checked lockfile and install both the root and Worker package boundaries; do not
+replace the layout with a hoisted installation or downgrade the application compiler to work around
+provider tooling.
 
 Both operations require an environment and a versioned baseline file. Planning also requires a full
 candidate commit. The argument parser in
@@ -53,6 +60,63 @@ A successful read-only plan is not release approval. It does not build, publish,
 prove artifact identity, or establish storage compatibility. The remaining gates below still apply.
 Blocked results exit nonzero. Invalid arguments or input files produce a sanitized preflight
 failure; `--json` preserves a versioned JSON shape for those failures as well.
+
+## Collaboration smoke and local secrets
+
+The collaboration smoke uses the selected environment's configured application origin:
+
+```sh
+bun run release:smoke --environment staging --origin https://ephemeral-pages-staging.netlify.app --confirm-external-smoke --capture
+```
+
+Both provider targets must be configured first. During bootstrap, `--config` can select an inspected
+configuration file containing the newly assigned provider identifiers. The command creates one
+one-hour collaborative page, verifies two-editor synchronization, read-only viewing, reload
+persistence, and reconnection after browser network loss. A private loopback CONNECT proxy drops
+only the first editor's Worker TCP connections and requires a fresh connection afterward. It allows
+only the configured app and Worker authorities, does not decrypt TLS, and closes after the run.
+Playwright diagnostic environment settings are rejected before any upload because they can expose
+capability URLs outside the sanitized report. `--capture` separately opts into one
+screenshot request and validates the downloaded PNG in memory. Without that flag, the report records
+that capture was not requested. Raw browser traces, page content, capabilities, and image files are
+not retained. Rate limiting blocks the run with a validated retry delay; it does not retry uploads
+or captures.
+
+Local staging provisioning resolves the three authorized staging secrets through Varlock and the
+1Password desktop app. References are versioned in
+[the staging secret schema](../scripts/release/local/staging/.env.schema); values are not stored in
+Git. This entry point is separate from the application's development schema and does not resolve
+production or unrelated development secrets.
+
+```sh
+bun run release:secrets:check
+```
+
+This command returns only a validation outcome. It uses pinned compatible Varlock and plugin
+versions, skips caching, and injects individual variables without a serialized environment graph.
+1Password may require a desktop unlock. Routine releases inspect existing provider configuration;
+they do not reprovision or rotate secrets. See [staging bootstrap](staging-bootstrap.md) for the
+one-time setup and recovery checkpoints.
+
+## API smoke
+
+Run the API smoke only with an explicit HTTPS origin and both opt-ins:
+
+```sh
+bun run smoke:production --origin https://your-staging-site.netlify.app --confirm-external-smoke --confirm-quota-exhaustion
+```
+
+The existing script name is retained, but the origin selects the target; there is no production
+default. The test creates two one-hour pages, verifies compressed uploads and idempotency, and
+intentionally exhausts one upload quota bucket (at most 17 upload requests). Avoid running it
+immediately before collaboration smoke from the same anonymous client. It stops at the expected
+quota response and records a validated retry delay when available. Failure does not trigger retries.
+The manually dispatched production API smoke workflow supplies the production origin explicitly
+and runs trusted `main` code with GitHub OIDC.
+
+Reports contain fixed check outcomes and request counts, never page links, page contents, or raw
+errors. A blocked result exits nonzero. Missing either opt-in or an invalid origin causes no network
+requests.
 
 ## Independent of any work set
 
@@ -135,6 +199,8 @@ The release record must contain:
 - Per-stage status, timestamps, smoke-test results, and actionable failure details.
 
 Never store secrets, editor links, tickets, page contents, or raw browser traces in release evidence.
+Run `bun run security:secrets` before submitting release changes. [Gitleaks](secret-scanning.md)
+checks history and pending files, but cannot prove arbitrary sensitive content is safe to publish.
 Secret names or provider metadata establish presence, not equality; a successful ticket connection
 and authorized screenshot exercise the cross-platform secret relationships.
 
