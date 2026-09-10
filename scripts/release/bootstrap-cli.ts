@@ -1,6 +1,4 @@
-import { constants } from "node:fs";
-import { open, readFile, rename, unlink } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -11,16 +9,19 @@ import {
   recoverPendingNetlifySite,
   recoverPendingNetlifyVariables,
   StagingBootstrapError,
-  type NetlifyStagingBootstrapCheckpoint,
   type NetlifyStagingBootstrapInput,
   type NetlifyStagingBootstrapStore,
 } from "./bootstrap.ts";
 import { createDeadlineProviderCommandRunner } from "./command.ts";
 import { releaseConfigSchema } from "./schema.ts";
+import {
+  assertPinnedCliVersions,
+  createAtomicJsonStore,
+  readBoundedJson,
+  withExclusiveFileLock,
+} from "./bootstrap-safety.ts";
 
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
-const NETLIFY_VERSION = "27.5.0";
-const WRANGLER_VERSION = "4.125.0";
 const MAX_INPUT_BYTES = 64 * 1024;
 const MAX_CHECKPOINT_BYTES = 16 * 1024;
 
@@ -63,9 +64,6 @@ export class StagingBootstrapCliError extends Error {
     this.kind = kind;
   }
 }
-
-const hasErrorCode = (error: unknown, code: string): boolean =>
-  typeof error === "object" && error !== null && "code" in error && error.code === code;
 
 export function parseStagingBootstrapArguments(
   args: readonly string[],
@@ -118,114 +116,31 @@ export function parseStagingBootstrapArguments(
   };
 }
 
-const readBoundedJson = async (path: string, maxBytes: number): Promise<unknown> => {
-  let handle;
-  try {
-    handle = await open(path, constants.O_RDONLY);
-    const stat = await handle.stat();
-    if (!stat.isFile() || stat.size > maxBytes) throw new Error();
-    const contents = await handle.readFile("utf8");
-    if (Buffer.byteLength(contents, "utf8") > maxBytes) throw new Error();
-    return JSON.parse(contents) as unknown;
-  } catch {
-    throw new StagingBootstrapCliError("invalid-input");
-  } finally {
-    await handle?.close();
-  }
-};
-
 export async function assertPinnedBootstrapToolVersions(root: string): Promise<void> {
-  const manifests = [
-    ["netlify-cli", NETLIFY_VERSION],
-    ["wrangler", WRANGLER_VERSION],
-  ] as const;
-  try {
-    for (const [packageName, expectedVersion] of manifests) {
-      const value = JSON.parse(
-        await readFile(resolve(root, "node_modules", packageName, "package.json"), "utf8"),
-      ) as unknown;
-      if (
-        typeof value !== "object" ||
-        value === null ||
-        !("version" in value) ||
-        value.version !== expectedVersion
-      ) {
-        throw new Error();
-      }
-    }
-  } catch {
-    throw new StagingBootstrapCliError("version");
-  }
+  await assertPinnedCliVersions(
+    root,
+    ["netlify-cli", "wrangler"],
+    () => new StagingBootstrapCliError("version"),
+  );
 }
 
 export function createAtomicBootstrapStore(path: string): NetlifyStagingBootstrapStore {
-  return {
-    load: async () => {
-      try {
-        return (await readBoundedJson(
-          path,
-          MAX_CHECKPOINT_BYTES,
-        )) as NetlifyStagingBootstrapCheckpoint;
-      } catch (error) {
-        if (error instanceof StagingBootstrapCliError && error.kind === "invalid-input") {
-          try {
-            await open(path, constants.O_RDONLY).then((handle) => handle.close());
-          } catch (openError) {
-            if (hasErrorCode(openError, "ENOENT")) return null;
-          }
-        }
-        throw error;
-      }
-    },
-    save: async (checkpoint) => {
-      const temporaryPath = `${path}.tmp-${process.pid}`;
-      let handle;
-      try {
-        handle = await open(
-          temporaryPath,
-          constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
-          0o600,
-        );
-        await handle.writeFile(`${JSON.stringify(checkpoint)}\n`, "utf8");
-        await handle.sync();
-        await handle.close();
-        handle = undefined;
-        await rename(temporaryPath, path);
-        const directory = await open(dirname(path), constants.O_RDONLY);
-        try {
-          await directory.sync();
-        } finally {
-          await directory.close();
-        }
-      } catch {
-        await handle?.close();
-        await unlink(temporaryPath).catch(() => undefined);
-        throw new StagingBootstrapCliError("invalid-input");
-      }
-    },
-  };
+  return createAtomicJsonStore(
+    path,
+    MAX_CHECKPOINT_BYTES,
+    () => new StagingBootstrapCliError("invalid-input"),
+  );
 }
 
 export async function withExclusiveBootstrapLock<T>(
   checkpointPath: string,
   operation: () => Promise<T>,
 ): Promise<T> {
-  const lockPath = `${checkpointPath}.lock`;
-  let lock;
-  try {
-    lock = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
-    await lock.writeFile(`${process.pid}\n`, "utf8");
-  } catch (error) {
-    await lock?.close();
-    if (lock !== undefined) await unlink(lockPath).catch(() => undefined);
-    throw new StagingBootstrapCliError(hasErrorCode(error, "EEXIST") ? "locked" : "invalid-input");
-  }
-  try {
-    return await operation();
-  } finally {
-    await lock.close().catch(() => undefined);
-    await unlink(lockPath).catch(() => undefined);
-  }
+  return withExclusiveFileLock(
+    checkpointPath,
+    operation,
+    (kind) => new StagingBootstrapCliError(kind),
+  );
 }
 
 type BootstrapCliReport =
@@ -248,8 +163,16 @@ type BootstrapCliReport =
 
 const loadBootstrapInput = async (inputPath: string): Promise<NetlifyStagingBootstrapInput> => {
   const [rawInput, rawConfig] = await Promise.all([
-    readBoundedJson(inputPath, MAX_INPUT_BYTES),
-    readBoundedJson(resolve(repositoryRoot, "scripts/release/environments.json"), MAX_INPUT_BYTES),
+    readBoundedJson(
+      inputPath,
+      MAX_INPUT_BYTES,
+      () => new StagingBootstrapCliError("invalid-input"),
+    ),
+    readBoundedJson(
+      resolve(repositoryRoot, "scripts/release/environments.json"),
+      MAX_INPUT_BYTES,
+      () => new StagingBootstrapCliError("invalid-input"),
+    ),
   ]);
   const input = stagingBootstrapFileInputSchema.safeParse(rawInput);
   const config = releaseConfigSchema.safeParse(rawConfig);

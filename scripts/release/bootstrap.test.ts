@@ -390,6 +390,26 @@ describe("staging bootstrap CLI primitives", () => {
     }
   });
 
+  it("preserves a colliding temporary checkpoint it did not create", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "staging-bootstrap-collision-"));
+    const checkpointPath = join(directory, "checkpoint.json");
+    const temporaryPath = `${checkpointPath}.tmp-${process.pid}`;
+    try {
+      await writeFile(temporaryPath, "owned-by-another-writer\n", { mode: 0o600 });
+      await expect(
+        createAtomicBootstrapStore(checkpointPath).save({
+          schemaVersion: 1,
+          inputFingerprint: "a".repeat(64),
+          phase: "pending-site-creation",
+          siteId: null,
+        }),
+      ).rejects.toThrow("Staging bootstrap could not start safely.");
+      await expect(readFile(temporaryPath, "utf8")).resolves.toBe("owned-by-another-writer\n");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("accepts only the repository's exact pinned provider package versions", async () => {
     await expect(assertPinnedBootstrapToolVersions(repositoryRoot)).resolves.toBeUndefined();
 

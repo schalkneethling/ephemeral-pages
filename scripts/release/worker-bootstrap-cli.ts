@@ -1,8 +1,7 @@
 import { spawn } from "node:child_process";
-import { constants } from "node:fs";
-import { chmod, mkdtemp, open, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -12,15 +11,19 @@ import {
   bootstrapStagingWorker,
   recoverPendingStagingWorker,
   WorkerBootstrapError,
-  type WorkerBootstrapCheckpoint,
   type WorkerBootstrapCommandResult,
   type WorkerBootstrapCommandRunner,
   type WorkerBootstrapInput,
   type WorkerBootstrapStore,
 } from "./worker-bootstrap.ts";
+import {
+  assertPinnedCliVersions,
+  createAtomicJsonStore,
+  readBoundedJson,
+  withExclusiveFileLock,
+} from "./bootstrap-safety.ts";
 
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
-const WRANGLER_VERSION = "4.125.0";
 const MAX_INPUT_BYTES = 64 * 1024;
 const MAX_CHECKPOINT_BYTES = 16 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES = 1024 * 1024;
@@ -79,9 +82,6 @@ export class WorkerBootstrapCliError extends Error {
   }
 }
 
-const hasErrorCode = (error: unknown, code: string): boolean =>
-  typeof error === "object" && error !== null && "code" in error && error.code === code;
-
 export function parseWorkerBootstrapArguments(
   args: readonly string[],
   cwd: string,
@@ -124,22 +124,6 @@ export function parseWorkerBootstrapArguments(
   };
 }
 
-const readBoundedJson = async (path: string, maxBytes: number): Promise<unknown> => {
-  let handle;
-  try {
-    handle = await open(path, constants.O_RDONLY);
-    const stat = await handle.stat();
-    if (!stat.isFile() || stat.size > maxBytes) throw new Error();
-    const contents = await handle.readFile("utf8");
-    if (Buffer.byteLength(contents, "utf8") > maxBytes) throw new Error();
-    return JSON.parse(contents) as unknown;
-  } catch {
-    throw new WorkerBootstrapCliError("invalid-input");
-  } finally {
-    await handle?.close();
-  }
-};
-
 const repositoryPath = (path: string): string | null => {
   const candidate = relative(repositoryRoot, path);
   if (!candidate || candidate === ".." || candidate.startsWith(`..${sep}`)) return null;
@@ -153,7 +137,11 @@ const isInsideRepository = (path: string): boolean => {
 
 const loadInput = async (path: string): Promise<WorkerBootstrapInput> => {
   const parsed = workerBootstrapFileInputSchema.safeParse(
-    await readBoundedJson(path, MAX_INPUT_BYTES),
+    await readBoundedJson(
+      path,
+      MAX_INPUT_BYTES,
+      () => new WorkerBootstrapCliError("invalid-input"),
+    ),
   );
   if (!parsed.success || isAbsolute(parsed.data.wranglerConfigPath)) {
     throw new WorkerBootstrapCliError("invalid-input");
@@ -164,85 +152,23 @@ const loadInput = async (path: string): Promise<WorkerBootstrapInput> => {
 };
 
 export const assertPinnedWranglerVersion = async (): Promise<void> => {
-  try {
-    const manifest = JSON.parse(
-      await readFile(resolve(repositoryRoot, "node_modules/wrangler/package.json"), "utf8"),
-    ) as unknown;
-    if (
-      typeof manifest !== "object" ||
-      manifest === null ||
-      !("version" in manifest) ||
-      manifest.version !== WRANGLER_VERSION
-    ) {
-      throw new Error();
-    }
-  } catch {
-    throw new WorkerBootstrapCliError("version");
-  }
+  await assertPinnedCliVersions(
+    repositoryRoot,
+    ["wrangler"],
+    () => new WorkerBootstrapCliError("version"),
+  );
 };
 
 export function createAtomicWorkerBootstrapStore(path: string): WorkerBootstrapStore {
-  return {
-    load: async () => {
-      try {
-        return (await readBoundedJson(path, MAX_CHECKPOINT_BYTES)) as WorkerBootstrapCheckpoint;
-      } catch (error) {
-        if (error instanceof WorkerBootstrapCliError && error.kind === "invalid-input") {
-          try {
-            await open(path, constants.O_RDONLY).then((handle) => handle.close());
-          } catch (openError) {
-            if (hasErrorCode(openError, "ENOENT")) return null;
-          }
-        }
-        throw error;
-      }
-    },
-    save: async (checkpoint) => {
-      const temporaryPath = `${path}.tmp-${process.pid}`;
-      let handle;
-      try {
-        handle = await open(
-          temporaryPath,
-          constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
-          0o600,
-        );
-        await handle.writeFile(`${JSON.stringify(checkpoint)}\n`, "utf8");
-        await handle.sync();
-        await handle.close();
-        handle = undefined;
-        await rename(temporaryPath, path);
-        const directory = await open(dirname(path), constants.O_RDONLY);
-        try {
-          await directory.sync();
-        } finally {
-          await directory.close();
-        }
-      } catch {
-        await handle?.close();
-        await unlink(temporaryPath).catch(() => undefined);
-        throw new WorkerBootstrapCliError("invalid-input");
-      }
-    },
-  };
+  return createAtomicJsonStore(
+    path,
+    MAX_CHECKPOINT_BYTES,
+    () => new WorkerBootstrapCliError("invalid-input"),
+  );
 }
 
 const withExclusiveLock = async <T>(path: string, operation: () => Promise<T>): Promise<T> => {
-  const lockPath = `${path}.lock`;
-  let lock;
-  try {
-    lock = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
-    await lock.writeFile(`${process.pid}\n`, "utf8");
-  } catch (error) {
-    await lock?.close();
-    if (lock !== undefined) await unlink(lockPath).catch(() => undefined);
-    throw new WorkerBootstrapCliError(hasErrorCode(error, "EEXIST") ? "locked" : "invalid-input");
-  }
-  try {
-    return await operation();
-  } finally {
-    await lock.close().catch(() => undefined);
-    await unlink(lockPath).catch(() => undefined);
-  }
+  return withExclusiveFileLock(path, operation, (kind) => new WorkerBootstrapCliError(kind));
 };
 
 export const createBoundedWorkerRunner = (
