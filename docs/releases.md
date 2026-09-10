@@ -1,8 +1,9 @@
 # Repeatable releases
 
 Status: Native branch protections, read-only planning, local artifact preparation, and staging
-rehearsal tooling are implemented. Staging calibration is still required before relying on the new
-artifact promotion path. Production promotion, resumption, recovery, and publishing cutover remain
+rehearsal tooling are implemented. The first full [staging calibration](release-evidence/2026-09-10-staging/README.md)
+passed, including both transition and final-pair browser smokes. Each release still requires its own
+exact-candidate rehearsal. Production promotion, resumption, recovery, and publishing cutover remain
 implementation work. Production publishing settings have not been changed by this increment.
 
 This design applies the principles in

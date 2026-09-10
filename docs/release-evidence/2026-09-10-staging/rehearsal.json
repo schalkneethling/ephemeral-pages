@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "operation": "rehearse",
+  "outcome": "passed",
+  "source": {
+    "candidate": "e0508d5fbf1f5cb7ffb8440918e6ac6b7c720355",
+    "tree": "9ba88cec15648a4a785a172408c49540cf0635d0",
+    "environment": "staging",
+    "configurationFingerprint": "a7024b1ac802a11c902aeb8fe60d3de5499c2e89b4b22bc573b72b871bd517cd"
+  },
+  "preparationSha256": "ddb7f23da2c610d19cdad62447712de8ea0ad2f17cc31cbbf8ceef9977078513",
+  "stages": {
+    "inspect": "passed",
+    "hold-netlify": "passed",
+    "upload-worker": "passed",
+    "activate-worker": "passed",
+    "observe-worker": "passed",
+    "verify-transition": "passed",
+    "prepublish-check": "passed",
+    "publish-netlify": "passed",
+    "observe-netlify": "passed",
+    "verify-pair": "passed"
+  },
+  "recovery": "none",
+  "priorPair": {
+    "netlifyDeployId": "6aa3071fc4ae7b28250acde7",
+    "workerDeploymentId": "c7f6d649-0b62-4b1f-82a2-213e2d4b23a9",
+    "workerVersionId": "b781f975-c8ce-42cf-9e8f-7aa49bafdfc1"
+  },
+  "activatedWorker": {
+    "deploymentId": "cde14431-97b0-4c07-9469-3e68453c2e62",
+    "versionId": "72189329-0b90-49fb-84ed-eed1c022ff76"
+  },
+  "publishedNetlify": {
+    "publishedDeployId": "6aa327145fc723d7169c4879"
+  },
+  "observedPair": {
+    "netlifyDeployId": "6aa327145fc723d7169c4879",
+    "workerDeploymentId": "cde14431-97b0-4c07-9469-3e68453c2e62",
+    "workerVersionId": "72189329-0b90-49fb-84ed-eed1c022ff76"
+  }
+}
