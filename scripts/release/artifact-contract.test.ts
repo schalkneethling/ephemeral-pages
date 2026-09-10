@@ -6,6 +6,7 @@ import {
   artifactBuildEnvironment,
   assertExternalArtifactDirectory,
   rejectLocalBuildInputs,
+  verifyArtifactSource,
 } from "./artifact-contract.ts";
 import { parsePrepareArguments } from "./prepare-args.ts";
 
@@ -97,7 +98,6 @@ it("binds preparation to the clean candidate commit and rejects later source cha
   const { repository } = await fixture();
   const { readFile } = await import("node:fs/promises");
   const { execFileSync } = await import("node:child_process");
-  const { verifyArtifactSource } = await import("./artifact-contract.ts");
   await mkdir(join(repository, "scripts/release"), { recursive: true });
   const currentRoot = new URL("../..", import.meta.url);
   await writeFile(
@@ -125,9 +125,22 @@ it("binds preparation to the clean candidate commit and rejects later source cha
     "fixture",
   ]);
   const commit = git(["rev-parse", "HEAD"]);
-  await expect(verifyArtifactSource(repository, commit, "staging")).resolves.toMatchObject({
-    source: { candidate: commit, environment: "staging" },
-  });
+  const originalGitDirectory = process.env.GIT_DIR;
+  const originalGitWorkTree = process.env.GIT_WORK_TREE;
+  try {
+    // These values redirect ordinary Git commands. Verification uses an
+    // allowlisted environment and must remain bound to its explicit cwd.
+    process.env.GIT_DIR = join(repository, "attacker-git-dir");
+    process.env.GIT_WORK_TREE = join(repository, "attacker-worktree");
+    await expect(verifyArtifactSource(repository, commit, "staging")).resolves.toMatchObject({
+      source: { candidate: commit, environment: "staging" },
+    });
+  } finally {
+    if (originalGitDirectory === undefined) delete process.env.GIT_DIR;
+    else process.env.GIT_DIR = originalGitDirectory;
+    if (originalGitWorkTree === undefined) delete process.env.GIT_WORK_TREE;
+    else process.env.GIT_WORK_TREE = originalGitWorkTree;
+  }
   await writeFile(join(repository, "collaboration-worker/wrangler.jsonc"), '{"changed":true}\n');
   await expect(verifyArtifactSource(repository, commit, "staging")).rejects.toMatchObject({
     kind: "candidate",

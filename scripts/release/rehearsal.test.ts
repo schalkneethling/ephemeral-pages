@@ -129,7 +129,25 @@ it("blocks Netlify publication if another Worker replaces the verified version",
     return true;
   };
   const result = await rehearsePreparedRelease(input, dependencies);
-  expect(result.outcome).toBe("blocked");
-  expect(result.stages["publish-netlify"]).toBe("blocked");
+  expect(result.outcome).toBe("failed");
+  expect(result.stages["prepublish-check"]).toBe("failed");
+  expect(calls).not.toContain("publish");
+});
+
+it("records successful activation separately from failed observation", async () => {
+  const { input, dependencies, calls } = await fixture();
+  const activate = dependencies.activateWorker;
+  dependencies.activateWorker = async () => {
+    const result = await activate();
+    dependencies.inspect = async () => {
+      throw new Error("readback unavailable");
+    };
+    return result;
+  };
+  const report = await rehearsePreparedRelease(input, dependencies);
+  expect(report.stages["activate-worker"]).toBe("passed");
+  expect(report.stages["observe-worker"]).toBe("failed");
+  expect(report.activatedWorker).toEqual({ deploymentId: "new-worker", versionId: "new-worker" });
+  expect(report.observedPair).toBeUndefined();
   expect(calls).not.toContain("publish");
 });

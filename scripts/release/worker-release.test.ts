@@ -519,6 +519,38 @@ describe("createCloudflareWorkerFetchTransport", () => {
         expect(String(error)).not.toContain("raw-sensitive-provider-value");
       });
   });
+
+  it("cancels oversized provider response streams", async () => {
+    const streamedCancel = vi.fn();
+    const streamedBody = new ReadableStream<Uint8Array>({
+      cancel: streamedCancel,
+      start(controller) {
+        controller.enqueue(new Uint8Array(1024 * 1024 + 1));
+      },
+    });
+    const declaredCancel = vi.fn();
+    const declaredBody = new ReadableStream<Uint8Array>({
+      cancel: declaredCancel,
+    });
+    const responses = [
+      new Response(streamedBody, { status: 200 }),
+      new Response(declaredBody, { headers: { "Content-Length": "1048577" }, status: 200 }),
+    ];
+    const transport = createCloudflareWorkerFetchTransport({
+      fetch: async () => responses.shift() as Response,
+      resolveAccessToken: async () => "token-value-that-is-long-enough",
+    });
+    const request = {
+      method: "GET" as const,
+      path: "/accounts/account/workers/scripts/worker/deployments",
+      signal: new AbortController().signal,
+    };
+
+    await expect(transport.dispatch(request)).rejects.toThrow();
+    await expect(transport.dispatch(request)).rejects.toThrow();
+    expect(streamedCancel).toHaveBeenCalledTimes(1);
+    expect(declaredCancel).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("createWranglerAccessTokenResolver", () => {

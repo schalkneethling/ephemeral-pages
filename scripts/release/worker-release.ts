@@ -212,6 +212,7 @@ const readBoundedResponse = async (response: Response): Promise<unknown> => {
     declaredLength !== null &&
     (!/^\d+$/u.test(declaredLength) || Number(declaredLength) > MAX_RESPONSE_BYTES)
   ) {
+    await response.body?.cancel().catch(() => undefined);
     throw new Error();
   }
   const reader = response.body?.getReader();
@@ -223,7 +224,10 @@ const readBoundedResponse = async (response: Response): Promise<unknown> => {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > MAX_RESPONSE_BYTES) throw new Error();
+      if (total > MAX_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error();
+      }
       chunks.push(value);
     }
   } finally {

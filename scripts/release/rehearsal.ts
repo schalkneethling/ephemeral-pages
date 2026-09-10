@@ -19,6 +19,9 @@ export type RehearsalStep =
   | "hold-netlify"
   | "upload-worker"
   | "activate-worker"
+  | "observe-worker"
+  | "prepublish-check"
+  | "observe-netlify"
   | "verify-transition"
   | "publish-netlify"
   | "verify-pair";
@@ -31,7 +34,10 @@ export type RehearsalRecord = {
   preparationSha256: string;
   priorPair?: DeploymentPair;
   observedPair?: DeploymentPair;
+  activatedWorker?: { deploymentId: string; versionId: string };
+  publishedNetlify?: { publishedDeployId: string };
   stages: Partial<Record<RehearsalStep, RehearsalOutcome>>;
+  failure?: { stage: RehearsalStep; kind: string };
   recovery: "none" | "inspect-recorded-targets-before-recovery";
 };
 export type RehearsalDependencies = {
@@ -85,24 +91,47 @@ export async function rehearsePreparedRelease(
     recovery: "none",
   };
   await store.save(record);
-  const stage = async (name: RehearsalStep, operation: () => Promise<void>) => {
+  const stage = async (
+    name: RehearsalStep,
+    operation: () => Promise<void>,
+    failure: "blocked" | "failed" = "blocked",
+  ) => {
     record.stages[name] = "running";
     await store.save(record);
     try {
       await operation();
       record.stages[name] = "passed";
       await store.save(record);
-    } catch {
-      record.stages[name] = "blocked";
+    } catch (error) {
+      const kind =
+        typeof error === "object" && error !== null && "kind" in error ? error.kind : "unknown";
+      const safeKinds = [
+        "timeout",
+        "spawn",
+        "output-limit",
+        "failed",
+        "preflight",
+        "checkpoint",
+        "ambiguous",
+        "verification",
+        "artifact",
+        "authentication",
+      ];
+      record.failure = {
+        stage: name,
+        kind: typeof kind === "string" && safeKinds.includes(kind) ? kind : "unknown",
+      };
+      record.stages[name] = failure;
       throw new Error("Rehearsal stage stopped.");
     }
   };
   let expectedPair: DeploymentPair | undefined;
   const inspectExpectedPair = async () => {
+    delete record.observedPair;
     const observed = await dependencies.inspect();
+    record.observedPair = observed;
     if (!expectedPair || JSON.stringify(observed) !== JSON.stringify(expectedPair))
       throw new Error("Live deployment pair changed.");
-    record.observedPair = observed;
   };
   try {
     await stage("inspect", async () => {
@@ -113,23 +142,28 @@ export async function rehearsePreparedRelease(
     await stage("upload-worker", dependencies.uploadWorker);
     await stage("activate-worker", async () => {
       const activated = await dependencies.activateWorker();
+      record.activatedWorker = {
+        deploymentId: activated.deploymentId,
+        versionId: activated.versionId,
+      };
       expectedPair = {
         netlifyDeployId: record.priorPair!.netlifyDeployId,
         workerDeploymentId: activated.deploymentId,
         workerVersionId: activated.versionId,
       };
-      await inspectExpectedPair();
     });
+    await stage("observe-worker", inspectExpectedPair, "failed");
     await stage("verify-transition", async () => {
       if (!(await dependencies.verifyTransition()))
         throw new Error("Transition verification did not pass.");
     });
+    await stage("prepublish-check", inspectExpectedPair, "failed");
     await stage("publish-netlify", async () => {
-      await inspectExpectedPair();
       const published = await dependencies.publishNetlify();
+      record.publishedNetlify = { publishedDeployId: published.publishedDeployId };
       expectedPair = { ...expectedPair!, netlifyDeployId: published.publishedDeployId };
-      await inspectExpectedPair();
     });
+    await stage("observe-netlify", inspectExpectedPair, "failed");
     await stage("verify-pair", async () => {
       if (!(await dependencies.verifyPair())) throw new Error("Pair verification did not pass.");
       await inspectExpectedPair();
@@ -137,7 +171,7 @@ export async function rehearsePreparedRelease(
     record.outcome = "passed";
     record.recovery = "none";
   } catch {
-    record.outcome = "blocked";
+    record.outcome = Object.values(record.stages).includes("failed") ? "failed" : "blocked";
     // No automatic rollback. Retain every completed stage and any known live pair.
   }
   await store.save(record);

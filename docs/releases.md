@@ -23,9 +23,11 @@ bun run release:rehearse --artifacts /absolute/path/to/new-artifacts \
   --output /absolute/path/to/new-rehearsal --confirm-external-smoke --capture --json
 ```
 
-The preparation operation runs frozen installs for both package boundaries with lifecycle scripts
+Preparation creates a private detached copy of the exact candidate. Git verification ignores caller
+Git environment overrides and global configuration. Installs, builds, and packaging run exclusively
+in that copy, which is removed afterward. The preparation operation runs frozen installs for both package boundaries with lifecycle scripts
 disabled, builds the target-specific app and CSP, packages Netlify functions with the pinned ZISI,
-and dry-runs Wrangler into a separate bundle. Local dotenv overrides are rejected. Temporary build
+and dry-runs Wrangler into a separate bundle. Candidate dotenv overrides are rejected; caller-local files never enter the copy. Temporary build
 caches are removed. `prepared-release.json` binds the candidate commit, tree, configuration, toolchain,
 and both artifact inventories. The inventories hash static assets, generated headers, portable
 Netlify deploy configuration, function ZIPs and metadata, and the Worker bundle/configuration.
@@ -42,13 +44,16 @@ page and requests at most one screenshot. The explicit flags authorize these quo
 Netlify authentication uses its pinned CLI's normal token resolution. Cloudflare authentication uses
 Wrangler's `auth token --json` command with bounded in-memory capture. Credentials never enter command
 arguments or release records. Upload and activation requests do not retry automatically. A checkpoint
-is persisted before each mutation, with separate records for returned provider identifiers. Failures
+is persisted before each mutation, with separate records for returned provider identifiers. Mutation results are retained before the
+subsequent read-back check, so a failed observation does not erase a successful activation. The runner
+rechecks the expected pair immediately before publishing Netlify. Failures
 stop with recovery guidance; no automatic rollback occurs. Keep the complete artifact and report
 directories. Existing report directories cannot be reused to retry an interrupted operation.
 
 A local lock serializes rehearsals across worktrees sharing the Git repository. A persistent guard
 blocks new runs after an unresolved operation, including runs using a different output directory.
-Inspect the referenced checkpoints and live provider IDs before explicitly resolving that guard. Coordinate operators
+A completed failure confined to read-only inspection permits a fresh attempt. Incomplete guard
+evidence blocks execution. Inspect the referenced checkpoints and live provider IDs before explicitly resolving that guard. Coordinate operators
 on separate machines; this is not a distributed staging lock. Production serialization will be owned
 by the protected GitHub Actions workflow. Do not unlock the held staging deployment merely because
 an upload failed; inspect recorded IDs before a separate recovery action.

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstat, realpath, readdir } from "node:fs/promises";
+import { devNull } from "node:os";
 import { dirname, relative, resolve, sep } from "node:path";
 import { z } from "zod/v4";
 import { runCommand } from "./command.ts";
@@ -82,6 +83,31 @@ export function artifactBuildEnvironment(websocketUrl: string): Record<string, s
   return env;
 }
 
+// Git source verification must not inherit GIT_DIR/GIT_WORK_TREE, aliases, or
+// user/system configuration from the caller. Keep only the variables required
+// to spawn Git across supported platforms.
+export function artifactGitEnvironment(): Record<string, string> {
+  const env: Record<string, string> = {
+    GIT_CONFIG_GLOBAL: devNull,
+    GIT_CONFIG_NOSYSTEM: "1",
+    PATH: process.env.PATH ?? "",
+  };
+  for (const key of [
+    "SYSTEMROOT",
+    "SystemRoot",
+    "COMSPEC",
+    "ComSpec",
+    "PATHEXT",
+    "TMP",
+    "TEMP",
+    "TMPDIR",
+  ]) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
+  }
+  return env;
+}
+
 export async function verifyArtifactSource(
   repositoryRoot: string,
   candidate: string,
@@ -89,7 +115,11 @@ export async function verifyArtifactSource(
 ): Promise<{ source: ArtifactSourceContract; configuration: z.infer<typeof releaseConfigSchema> }> {
   if (!fullCommitSchema.safeParse(candidate).success) throw new ArtifactContractError("candidate");
   const git = async (args: string[]): Promise<string> => {
-    const result = await runCommand("git", args, { cwd: repositoryRoot });
+    const result = await runCommand("git", args, {
+      cwd: repositoryRoot,
+      env: artifactGitEnvironment(),
+      inheritEnv: false,
+    });
     if (result.exitCode !== 0) throw new ArtifactContractError("candidate");
     return result.stdout.trim();
   };

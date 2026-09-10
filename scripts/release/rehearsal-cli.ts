@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
   artifactBuildEnvironment,
+  artifactGitEnvironment,
   artifactHash,
   verifyArtifactSource,
 } from "./artifact-contract.ts";
@@ -127,7 +128,7 @@ export async function runRehearsalCli(args: readonly string[], repositoryRoot: s
         ),
         ...extra,
       },
-      timeoutMs: 30_000,
+      timeoutMs: 60_000,
     });
     if (result.exitCode !== 0) throw new Error("Provider inspection failed.");
     return result.stdout;
@@ -235,7 +236,11 @@ export async function runRehearsalCli(args: readonly string[], repositoryRoot: s
     );
     return result.outcome === "passed";
   };
-  const git = await runCommand("git", ["rev-parse", "--git-common-dir"], { cwd: repositoryRoot });
+  const git = await runCommand("git", ["rev-parse", "--git-common-dir"], {
+    cwd: repositoryRoot,
+    env: artifactGitEnvironment(),
+    inheritEnv: false,
+  });
   if (git.exitCode !== 0) throw new Error("Cannot establish staging lock.");
   return withRehearsalGuard(
     resolve(repositoryRoot, git.stdout.trim(), "release-staging"),
