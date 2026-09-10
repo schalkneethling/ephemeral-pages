@@ -14,6 +14,27 @@ import { createGitClient } from "./git.ts";
 const SECRET = "raw-provider-secret-must-not-escape";
 
 describe("bounded command execution", () => {
+  it("can exclude inherited secrets from build subprocesses", async () => {
+    const name = "RELEASE_TEST_SENSITIVE_ENV";
+    const previous = process.env[name];
+    process.env[name] = SECRET;
+    try {
+      const result = await runCommand(
+        process.execPath,
+        ["-e", `process.stdout.write(String(${JSON.stringify(name)} in process.env))`],
+        {
+          cwd: process.cwd(),
+          inheritEnv: false,
+          env: {},
+        },
+      );
+      expect(result).toEqual({ exitCode: 0, stdout: "false" });
+    } finally {
+      if (previous === undefined) delete process.env[name];
+      else process.env[name] = previous;
+    }
+  });
+
   it("times out without forwarding captured stderr", async () => {
     const result = runCommand(
       process.execPath,

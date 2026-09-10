@@ -8,6 +8,7 @@ export type CommandResult = {
 export type CommandOptions = {
   cwd: string;
   env?: Readonly<Record<string, string>>;
+  inheritEnv?: boolean;
   timeoutMs?: number;
   maxOutputBytes?: number;
 };
@@ -25,14 +26,20 @@ export class SafeCommandError extends Error {
 export async function runCommand(
   executable: string,
   args: readonly string[],
-  { cwd, env = {}, timeoutMs = 30_000, maxOutputBytes = 1024 * 1024 }: CommandOptions,
+  {
+    cwd,
+    env = {},
+    inheritEnv = true,
+    timeoutMs = 30_000,
+    maxOutputBytes = 1024 * 1024,
+  }: CommandOptions,
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const detached = process.platform !== "win32";
     const child = spawn(executable, args, {
       cwd,
       detached,
-      env: { ...process.env, ...env },
+      env: { ...(inheritEnv ? process.env : {}), ...env },
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });

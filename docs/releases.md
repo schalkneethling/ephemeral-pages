@@ -1,13 +1,62 @@
 # Repeatable releases
 
-Status: Native branch protections are active on `main` and `stage`, with read-only release
-planning and inspection tooling. Preparation, rehearsal, promotion, resumption, recovery, and the
-production publishing cutover remain implementation work. Existing CI and the production API
-smoke workflow provide part of the validation.
+Status: Native branch protections, read-only planning, local artifact preparation, and staging
+rehearsal tooling are implemented. Staging calibration is still required before relying on the new
+artifact promotion path. Production promotion, resumption, recovery, and publishing cutover remain
+implementation work. Production publishing settings have not been changed by this increment.
 
 This design applies the principles in
 [The release process is part of the product](https://schalkneethling.com/posts/the-release-process-is-part-of-the-product/)
 to the Netlify application and Cloudflare collaboration Worker.
+
+## Prepare artifacts and rehearse on staging
+
+Use a clean checkout of the exact candidate commit, with Bun 1.3.14 and the pinned dependencies
+installed. Preparation reads only checked-in environment settings; it accepts no configuration
+override. Choose new output directories outside the checkout, with existing parent directories:
+
+```sh
+candidate_sha=$(git rev-parse HEAD)
+bun run release:prepare --environment staging --candidate "$candidate_sha" \
+  --output /absolute/path/to/new-artifacts --json
+bun run release:rehearse --artifacts /absolute/path/to/new-artifacts \
+  --output /absolute/path/to/new-rehearsal --confirm-external-smoke --capture --json
+```
+
+The preparation operation runs frozen installs for both package boundaries with lifecycle scripts
+disabled, builds the target-specific app and CSP, packages Netlify functions with the pinned ZISI,
+and dry-runs Wrangler into a separate bundle. Local dotenv overrides are rejected. Temporary build
+caches are removed. `prepared-release.json` binds the candidate commit, tree, configuration, toolchain,
+and both artifact inventories. The inventories hash static assets, generated headers, portable
+Netlify deploy configuration, function ZIPs and metadata, and the Worker bundle/configuration.
+Preparation supports production builds but performs no provider mutation.
+
+Rehearsal supports the dedicated staging pair only. It verifies artifact hashes and current
+configuration, holds Netlify's stable deployment with a publish lock, and uploads a non-draft
+production-context candidate. This is deliberate: a deploy-preview-context draft would use different
+runtime environment values. Netlify's stable published ID must remain unchanged throughout upload.
+The runner uploads and activates the Worker, runs the old-app/new-Worker smoke, explicitly publishes
+the held Netlify deployment, then runs the final pair smoke. Each smoke creates at most one short-lived
+page and requests at most one screenshot. The explicit flags authorize these quota-consuming checks.
+
+Netlify authentication uses its pinned CLI's normal token resolution. Cloudflare authentication uses
+Wrangler's `auth token --json` command with bounded in-memory capture. Credentials never enter command
+arguments or release records. Upload and activation requests do not retry automatically. A checkpoint
+is persisted before each mutation, with separate records for returned provider identifiers. Failures
+stop with recovery guidance; no automatic rollback occurs. Keep the complete artifact and report
+directories. Existing report directories cannot be reused to retry an interrupted operation.
+
+A local lock serializes rehearsals across worktrees sharing the Git repository. Coordinate operators
+on separate machines; this is not a distributed staging lock. Production serialization will be owned
+by the protected GitHub Actions workflow. Do not unlock the held staging deployment merely because
+an upload failed; inspect recorded IDs before a separate recovery action.
+
+The ordinary Worker path supports the reviewed `v1` SQLite Durable Object lifecycle with no migration
+change. Different migration state blocks this path. Netlify upload acknowledgements and Cloudflare
+version metadata supplement local byte hashes, but neither API supplies downloadable inactive
+function/Worker bytes for independent byte-for-byte retrieval. Staging calibration and runtime smoke
+are required; a ready deployment alone is insufficient proof. A Netlify restore that returns a new
+unmapped deployment ID also blocks further execution.
 
 ## Read-only tooling
 

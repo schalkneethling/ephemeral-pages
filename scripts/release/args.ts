@@ -5,7 +5,9 @@ import { environmentSchema, fullCommitSchema, type ReleaseEnvironment } from "./
 
 export const releaseUsage = `Usage:
   bun run release:plan --environment <staging|production> --candidate <full-sha> --baseline <path> [--config <path>] [--json]
-  bun run release:status --environment <staging|production> --baseline <path> [--config <path>] [--json]`;
+  bun run release:status --environment <staging|production> --baseline <path> [--config <path>] [--json]
+  bun run release:prepare --environment <staging|production> --candidate <full-sha> --output <new-external-directory> [--json]
+  bun run release:rehearse --artifacts <prepared-directory> --output <new-report-directory> --confirm-external-smoke --capture [--json]`;
 
 type CommonArguments = {
   baselinePath: string;

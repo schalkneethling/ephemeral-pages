@@ -2,6 +2,9 @@ import { relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { parseReleaseArguments, releaseUsage, ReleaseUsageError } from "./args.ts";
+import { runRehearsalCli } from "./rehearsal-cli.ts";
+import { parsePrepareArguments } from "./prepare-args.ts";
+import { prepareRelease } from "./prepare.ts";
 import { createDeadlineProviderCommandRunner } from "./command.ts";
 import { readReleaseJson } from "./files.ts";
 import { createGitClient } from "./git.ts";
@@ -25,6 +28,22 @@ function absoluteRepositoryPath(path: string) {
 }
 
 async function main() {
+  if (process.argv[2] === "rehearse") {
+    const report = await runRehearsalCli(process.argv.slice(3), repositoryRoot);
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    if (report.outcome !== "passed") process.exitCode = 1;
+    return;
+  }
+  if (process.argv[2] === "prepare") {
+    const input = parsePrepareArguments(process.argv.slice(3), repositoryRoot, process.cwd());
+    const report = await prepareRelease(input);
+    process.stdout.write(
+      process.argv.includes("--json")
+        ? `${JSON.stringify(report, null, 2)}\n`
+        : `Prepared ${report.source.environment} artifacts for ${report.source.candidate}.\nRecord: ${resolve(input.artifactDirectory, "prepared-release.json")}\n`,
+    );
+    return;
+  }
   const args = parseReleaseArguments(process.argv.slice(2), {
     cwd: process.cwd(),
     repositoryRoot,
