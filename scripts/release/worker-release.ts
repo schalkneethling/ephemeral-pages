@@ -158,12 +158,34 @@ const EXPECTED_BINDING_NAMES = [
   "TICKET_AUDIENCE",
   "TICKET_HMAC_SECRET",
 ] as const;
+const SUPPORTED_ARTIFACT_PATHS = new Set([
+  "bundle/index.js",
+  "bundle/index.js.map",
+  "config/wrangler.json",
+]);
 
 const isObject = (value: unknown): value is JsonObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= 4_096;
+
+const containsConfiguredJson = (actual: unknown, expected: unknown): boolean => {
+  if (Array.isArray(expected)) {
+    return (
+      Array.isArray(actual) &&
+      actual.length === expected.length &&
+      expected.every((item, index) => containsConfiguredJson(actual[index], item))
+    );
+  }
+  if (isObject(expected)) {
+    return (
+      isObject(actual) &&
+      Object.entries(expected).every(([key, item]) => containsConfiguredJson(actual[key], item))
+    );
+  }
+  return Object.is(actual, expected);
+};
 
 const normalizeScriptEtag = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;
@@ -433,7 +455,10 @@ const verifyPrepared = async (
       manifest.target.accountId !== input.artifactInput.target.accountId ||
       manifest.target.workerName !== input.artifactInput.target.workerName ||
       manifest.policy.migrations.length !== 1 ||
-      manifest.policy.migrations[0].tag !== "v1"
+      manifest.policy.migrations[0].tag !== "v1" ||
+      !manifest.files.some(({ path }) => path === "bundle/index.js") ||
+      !manifest.files.some(({ path }) => path === "config/wrangler.json") ||
+      manifest.files.some(({ path }) => !SUPPORTED_ARTIFACT_PATHS.has(path))
     ) {
       throw new Error();
     }
@@ -489,12 +514,16 @@ const readProvider = async (
   }
 };
 
-const parseCurrentMigration = (value: unknown): "v1" => {
+const parseCurrentServicePolicy = (value: unknown, manifest: WorkerArtifactManifest): "v1" => {
   if (
     !isObject(value) ||
     !isObject(value.default_environment) ||
     !isObject(value.default_environment.script) ||
-    value.default_environment.script.migration_tag !== "v1"
+    value.default_environment.script.migration_tag !== "v1" ||
+    !containsConfiguredJson(
+      value.default_environment.script.observability,
+      manifest.policy.observability,
+    )
   ) {
     throw new Error();
   }
@@ -604,8 +633,9 @@ const inspectBaseline = async (
 ): Promise<void> => {
   const { accountId, workerName } = input.artifactInput.target;
   try {
-    parseCurrentMigration(
+    parseCurrentServicePolicy(
       await readProvider(dependencies, servicePath(accountId, workerName), "preflight"),
+      manifest,
     );
     const deployment = parseLatestDeployment(
       await readProvider(
@@ -802,8 +832,9 @@ export const activatePreparedStagingWorker = async (
       input.prepared.manifestSha256,
     );
     if (uploadedEtag !== input.upload.scriptEtag) throw new Error();
-    parseCurrentMigration(
+    parseCurrentServicePolicy(
       await readProvider(dependencies, servicePath(accountId, workerName), "preflight"),
+      manifest,
     );
   } catch {
     throw new WorkerReleaseError("preflight");
@@ -844,8 +875,9 @@ export const activatePreparedStagingWorker = async (
     if (deployment.id !== deploymentId || deployment.versionId !== input.upload.versionId) {
       throw new Error();
     }
-    parseCurrentMigration(
+    parseCurrentServicePolicy(
       await readProvider(dependencies, servicePath(accountId, workerName), "verification"),
+      manifest,
     );
     scriptEtag = parseVersionAgainstInput(
       await readProvider(

@@ -38,9 +38,9 @@ export type RehearsalDependencies = {
   inspect: () => Promise<DeploymentPair>;
   holdNetlify: () => Promise<void>;
   uploadWorker: () => Promise<void>;
-  activateWorker: () => Promise<void>;
+  activateWorker: () => Promise<{ deploymentId: string; versionId: string }>;
   verifyTransition: () => Promise<boolean>;
-  publishNetlify: () => Promise<void>;
+  publishNetlify: () => Promise<{ publishedDeployId: string }>;
   verifyPair: () => Promise<boolean>;
 };
 
@@ -97,6 +97,13 @@ export async function rehearsePreparedRelease(
       throw new Error("Rehearsal stage stopped.");
     }
   };
+  let expectedPair: DeploymentPair | undefined;
+  const inspectExpectedPair = async () => {
+    const observed = await dependencies.inspect();
+    if (!expectedPair || JSON.stringify(observed) !== JSON.stringify(expectedPair))
+      throw new Error("Live deployment pair changed.");
+    record.observedPair = observed;
+  };
   try {
     await stage("inspect", async () => {
       record.priorPair = await dependencies.inspect();
@@ -105,20 +112,27 @@ export async function rehearsePreparedRelease(
     await stage("hold-netlify", dependencies.holdNetlify);
     await stage("upload-worker", dependencies.uploadWorker);
     await stage("activate-worker", async () => {
-      await dependencies.activateWorker();
-      record.observedPair = await dependencies.inspect();
+      const activated = await dependencies.activateWorker();
+      expectedPair = {
+        netlifyDeployId: record.priorPair!.netlifyDeployId,
+        workerDeploymentId: activated.deploymentId,
+        workerVersionId: activated.versionId,
+      };
+      await inspectExpectedPair();
     });
     await stage("verify-transition", async () => {
       if (!(await dependencies.verifyTransition()))
         throw new Error("Transition verification did not pass.");
     });
     await stage("publish-netlify", async () => {
-      await dependencies.publishNetlify();
-      record.observedPair = await dependencies.inspect();
+      await inspectExpectedPair();
+      const published = await dependencies.publishNetlify();
+      expectedPair = { ...expectedPair!, netlifyDeployId: published.publishedDeployId };
+      await inspectExpectedPair();
     });
     await stage("verify-pair", async () => {
       if (!(await dependencies.verifyPair())) throw new Error("Pair verification did not pass.");
-      record.observedPair = await dependencies.inspect();
+      await inspectExpectedPair();
     });
     record.outcome = "passed";
     record.recovery = "none";

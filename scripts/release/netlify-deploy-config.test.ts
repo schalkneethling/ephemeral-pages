@@ -70,6 +70,24 @@ describe("Netlify deploy configuration", () => {
     }
   });
 
+  it("rejects parser diagnostics instead of silently omitting generated policies", async () => {
+    const { root, publishDirectory } = await fixture(`
+[build]
+  publish = "dist"
+`);
+    try {
+      await Promise.all([
+        writeFile(join(publishDirectory, "_headers"), "/*\n  X-Frame-Options:\n"),
+        writeFile(join(publishDirectory, "_redirects"), "/missing-destination\n"),
+      ]);
+      await expect(
+        prepareNetlifyDeployConfiguration({ repositoryRoot: root, publishDirectory }),
+      ).rejects.toMatchObject({ kind: "invalid-input" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("normalizes explicit function settings only for the local ZISI packing step", async () => {
     const { root, publishDirectory } = await fixture(`
 [build]

@@ -6,7 +6,8 @@ import {
   artifactHash,
   verifyArtifactSource,
 } from "./artifact-contract.ts";
-import { withExclusiveFileLock, readBoundedJson } from "./bootstrap-safety.ts";
+import { createAtomicJsonStore, readBoundedJson } from "./bootstrap-safety.ts";
+import { withRehearsalGuard } from "./rehearsal-guard.ts";
 import { runCommand } from "./command.ts";
 import { readReleaseJson } from "./files.ts";
 import { verifyNetlifyArtifacts, type NetlifyArtifactInventory } from "./netlify-artifacts.ts";
@@ -164,11 +165,15 @@ export async function runRehearsalCli(args: readonly string[], repositoryRoot: s
   };
   let eventIndex = 0;
   const checkpoint = async (value: unknown) => {
-    await writeFile(
-      resolve(input.reportDirectory, `provider-${String(++eventIndex).padStart(3, "0")}.json`),
-      `${JSON.stringify(value)}\n`,
-      { flag: "wx", mode: 0o600 },
+    const path = resolve(
+      input.reportDirectory,
+      `provider-${String(++eventIndex).padStart(3, "0")}.json`,
     );
+    await createAtomicJsonStore<unknown>(
+      path,
+      1024 * 1024,
+      () => new Error("Cannot persist provider checkpoint."),
+    ).save(value);
   };
   const netlifyDependencies = {
     client: await createAuthenticatedNetlifyDeploymentClient(repositoryRoot),
@@ -232,8 +237,10 @@ export async function runRehearsalCli(args: readonly string[], repositoryRoot: s
   };
   const git = await runCommand("git", ["rev-parse", "--git-common-dir"], { cwd: repositoryRoot });
   if (git.exitCode !== 0) throw new Error("Cannot establish staging lock.");
-  return withExclusiveFileLock(
+  return withRehearsalGuard(
     resolve(repositoryRoot, git.stdout.trim(), "release-staging"),
+    record.source.candidate,
+    input.reportDirectory,
     () =>
       rehearsePreparedRelease(input, {
         inspect: async () => {
@@ -269,19 +276,25 @@ export async function runRehearsalCli(args: readonly string[], repositoryRoot: s
         },
         activateWorker: async () => {
           if (!upload) throw new Error("Missing uploaded Worker.");
-          await checkpoint(
-            await activatePreparedStagingWorker({ ...workerRelease(), upload }, workerDependencies),
+          const activated = await activatePreparedStagingWorker(
+            { ...workerRelease(), upload },
+            workerDependencies,
           );
+          await checkpoint(activated);
+          return activated;
         },
         verifyTransition: () => smoke("transition-smoke"),
         publishNetlify: async () => {
           if (!held) throw new Error("Missing held deployment.");
-          await checkpoint(
-            await publishHeldNetlifyDeployment(netlifyInput(), held, netlifyDependencies),
+          const published = await publishHeldNetlifyDeployment(
+            netlifyInput(),
+            held,
+            netlifyDependencies,
           );
+          await checkpoint(published);
+          return published;
         },
         verifyPair: () => smoke("pair-smoke"),
       }),
-    () => new Error("Staging rehearsal is locked; inspect the previous run."),
   );
 }

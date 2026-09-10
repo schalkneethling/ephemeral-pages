@@ -46,7 +46,9 @@ is persisted before each mutation, with separate records for returned provider i
 stop with recovery guidance; no automatic rollback occurs. Keep the complete artifact and report
 directories. Existing report directories cannot be reused to retry an interrupted operation.
 
-A local lock serializes rehearsals across worktrees sharing the Git repository. Coordinate operators
+A local lock serializes rehearsals across worktrees sharing the Git repository. A persistent guard
+blocks new runs after an unresolved operation, including runs using a different output directory.
+Inspect the referenced checkpoints and live provider IDs before explicitly resolving that guard. Coordinate operators
 on separate machines; this is not a distributed staging lock. Production serialization will be owned
 by the protected GitHub Actions workflow. Do not unlock the held staging deployment merely because
 an upload failed; inspect recorded IDs before a separate recovery action.

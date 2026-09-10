@@ -39,8 +39,11 @@ const createFixture = async (): Promise<{
   temporaryDirectories.push(root);
   const artifactDirectory = join(root, "artifact");
   await mkdir(join(artifactDirectory, "bundle"), { recursive: true });
+  await mkdir(join(artifactDirectory, "config"), { recursive: true });
   const source = "export default { fetch() { return new Response('ok') } };\n";
+  const config = "{}\n";
   await writeFile(join(artifactDirectory, "bundle/index.js"), source);
+  await writeFile(join(artifactDirectory, "config/wrangler.json"), config);
   const variables = {
     ALLOWED_ORIGINS: "https://stage.example.test",
     PAGE_CONTENT_ORIGIN: "https://stage.example.test",
@@ -71,6 +74,11 @@ const createFixture = async (): Promise<{
         path: "bundle/index.js",
         sha256: digest(entrypointBytes),
       },
+      {
+        bytes: Buffer.byteLength(config),
+        path: "config/wrangler.json",
+        sha256: digest(config),
+      },
     ],
     policy: {
       browser: { binding: "BROWSER" },
@@ -80,7 +88,11 @@ const createFixture = async (): Promise<{
         bindings: [{ className: "CollaborationRoom", name: "COLLABORATION_ROOMS" }],
       },
       migrations: [{ newSqliteClasses: ["CollaborationRoom"], tag: "v1" }],
-      observability: { enabled: true },
+      observability: {
+        enabled: true,
+        logs: { enabled: true, head_sampling_rate: 0.1 },
+        traces: { enabled: true, head_sampling_rate: 0.01 },
+      },
       requiredSecretNames: ["TICKET_HMAC_SECRET", "ADMIN_TOKEN"],
       workersDev: true,
     },
@@ -96,7 +108,11 @@ const createFixture = async (): Promise<{
       workerName: "stage-worker",
       wranglerEnvironment: "staging",
     },
-    uploadConfig: { bytes: 1, path: "config/wrangler.json", sha256: "b".repeat(64) },
+    uploadConfig: {
+      bytes: Buffer.byteLength(config),
+      path: "config/wrangler.json",
+      sha256: digest(config),
+    },
     wranglerVersion: "4.125.0",
   };
   const prepared: PreparedWorkerArtifacts = {
@@ -149,7 +165,25 @@ const version = (
   },
 });
 
-const service = { default_environment: { script: { migration_tag: "v1" } } };
+const service = {
+  default_environment: {
+    script: {
+      migration_tag: "v1",
+      observability: {
+        enabled: true,
+        head_sampling_rate: 1,
+        logs: {
+          enabled: true,
+          head_sampling_rate: 0.1,
+          invocation_logs: true,
+          persist: true,
+        },
+        redact_query_string: false,
+        traces: { enabled: true, head_sampling_rate: 0.01, persist: true },
+      },
+    },
+  },
+};
 const deployments = (id: string, versionId: string): unknown => ({
   deployments: [{ id, versions: [{ percentage: 100, version_id: versionId }] }],
 });
@@ -171,6 +205,26 @@ class ScriptedTransport implements WorkerReleaseTransport {
 }
 
 describe("uploadPreparedStagingWorker", () => {
+  it("rejects an additional executable module before provider inspection or mutation", async () => {
+    const { input, manifest } = await createFixture();
+    const unsupportedManifest: WorkerArtifactManifest = {
+      ...manifest,
+      files: [...manifest.files, { bytes: 1, path: "bundle/chunk.js", sha256: "d".repeat(64) }],
+    };
+    const checkpoint = vi.fn(async () => undefined);
+    const transport = new ScriptedTransport([]);
+
+    await expect(
+      uploadPreparedStagingWorker(input, {
+        checkpoint,
+        transport,
+        verifyArtifacts: async () => unsupportedManifest,
+      }),
+    ).rejects.toMatchObject({ kind: "artifact" });
+    expect(transport.requests).toHaveLength(0);
+    expect(checkpoint).not.toHaveBeenCalled();
+  });
+
   it("checks the baseline, checkpoints, and sends one exact multipart mutation", async () => {
     const { input, manifest } = await createFixture();
     const transport = new ScriptedTransport([
@@ -251,6 +305,28 @@ describe("uploadPreparedStagingWorker", () => {
       message: "The Worker mutation checkpoint could not be persisted.",
     });
     expect(transport.requests.filter(({ method }) => method === "POST")).toHaveLength(0);
+  });
+
+  it("blocks when the existing non-versioned observability policy differs", async () => {
+    const { input, manifest } = await createFixture();
+    const checkpoint = vi.fn(async () => undefined);
+    const transport = new ScriptedTransport([
+      {
+        default_environment: {
+          script: { migration_tag: "v1", observability: { enabled: false } },
+        },
+      },
+    ]);
+
+    await expect(
+      uploadPreparedStagingWorker(input, {
+        checkpoint,
+        transport,
+        verifyArtifacts: async () => manifest,
+      }),
+    ).rejects.toMatchObject({ kind: "preflight" });
+    expect(transport.requests.filter(({ method }) => method === "POST")).toHaveLength(0);
+    expect(checkpoint).not.toHaveBeenCalled();
   });
 
   it("classifies a dispatched upload failure as ambiguous and never retries", async () => {

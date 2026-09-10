@@ -20,13 +20,13 @@ type ParseRedirects = (options: {
   configRedirects: unknown;
   redirectsFiles: readonly string[];
   minimal: true;
-}) => Promise<{ redirects: unknown }>;
+}) => Promise<{ redirects: unknown; errors: readonly unknown[] }>;
 
 type ParseHeaders = (options: {
   configHeaders: unknown;
   headersFiles: readonly string[];
   minimal: true;
-}) => Promise<{ headers: unknown }>;
+}) => Promise<{ headers: unknown; errors: readonly unknown[] }>;
 
 type NormalizeFunctionsConfig = (options: {
   functionsConfig: unknown;
@@ -164,7 +164,7 @@ export const prepareNetlifyDeployConfiguration = async (input: {
       mode: "cli",
     });
     const config = assertResolvedConfigIsDeploySafe(resolved.config);
-    const [{ redirects }, { headers }] = await Promise.all([
+    const [redirectResult, headerResult] = await Promise.all([
       parseAllRedirects({
         configRedirects: config.redirects,
         redirectsFiles: [resolve(publishDirectory, "_redirects")],
@@ -176,6 +176,11 @@ export const prepareNetlifyDeployConfiguration = async (input: {
         minimal: true,
       }),
     ]);
+    if (redirectResult.errors.length !== 0 || headerResult.errors.length !== 0) {
+      throw new NetlifyDeployConfigError("invalid-input");
+    }
+    const { redirects } = redirectResult;
+    const { headers } = headerResult;
     const portableConfig = { redirects, headers };
     const contents = serializeToml(tomlifyModule.default, portableConfig);
     const functionConfig = hasExplicitFunctionConfiguration(config.functions)

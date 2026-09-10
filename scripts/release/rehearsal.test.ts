@@ -60,6 +60,7 @@ async function fixture() {
     activateWorker: async () => {
       calls.push("activate");
       worker = "new-worker";
+      return { deploymentId: worker, versionId: worker };
     },
     verifyTransition: async () => {
       calls.push("transition");
@@ -70,6 +71,7 @@ async function fixture() {
     publishNetlify: async () => {
       calls.push("publish");
       app = "new-app";
+      return { publishedDeployId: app };
     },
     verifyPair: async () => {
       calls.push("pair");
@@ -113,5 +115,21 @@ it("does not publish after failed old-app/new-Worker compatibility", async () =>
   dependencies.verifyTransition = async () => false;
   const result = await rehearsePreparedRelease(input, dependencies);
   expect(result.outcome).toBe("blocked");
+  expect(calls).not.toContain("publish");
+});
+
+it("blocks Netlify publication if another Worker replaces the verified version", async () => {
+  const { input, dependencies, calls } = await fixture();
+  dependencies.verifyTransition = async () => {
+    dependencies.inspect = async () => ({
+      netlifyDeployId: "old-app",
+      workerDeploymentId: "other-worker",
+      workerVersionId: "other-version",
+    });
+    return true;
+  };
+  const result = await rehearsePreparedRelease(input, dependencies);
+  expect(result.outcome).toBe("blocked");
+  expect(result.stages["publish-netlify"]).toBe("blocked");
   expect(calls).not.toContain("publish");
 });
