@@ -25,6 +25,9 @@
     "governance:security": "node scripts/configure-github-security.mjs",
     "knip": "knip",
     "preview": "vp preview",
+    "release:check": "tsc -p scripts/release/tsconfig.json --noEmit",
+    "release:plan": "bun scripts/release/cli.ts plan",
+    "release:status": "bun scripts/release/cli.ts status",
     "smoke:production": "node scripts/production-smoke.mjs",
     "test": "vp test",
     "test:e2e": "playwright test",
@@ -47,6 +50,7 @@
     "@playwright/test": "^1.57.0",
     "@varlock/1password-plugin": "^2.0.0",
     "knip": "^6.27.0",
+    "netlify-cli": "27.5.0",
     "stylelint": "^17.11.1",
     "stylelint-order": "^8.1.1",
     "typescript": "~7.0.2",
@@ -54,7 +58,7 @@
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vite-plus": "latest",
     "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
-    "wrangler": "^4.125.0"
+    "wrangler": "4.125.0"
   },
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",

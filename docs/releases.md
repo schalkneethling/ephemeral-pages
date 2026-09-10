@@ -1,11 +1,56 @@
 # Repeatable releases
 
-Status: proposed release contract. The coordinated release automation described below is not yet
-implemented. Existing CI and the production API smoke workflow provide part of the validation.
+Status: release contract with read-only planning and inspection tooling. Preparation, rehearsal,
+promotion, resumption, recovery, and the production publishing cutover remain implementation work.
+Existing CI and the production API smoke workflow provide part of the validation.
 
 This design applies the principles in
 [The release process is part of the product](https://schalkneethling.com/posts/the-release-process-is-part-of-the-product/)
 to the Netlify application and Cloudflare collaboration Worker.
+
+## Read-only tooling
+
+The repository owns the `release:plan` and `release:status` scripts. They use pinned Netlify CLI
+27.5.0 and Wrangler 4.125.0 installations, with explicit provider targets from
+[`scripts/release/environments.json`](../scripts/release/environments.json). The staging targets
+remain `null` until dedicated resources have been provisioned and their assigned identifiers
+recorded. Missing targets block inspection; the runner does not substitute production targets.
+
+Both operations require an environment and a versioned baseline file. Planning also requires a full
+candidate commit. The argument parser in
+[`scripts/release/args.ts`](../scripts/release/args.ts) defines the command interface, and
+[`scripts/release/schema.ts`](../scripts/release/schema.ts) defines configuration and baseline shapes.
+The baseline records each service's own source commit and observed provider deployment identifiers.
+Unknown source attribution must remain unknown; do not assign the current `main` commit merely
+because it is convenient. Status can inspect a deployment pair whose source attribution is still
+unknown; planning blocks on that gap. Missing targets or inconsistent deployment evidence block
+both operations.
+
+Set `RELEASE_BASELINE` to the absolute path of the baseline JSON outside the checkout and
+`RELEASE_CANDIDATE` to the full candidate commit, then run:
+
+```sh
+bun run release:status --environment staging --baseline "$RELEASE_BASELINE" --json
+bun run release:plan --environment staging --candidate "$RELEASE_CANDIDATE" --baseline "$RELEASE_BASELINE" --json
+```
+
+Use a clean checkout. Planning verifies the candidate's membership in `stage` and binds the
+configuration to the candidate. An explicit `--config` path is reported as an override and must
+still satisfy the candidate checks. Replace `staging` with `production` for read-only production
+inspection; neither command publishes anything.
+
+Use `--json` for a versioned, sanitized report. Keep credentials in the vendor CLI's supported
+authentication mechanism or environment variables, never command arguments or baseline files.
+Inspection compares only the configured non-secret values and required secret metadata; it does not
+export environment listings. Netlify scope requirements are explicit for each variable: runtime
+configuration needs the Functions scope, and the WebSocket origin also needs the Builds scope for
+CSP generation. Secret presence does not prove that the two platforms share matching
+values, so ticket and screenshot smoke checks remain necessary during rehearsal.
+
+A successful read-only plan is not release approval. It does not build, publish, rotate secrets,
+prove artifact identity, or establish storage compatibility. The remaining gates below still apply.
+Blocked results exit nonzero. Invalid arguments or input files produce a sanitized preflight
+failure; `--json` preserves a versioned JSON shape for those failures as well.
 
 ## Independent of any work set
 
