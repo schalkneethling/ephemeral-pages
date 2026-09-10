@@ -60,21 +60,26 @@ describe("bounded command execution", () => {
       const launched = join(directory, "descendant-launched");
       const marker = join(directory, "descendant-survived");
       try {
-        const descendant = `require("node:fs").writeFileSync(${JSON.stringify(launched)}, "launched"); setTimeout(() => require("node:fs").writeFileSync(${JSON.stringify(marker)}, "alive"), 800)`;
+        const descendant = `require("node:fs").writeFileSync(${JSON.stringify(launched)}, "launched"); setTimeout(() => require("node:fs").writeFileSync(${JSON.stringify(marker)}, "alive"), 2500)`;
         const parent = `require("node:child_process").spawn(process.execPath, ["-e", ${JSON.stringify(descendant)}], { stdio: "ignore" }); setTimeout(() => {}, 10_000)`;
-        await expect(
-          runCommand(process.execPath, ["-e", parent], {
-            cwd: directory,
-            timeoutMs: 300,
-          }),
-        ).rejects.toThrow("Command timeout.");
+        const result = runCommand(process.execPath, ["-e", parent], {
+          cwd: directory,
+          timeoutMs: 1_500,
+        });
+        const completion = expect(result).rejects.toThrow("Command timeout.");
+        const launchDeadline = Date.now() + 1_000;
+        while (!existsSync(launched) && Date.now() < launchDeadline) {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
         expect(existsSync(launched)).toBe(true);
-        await new Promise((resolve) => setTimeout(resolve, 900));
+        await completion;
+        await new Promise((resolve) => setTimeout(resolve, 2_600));
         expect(existsSync(marker)).toBe(false);
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }
     },
+    5_000,
   );
 });
 
@@ -89,7 +94,19 @@ describe("Git inspection", () => {
       execFileSync("git", ["add", "."], { cwd: directory });
       execFileSync(
         "git",
-        ["-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-qm", "first"],
+        [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.test",
+          "-c",
+          "commit.gpgSign=false",
+          "-c",
+          "core.hooksPath=/dev/null",
+          "commit",
+          "-qm",
+          "first",
+        ],
         { cwd: directory },
       );
       const first = execFileSync("git", ["rev-parse", "HEAD"], {
@@ -104,7 +121,19 @@ describe("Git inspection", () => {
       execFileSync("git", ["add", "."], { cwd: directory });
       execFileSync(
         "git",
-        ["-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-qm", "second"],
+        [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.test",
+          "-c",
+          "commit.gpgSign=false",
+          "-c",
+          "core.hooksPath=/dev/null",
+          "commit",
+          "-qm",
+          "second",
+        ],
         { cwd: directory },
       );
       const second = execFileSync("git", ["rev-parse", "HEAD"], {

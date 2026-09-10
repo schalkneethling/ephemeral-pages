@@ -44,7 +44,8 @@ authentication mechanism or environment variables, never command arguments or ba
 Inspection compares only the configured non-secret values and required secret metadata; it does not
 export environment listings. Netlify scope requirements are explicit for each variable: runtime
 configuration needs the Functions scope, and the WebSocket origin also needs the Builds scope for
-CSP generation. Secret presence does not prove that the two platforms share matching
+CSP generation. These are minimum requirements; additional scopes are permitted.
+Secret presence does not prove that the two platforms share matching
 values, so ticket and screenshot smoke checks remain necessary during rehearsal.
 
 A successful read-only plan is not release approval. It does not build, publish, rotate secrets,
@@ -240,9 +241,10 @@ Keep provider calls behind Netlify and Cloudflare adapters so release policy can
 deploying. GitHub Actions should invoke the same runner, supply deployment credentials, serialize
 releases, and retain evidence. Do not build a general-purpose deployment framework first.
 
-The runner should expose distinct planning, rehearsal, promotion, status, and recovery operations.
-Their command syntax and record schema will be defined and tested during implementation; there
-are no new release commands to run yet.
+The runner currently exposes planning and status operations, documented under
+[Read-only tooling](#read-only-tooling). Preparation, rehearsal, promotion, resumption, and recovery
+remain deferred; their command syntax and record schemas will be defined and tested as those
+operations are implemented.
 
 Before production promotion can be authoritative, replace the current automatic production publish
 on merge with a controlled publish path. Otherwise a merge can bypass the release checks. Provider

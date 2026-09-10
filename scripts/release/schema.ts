@@ -24,6 +24,12 @@ export const netlifyTargetSchema = z
     ),
   })
   .superRefine((target, context) => {
+    if (target.requiredSecretNames.some((name) => name in target.expectedNonSecretVariables)) {
+      context.addIssue({
+        code: "custom",
+        message: "Netlify variables cannot be both secret and non-secret.",
+      });
+    }
     const variables = new Set([
       ...Object.keys(target.expectedNonSecretVariables),
       ...target.requiredSecretNames,
@@ -43,19 +49,28 @@ export const netlifyTargetSchema = z
     }
   });
 
-export const cloudflareTargetSchema = z.strictObject({
-  accountId: identifierSchema,
-  workerName: identifierSchema,
-  wranglerEnvironment: identifierSchema,
-  wranglerConfigPath: z
-    .string()
-    .min(1)
-    .max(1_024)
-    .regex(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/u)
-    .refine((path) => path.split("/").every((part) => part !== "." && part !== "..")),
-  expectedNonSecretVariables: expectedVariablesSchema,
-  requiredSecretNames: requiredSecretNamesSchema,
-});
+export const cloudflareTargetSchema = z
+  .strictObject({
+    accountId: identifierSchema,
+    workerName: identifierSchema,
+    wranglerEnvironment: identifierSchema,
+    wranglerConfigPath: z
+      .string()
+      .min(1)
+      .max(1_024)
+      .regex(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/u)
+      .refine((path) => path.split("/").every((part) => part !== "." && part !== "..")),
+    expectedNonSecretVariables: expectedVariablesSchema,
+    requiredSecretNames: requiredSecretNamesSchema,
+  })
+  .superRefine((target, context) => {
+    if (target.requiredSecretNames.some((name) => name in target.expectedNonSecretVariables)) {
+      context.addIssue({
+        code: "custom",
+        message: "Cloudflare variables cannot be both secret and non-secret.",
+      });
+    }
+  });
 
 const environmentTargetSchema = z.strictObject({
   netlify: netlifyTargetSchema.nullable(),

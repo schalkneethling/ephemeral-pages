@@ -259,8 +259,8 @@ async function inspectProviders(
       check(
         "netlify.variable-scopes",
         netlify.variableScopesMatch,
-        "Netlify variable scopes match.",
-        "One or more Netlify variable scopes are missing or different.",
+        "Required Netlify variable scopes are present.",
+        "One or more required Netlify variable scopes are missing.",
       ),
     );
   }

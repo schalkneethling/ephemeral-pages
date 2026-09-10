@@ -226,7 +226,7 @@ describe("release status", () => {
     expect(report.checks).toContainEqual({
       id: "netlify.variable-scopes",
       outcome: "blocked",
-      summary: "One or more Netlify variable scopes are missing or different.",
+      summary: "One or more required Netlify variable scopes are missing.",
     });
   });
 

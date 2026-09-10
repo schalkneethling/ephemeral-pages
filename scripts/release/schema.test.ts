@@ -5,6 +5,7 @@ import { affectedServices } from "./changes.ts";
 import {
   cloudflareTargetSchema,
   fullCommitSchema,
+  netlifyTargetSchema,
   releaseBaselineSchema,
   releaseConfigSchema,
 } from "./schema.ts";
@@ -53,6 +54,28 @@ describe("release input grammar", () => {
             netlify: { ...target, requiredVariableScopes: { PUBLIC_URL: ["builds"] } },
           },
         },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects variables configured as both secret and non-secret", () => {
+    expect(
+      netlifyTargetSchema.safeParse({
+        siteId: "site",
+        accountId: "account",
+        expectedNonSecretVariables: { TOKEN: "plaintext" },
+        requiredSecretNames: ["TOKEN"],
+        requiredVariableScopes: { TOKEN: ["functions"] },
+      }).success,
+    ).toBe(false);
+    expect(
+      cloudflareTargetSchema.safeParse({
+        accountId: "account",
+        workerName: "worker",
+        wranglerEnvironment: "production",
+        wranglerConfigPath: "collaboration-worker/wrangler.jsonc",
+        expectedNonSecretVariables: { TOKEN: "plaintext" },
+        requiredSecretNames: ["TOKEN"],
       }).success,
     ).toBe(false);
   });

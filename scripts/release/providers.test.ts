@@ -185,14 +185,11 @@ describe("inspectNetlify", () => {
     await expect(inspectNetlify(netlifyConfig, async () => malformed)).rejects.toThrow(
       "Netlify inspection response is invalid.",
     );
-    try {
-      await inspectNetlify(netlifyConfig, async () => {
-        throw new Error(SECRET_SENTINEL);
-      });
-    } catch (error) {
-      expect(String(error)).toBe("Error: Netlify inspection command failed.");
-      expect(String(error)).not.toContain(SECRET_SENTINEL);
-    }
+    const commandFailure = inspectNetlify(netlifyConfig, async () => {
+      throw new Error(SECRET_SENTINEL);
+    });
+    await expect(commandFailure).rejects.toThrow("Netlify inspection command failed.");
+    await expect(commandFailure).rejects.not.toThrow(SECRET_SENTINEL);
   });
 
   it("rejects a published deploy that is not ready", async () => {
@@ -428,14 +425,11 @@ describe("inspectCloudflare", () => {
       ),
     ).rejects.toThrow("Cloudflare inspection response is invalid.");
 
-    try {
-      await inspectCloudflare(cloudflareConfig, async () => {
-        throw new Error(SECRET_SENTINEL);
-      });
-    } catch (error) {
-      expect(String(error)).toBe("Error: Cloudflare inspection command failed.");
-      expect(String(error)).not.toContain(SECRET_SENTINEL);
-    }
+    const commandFailure = inspectCloudflare(cloudflareConfig, async () => {
+      throw new Error(SECRET_SENTINEL);
+    });
+    await expect(commandFailure).rejects.toThrow("Cloudflare inspection command failed.");
+    await expect(commandFailure).rejects.not.toThrow(SECRET_SENTINEL);
   });
 
   it("rejects base and environment account overrides before provider commands", async () => {
