@@ -54,6 +54,12 @@ automation already established by this document. Branch routing also does not co
 replace automatic production publishing on merge with the controlled release workflow before
 treating promotion as separate from deployment.
 
+Bootstrap exception: introduce the trusted routing checker through a separately reviewed CI-only
+PR to `main` before making it required. This one-time exception establishes the trusted code used
+by privileged metadata checks; it does not authorize release-sensitive application changes to
+bypass `stage`. Synchronize `stage` after that bootstrap merges. Enable the required check only
+after verifying its live status on valid and invalid routes.
+
 ## Bootstrap once, verify on every release
 
 Account setup, deployment credentials, exact origins, initial secrets, and the first Durable Object
