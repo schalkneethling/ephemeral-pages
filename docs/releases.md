@@ -1,7 +1,8 @@
 # Repeatable releases
 
-Status: proposed release contract. The coordinated release automation described below is not yet
-implemented. Existing CI and the production API smoke workflow provide part of the validation.
+Status: PR routing is implemented and required on `main` and `stage`. The coordinated deployment
+automation described below is not yet implemented. Existing CI and the production API smoke
+workflow provide part of the validation.
 
 This design applies the principles in
 [The release process is part of the product](https://schalkneethling.com/posts/the-release-process-is-part-of-the-product/)
@@ -48,17 +49,18 @@ checks against that exact commit. A source-tree mismatch requires a new rehearsa
 Build production artifacts from the verified promotion commit with explicit production configuration.
 After promotion, synchronize `stage` with `main` before integrating the next release's work.
 
-CI must enforce this routing, including allowed stack dependencies and the promotion exception;
-the label alone is not enforcement. The branch and checks are implementation requirements, not
-automation already established by this document. Branch routing also does not coordinate providers:
-replace automatic production publishing on merge with the controlled release workflow before
-treating promotion as separate from deployment.
+The trusted [routing workflow](../.github/workflows/release-routing.yml) validates PR metadata
+without executing contributor code. It accepts direct `stage` targets, verified open same-repository
+PR dependencies leading to `stage`, and the `stage`-to-`main` promotion exception. The required
+`release-routing` status on both protected branches is configured by the
+[release routing ruleset](../.github/release-routing-ruleset.json). Authors and reviewers must still
+classify release-sensitive work; unlabeled changes pass this routing check.
 
-Bootstrap exception: introduce the trusted routing checker through a separately reviewed CI-only
-PR to `main` before making it required. This one-time exception establishes the trusted code used
-by privileged metadata checks; it does not authorize release-sensitive application changes to
-bypass `stage`. Synchronize `stage` after that bootstrap merges. Enable the required check only
-after verifying its live status on valid and invalid routes.
+The separately reviewed CI-only bootstrap PR #41 established the checker on `main`, and `stage`
+was synchronized afterward. Valid and invalid live routes were exercised before requiring the
+status. This completed bootstrap exception does not authorize application changes to bypass `stage`.
+Branch routing does not coordinate providers: replace automatic production publishing on merge with
+the controlled release workflow before treating promotion as separate from deployment.
 
 ## Bootstrap once, verify on every release
 
