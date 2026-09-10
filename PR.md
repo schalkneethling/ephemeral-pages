@@ -24,14 +24,10 @@ Complete the applicable pre-release checks before merging to `main`, and coordin
 the release plan. Passing CI alone does not establish release readiness. Reassess the label and plan
 when the PR or stack changes scope.
 
-The required `release-routing` status enforces the labeled-PR target rule on `main` and `stage`,
-including verified stack dependencies and the promotion exception. Authors and reviewers remain
-responsible for labeling release-sensitive work: the check cannot identify unlabeled risky changes.
-Routing does not coordinate deployment or disable automatic publishing.
-
-The separately reviewed CI-only bootstrap PR #41 established the trusted checker on `main`
-before enforcement was enabled. It does not permit application changes to bypass
-`stage`; see the bootstrap exception in the release contract.
+GitHub native protections require pull requests and passing CI for `main` and `stage`.
+Authors and reviewers remain responsible for classifying and routing release-sensitive work;
+native protections do not enforce label-dependent targets or stack topology. The release runner
+must verify production prerequisites. See [branch protection guidance](docs/release-routing.md).
 
 For behavior changes, add or update tests that demonstrate the intended behavior. When fixing a bug,
 confirm that the regression test fails without the fix where practical. For behavior-neutral changes,

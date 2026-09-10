@@ -1,6 +1,6 @@
 # Repeatable releases
 
-Status: PR routing is implemented and required on `main` and `stage`, with read-only release
+Status: Native branch protections are active on `main` and `stage`, with read-only release
 planning and inspection tooling. Preparation, rehearsal, promotion, resumption, recovery, and the
 production publishing cutover remain implementation work. Existing CI and the production API
 smoke workflow provide part of the validation.
@@ -95,16 +95,13 @@ checks against that exact commit. A source-tree mismatch requires a new rehearsa
 Build production artifacts from the verified promotion commit with explicit production configuration.
 After promotion, synchronize `stage` with `main` before integrating the next release's work.
 
-The trusted [routing workflow](../.github/workflows/release-routing.yml) validates PR metadata
-without executing contributor code. It accepts direct `stage` targets, verified open same-repository
-PR dependencies leading to `stage`, and the `stage`-to-`main` promotion exception. The required
-`release-routing` status on both protected branches is configured by the
-[release routing ruleset](../.github/release-routing-ruleset.json). Authors and reviewers must still
-classify release-sensitive work; unlabeled changes pass this routing check.
+GitHub's [native branch protections](release-routing.md) require pull requests, resolved review
+conversations, and passing CI against the latest target branch on `main` and `stage`. They also
+prevent deletion and force pushes. Authors and reviewers classify release-sensitive work and
+check its target and stack dependencies; no custom routing workflow or status enforces those rules.
+Production source integrity, rehearsal evidence, and deployment prerequisites belong in the release
+runner. The original CI bootstrap in PR #41 was superseded by native protections.
 
-The separately reviewed CI-only bootstrap PR #41 established the checker on `main`, and `stage`
-was synchronized afterward. Valid and invalid live routes were exercised before requiring the
-status. This completed bootstrap exception does not authorize application changes to bypass `stage`.
 Branch routing does not coordinate providers: replace automatic production publishing on merge with
 the controlled release workflow before treating promotion as separate from deployment.
 
@@ -259,7 +256,7 @@ Worker must not be overwritten by simultaneous candidates.
 
 ## Small implementation increments
 
-1. Establish `stage` and CI enforcement of PR routing, then add a read-only release planner and configuration checks, with machine-readable evidence and
+1. Establish `stage`, native branch protections, and documented PR routing, then add a read-only release planner and configuration checks, with machine-readable evidence and
    tests for mismatched origins, missing evidence, and partial provider failures.
 2. Move the successful live collaboration smoke into the repository, parameterize its target,
    add network-loss recovery, and make errors safe to retain. Establish the staging deployment pair.
