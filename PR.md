@@ -24,12 +24,13 @@ Complete the applicable pre-release checks before merging to `main`, and coordin
 the release plan. Passing CI alone does not establish release readiness. Reassess the label and plan
 when the PR or stack changes scope.
 
-The label communicates a release requirement; it does not itself block merging or automatic
-deployment. CI must enforce the target rule, including the promotion exception. Until enforcement
-exists, authors and reviewers must uphold that requirement explicitly.
+The required `release-routing` status enforces the labeled-PR target rule on `main` and `stage`,
+including verified stack dependencies and the promotion exception. Authors and reviewers remain
+responsible for labeling release-sensitive work: the check cannot identify unlabeled risky changes.
+Routing does not coordinate deployment or disable automatic publishing.
 
-The approved CI-only bootstrap PR #41 is a one-time, unlabeled exception targeting `main` to
-establish the trusted checker before enforcement. It does not permit application changes to bypass
+The separately reviewed CI-only bootstrap PR #41 established the trusted checker on `main`
+before enforcement was enabled. It does not permit application changes to bypass
 `stage`; see the bootstrap exception in the release contract.
 
 For behavior changes, add or update tests that demonstrate the intended behavior. When fixing a bug,
