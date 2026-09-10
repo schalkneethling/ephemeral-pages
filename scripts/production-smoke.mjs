@@ -3,6 +3,17 @@ import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 
 const FETCH_TIMEOUT_MS = 30_000;
+
+function parsePositiveDecimalInteger(value) {
+  if (!/^[1-9][0-9]*$/u.test(value ?? "")) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function hasNonemptyStringId(payload) {
+  return typeof payload?.id === "string" && payload.id.length > 0;
+}
+
 export function parseApiSmokeArguments(args) {
   const parsed = parseArgs({
     args,
@@ -68,9 +79,8 @@ export async function runApiSmoke(
         redirect: "error",
       });
       if (response.status === 429) {
-        const retryAfter = response.headers.get("retry-after");
-        const seconds = Number(retryAfter);
-        if (/^[1-9][0-9]*$/u.test(retryAfter ?? "") && Number.isSafeInteger(seconds)) {
+        const seconds = parsePositiveDecimalInteger(response.headers.get("retry-after"));
+        if (seconds !== null) {
           report.retryAfterSeconds = seconds;
         }
       }
@@ -96,6 +106,7 @@ export async function runApiSmoke(
 
     const plain = await createPage({ html, expirationHours: 1 }, plainKey);
     assert(plain.status === 201, "Plain upload did not return 201", plain);
+    assert(hasNonemptyStringId(plain.payload), "Plain upload ID is invalid", plain);
     assert(
       new URL(plain.payload.url).origin === serviceUrl,
       "Plain upload URL origin is invalid",
@@ -108,7 +119,7 @@ export async function runApiSmoke(
     const replay = await createPage({ html, expirationHours: 1 }, plainKey);
     assert(replay.status === 200, "Idempotent replay did not return 200", replay);
     assert(
-      replay.payload.id === plain.payload.id,
+      hasNonemptyStringId(replay.payload) && replay.payload.id === plain.payload.id,
       "Idempotent replay returned another page",
       replay,
     );
@@ -129,6 +140,7 @@ export async function runApiSmoke(
     );
     assert(
       equivalentEncodingReplay.status === 200 &&
+        hasNonemptyStringId(equivalentEncodingReplay.payload) &&
         equivalentEncodingReplay.payload.id === plain.payload.id,
       "Equivalent compressed replay was not idempotent",
       equivalentEncodingReplay,
@@ -142,7 +154,7 @@ export async function runApiSmoke(
     );
     assert(compressed.status === 201, "Compressed upload did not return 201", compressed);
     assert(
-      compressed.payload.id !== plain.payload.id,
+      hasNonemptyStringId(compressed.payload) && compressed.payload.id !== plain.payload.id,
       "Compressed upload did not create a distinct page",
       compressed,
     );
@@ -162,7 +174,7 @@ export async function runApiSmoke(
       }
       assert(attempt.status === 200, "Metered replay returned an unexpected status", attempt);
       assert(
-        attempt.payload.id === compressed.payload.id,
+        hasNonemptyStringId(attempt.payload) && attempt.payload.id === compressed.payload.id,
         "Metered replay returned another page",
         attempt,
       );
@@ -171,12 +183,17 @@ export async function runApiSmoke(
     assert(rateLimited?.status === 429, "Quota did not return 429", rateLimited);
     assert(rateLimited.headers.limit === "10", "429 limit header is invalid", rateLimited);
     assert(rateLimited.headers.remaining === "0", "429 remaining header is invalid", rateLimited);
+    const resetSeconds = parsePositiveDecimalInteger(rateLimited.headers.reset);
     assert(
-      Number(rateLimited.headers.reset) > Math.floor(Date.now() / 1000),
+      resetSeconds !== null && resetSeconds > Math.floor(Date.now() / 1000),
       "429 reset is invalid",
       rateLimited,
     );
-    assert(Number(rateLimited.headers.retryAfter) > 0, "429 Retry-After is invalid", rateLimited);
+    assert(
+      parsePositiveDecimalInteger(rateLimited.headers.retryAfter) !== null,
+      "429 Retry-After is invalid",
+      rateLimited,
+    );
 
     passed("quota");
     report.outcome = "passed";

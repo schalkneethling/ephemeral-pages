@@ -2,6 +2,7 @@ const names = [
   "STAGE_COLLABORATION_CAPABILITY_CURRENT_SECRET",
   "STAGE_COLLABORATION_TICKET_SECRET",
   "STAGE_COLLABORATION_SERVICE_TOKEN",
+  "STAGE_RATE_LIMIT_SECRET",
 ] as const;
 const values = names.map((name) => process.env[name]);
 const valid =

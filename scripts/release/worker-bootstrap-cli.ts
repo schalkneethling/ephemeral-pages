@@ -33,6 +33,7 @@ const STAGING_SECRET_NAMES = [
   "STAGE_COLLABORATION_TICKET_SECRET",
   "STAGE_COLLABORATION_SERVICE_TOKEN",
 ] as const;
+const STAGING_SENSITIVE_ENV_NAMES = [...STAGING_SECRET_NAMES, "STAGE_RATE_LIMIT_SECRET"] as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 export const workerBootstrapUsage = `Usage:
@@ -63,7 +64,13 @@ export type WorkerBootstrapCliArguments = {
 export type WorkerBootstrapRunnerTarget = Pick<WorkerBootstrapInput, "accountId" | "workerName">;
 
 export class WorkerBootstrapCliError extends Error {
-  readonly kind: "invalid-arguments" | "invalid-input" | "locked" | "operation" | "secrets";
+  readonly kind:
+    | "invalid-arguments"
+    | "invalid-input"
+    | "locked"
+    | "operation"
+    | "secrets"
+    | "version";
 
   constructor(kind: WorkerBootstrapCliError["kind"]) {
     super("Worker bootstrap could not start safely.");
@@ -170,7 +177,7 @@ export const assertPinnedWranglerVersion = async (): Promise<void> => {
       throw new Error();
     }
   } catch {
-    throw new WorkerBootstrapCliError("invalid-input");
+    throw new WorkerBootstrapCliError("version");
   }
 };
 
@@ -247,7 +254,7 @@ export const createBoundedWorkerRunner = (
     if (remainingMs <= 0) throw new WorkerBootstrapCliError("operation");
     return new Promise((resolvePromise, reject) => {
       const childEnvironment = { ...process.env };
-      for (const name of STAGING_SECRET_NAMES) delete childEnvironment[name];
+      for (const name of STAGING_SENSITIVE_ENV_NAMES) delete childEnvironment[name];
       Object.assign(childEnvironment, environment);
       Object.assign(childEnvironment, {
         CF_API_BASE_URL: CLOUDFLARE_PRODUCTION_API_BASE_URL,
@@ -325,7 +332,9 @@ export const createBoundedWorkerRunner = (
 export const withStagingSecretsFile = async <T>(
   operation: (path: string) => Promise<T>,
 ): Promise<T> => {
-  const values = STAGING_SECRET_NAMES.map((name) => process.env[name]);
+  // Validate the shared staging capability secret even though only Netlify consumes it.
+  const secrets = Object.fromEntries(STAGING_SECRET_NAMES.map((name) => [name, process.env[name]]));
+  const values = Object.values(secrets);
   if (
     values.some((value) => typeof value !== "string" || Buffer.byteLength(value, "utf8") < 32) ||
     new Set(values).size !== values.length
@@ -339,7 +348,7 @@ export const withStagingSecretsFile = async <T>(
     await chmod(directory, 0o700);
     await writeFile(
       path,
-      `${JSON.stringify({ TICKET_HMAC_SECRET: values[1], ADMIN_TOKEN: values[2] })}\n`,
+      `${JSON.stringify({ TICKET_HMAC_SECRET: secrets.STAGE_COLLABORATION_TICKET_SECRET, ADMIN_TOKEN: secrets.STAGE_COLLABORATION_SERVICE_TOKEN })}\n`,
       { encoding: "utf8", flag: "wx", mode: 0o600 },
     );
     return await operation(path);

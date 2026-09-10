@@ -82,7 +82,7 @@ that capture was not requested. Raw browser traces, page content, capabilities, 
 not retained. Rate limiting blocks the run with a validated retry delay; it does not retry uploads
 or captures.
 
-Local staging provisioning resolves the three authorized staging secrets through Varlock and the
+Local staging provisioning resolves the four authorized staging secrets through Varlock and the
 1Password desktop app. References are versioned in
 [the staging secret schema](../scripts/release/local/staging/.env.schema); values are not stored in
 Git. This entry point is separate from the application's development schema and does not resolve

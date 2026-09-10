@@ -9,6 +9,11 @@ const response = (status, id = secret, headers = {}) =>
     status,
     headers: { "x-ratelimit-limit": "10", ...headers },
   });
+const responseWithoutId = (status, headers = {}) =>
+  new Response(JSON.stringify({ url: `${origin}/p/missing`, details: secret }), {
+    status,
+    headers: { "x-ratelimit-limit": "10", ...headers },
+  });
 
 function successfulResponses() {
   return [
@@ -108,5 +113,45 @@ describe("API smoke target and evidence", () => {
       expect(report.outcome).toBe("blocked");
       expect(report.checks.at(-1).id).toBe(invalid === "replay" ? "idempotency" : "quota");
     }
+  });
+
+  it.each([
+    { index: 0, status: 201, phase: "plain-upload", missing: true },
+    { index: 0, status: 201, phase: "plain-upload", missing: false },
+    { index: 1, status: 200, phase: "idempotency", missing: true },
+    { index: 3, status: 200, phase: "idempotency", missing: true },
+    { index: 4, status: 201, phase: "compressed-upload", missing: true },
+    { index: 5, status: 200, phase: "quota", missing: true },
+  ])(
+    "rejects an absent or empty response ID during $phase",
+    async ({ index, status, phase, missing }) => {
+      const responses = successfulResponses();
+      responses[index] = missing ? responseWithoutId(status) : response(status, "");
+      const fetch = vi.fn(async () => responses.shift());
+      const report = await runApiSmoke(args, { fetch, env: {} });
+      expect(report.outcome).toBe("blocked");
+      expect(report.checks.at(-1)).toEqual({ id: phase, outcome: "blocked" });
+      expect(JSON.stringify(report)).not.toContain(secret);
+    },
+  );
+
+  it.each([
+    ["x-ratelimit-reset", "Infinity"],
+    ["x-ratelimit-reset", `${Math.floor(Date.now() / 1000) + 600}.5`],
+    ["x-ratelimit-reset", "9007199254740992"],
+    ["x-ratelimit-reset", String(Math.floor(Date.now() / 1000))],
+    ["retry-after", "Infinity"],
+    ["retry-after", "0.5"],
+    ["retry-after", "0"],
+    ["retry-after", "9007199254740992"],
+  ])("rejects noncanonical quota header %s=%s", async (name, value) => {
+    const responses = successfulResponses();
+    const validHeaders = Object.fromEntries(responses[6].headers.entries());
+    responses[6] = response(429, secret, { ...validHeaders, [name]: value });
+    const fetch = vi.fn(async () => responses.shift());
+    const report = await runApiSmoke(args, { fetch, env: {} });
+    expect(report.outcome).toBe("blocked");
+    expect(report.checks.at(-1)).toEqual({ id: "quota", outcome: "blocked" });
+    expect(JSON.stringify(report)).not.toContain(secret);
   });
 });

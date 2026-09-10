@@ -21,7 +21,8 @@
         "requiredSecretNames": [
           "COLLABORATION_CAPABILITY_CURRENT_SECRET",
           "COLLABORATION_TICKET_SECRET",
-          "COLLABORATION_SERVICE_TOKEN"
+          "COLLABORATION_SERVICE_TOKEN",
+          "RATE_LIMIT_SECRET"
         ],
         "requiredVariableScopes": {
           "PUBLIC_BASE_URL": ["functions"],
@@ -32,7 +33,8 @@
           "COLLABORATION_ENABLED": ["functions"],
           "COLLABORATION_CAPABILITY_CURRENT_SECRET": ["functions"],
           "COLLABORATION_TICKET_SECRET": ["functions"],
-          "COLLABORATION_SERVICE_TOKEN": ["functions"]
+          "COLLABORATION_SERVICE_TOKEN": ["functions"],
+          "RATE_LIMIT_SECRET": ["functions"]
         }
       },
       "cloudflare": {

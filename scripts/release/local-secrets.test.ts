@@ -16,6 +16,7 @@ import {
 const SECRET_SENTINEL = "a".repeat(40);
 const SECOND_SECRET = "b".repeat(40);
 const THIRD_SECRET = "c".repeat(40);
+const FOURTH_SECRET = "d".repeat(40);
 
 const target: NetlifyLocalSecretsTarget = {
   accountId: "staging-account",
@@ -28,6 +29,7 @@ const values: StagingLocalSecretValues = {
   STAGE_COLLABORATION_CAPABILITY_CURRENT_SECRET: SECRET_SENTINEL,
   STAGE_COLLABORATION_SERVICE_TOKEN: THIRD_SECRET,
   STAGE_COLLABORATION_TICKET_SECRET: SECOND_SECRET,
+  STAGE_RATE_LIMIT_SECRET: FOURTH_SECRET,
 };
 
 const site = {
@@ -58,7 +60,7 @@ const createClient = (
 };
 
 describe("provisionNetlifyLocalSecrets", () => {
-  it("bootstraps the three fixed secrets without putting their values in argv or its result", async () => {
+  it("bootstraps the four fixed secrets without putting their values in argv or its result", async () => {
     let mutation: unknown;
     const argvBefore = [...process.argv];
     const client = createClient({
@@ -96,6 +98,12 @@ describe("provisionNetlifyLocalSecrets", () => {
           scopes: ["builds", "functions", "runtime"],
           values: [{ context: "production", value: THIRD_SECRET }],
         },
+        {
+          is_secret: true,
+          key: "RATE_LIMIT_SECRET",
+          scopes: ["builds", "functions", "runtime"],
+          values: [{ context: "production", value: FOURTH_SECRET }],
+        },
       ],
     });
   });
@@ -109,6 +117,11 @@ describe("provisionNetlifyLocalSecrets", () => {
       },
     });
     const malformed = { ...values, EXTRA_SECRET: "extra" } as StagingLocalSecretValues;
+    const missing = {
+      STAGE_COLLABORATION_CAPABILITY_CURRENT_SECRET: SECRET_SENTINEL,
+      STAGE_COLLABORATION_SERVICE_TOKEN: THIRD_SECRET,
+      STAGE_COLLABORATION_TICKET_SECRET: SECOND_SECRET,
+    } as StagingLocalSecretValues;
     const short = { ...values, STAGE_COLLABORATION_TICKET_SECRET: "short" };
     const duplicate = {
       ...values,
@@ -116,6 +129,10 @@ describe("provisionNetlifyLocalSecrets", () => {
     };
 
     await expect(provisionNetlifyLocalSecrets(target, malformed, client)).resolves.toEqual({
+      outcome: "blocked",
+      stage: "configuration",
+    });
+    await expect(provisionNetlifyLocalSecrets(target, missing, client)).resolves.toEqual({
       outcome: "blocked",
       stage: "configuration",
     });

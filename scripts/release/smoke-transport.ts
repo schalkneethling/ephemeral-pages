@@ -50,7 +50,6 @@ export async function createSmokeTransport(
   const destinations = new Map([page, worker].map((target) => [target.authority, target]));
   const sockets = new Set<Socket>();
   const tunnels = new Set<Tunnel>();
-  let connectionAttempts = 0;
   let workerConnections = 0;
   let interrupted = false;
   let closed = false;
@@ -69,7 +68,7 @@ export async function createSmokeTransport(
     socket.on("error", () => socket.destroy());
     // A client must issue CONNECT promptly. Established tunnels use the lifetime bound.
     socket.setTimeout(CONNECT_TIMEOUT_MS, () => socket.destroy());
-    if (closed || ++connectionAttempts > MAX_CONNECTIONS) socket.destroy();
+    if (closed || sockets.size > MAX_CONNECTIONS) socket.destroy();
   });
 
   server.on("connect", (request, client, head) => {

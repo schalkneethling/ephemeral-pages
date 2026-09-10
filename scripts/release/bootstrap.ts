@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import type { NetlifyVariableScope, ProviderCommandRunner } from "./providers.ts";
 
+// Minimum runtime scopes to verify, not an instruction to restrict write scopes.
+// Provision all scopes so bootstrap also works on Netlify plans without scope selection.
 export const NETLIFY_STAGING_VARIABLE_POLICY = {
   PUBLIC_BASE_URL: ["functions"],
   COLLABORATION_SERVICE_URL: ["functions"],

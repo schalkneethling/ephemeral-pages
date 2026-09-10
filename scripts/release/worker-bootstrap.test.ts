@@ -357,11 +357,13 @@ describe("worker bootstrap CLI primitives", () => {
         "STAGE_COLLABORATION_CAPABILITY_CURRENT_SECRET",
         "STAGE_COLLABORATION_TICKET_SECRET",
         "STAGE_COLLABORATION_SERVICE_TOKEN",
+        "STAGE_RATE_LIMIT_SECRET",
       ].map((name) => [name, process.env[name]]),
     );
     process.env.STAGE_COLLABORATION_CAPABILITY_CURRENT_SECRET = `a${"1".repeat(40)}`;
     process.env.STAGE_COLLABORATION_TICKET_SECRET = `b${"2".repeat(40)}`;
     process.env.STAGE_COLLABORATION_SERVICE_TOKEN = `c${"3".repeat(40)}`;
+    process.env.STAGE_RATE_LIMIT_SECRET = "d".repeat(40);
     let temporaryPath = "";
     try {
       await withStagingSecretsFile(async (path) => {
@@ -389,7 +391,7 @@ describe("worker bootstrap CLI primitives", () => {
         process.execPath,
         [
           "-e",
-          "process.stdout.write(String(['STAGE_COLLABORATION_CAPABILITY_CURRENT_SECRET','STAGE_COLLABORATION_TICKET_SECRET','STAGE_COLLABORATION_SERVICE_TOKEN'].some((key) => key in process.env)))",
+          "process.stdout.write(String(['STAGE_COLLABORATION_CAPABILITY_CURRENT_SECRET','STAGE_COLLABORATION_TICKET_SECRET','STAGE_COLLABORATION_SERVICE_TOKEN','STAGE_RATE_LIMIT_SECRET'].some((key) => key in process.env)))",
         ],
         {},
       );

@@ -23,6 +23,7 @@ async function echoTarget() {
     origin: `https://127.0.0.1:${address.port}`,
     authority: `127.0.0.1:${address.port}`,
     connections: () => connections,
+    activeConnections: () => sockets.size,
     close: async () => {
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -164,15 +165,63 @@ describe("isolated smoke transport", () => {
     }
   });
 
+  it("allows more than 128 connections when earlier tunnels have closed", async () => {
+    const page = await echoTarget();
+    const worker = await echoTarget();
+    const transport = await createSmokeTransport(page.origin, worker.origin);
+    try {
+      for (let index = 0; index < 129; index += 1) {
+        const socket = await tunnel(transport, worker.authority);
+        const closed = once(socket, "close");
+        socket.destroy();
+        await closed;
+      }
+      expect(transport.workerConnections()).toBe(129);
+    } finally {
+      await transport.close();
+      await Promise.all([page.close(), worker.close()]);
+    }
+  });
+
+  it("rejects a 129th live connection and reuses capacity after a tunnel closes", async () => {
+    const page = await echoTarget();
+    const worker = await echoTarget();
+    const transport = await createSmokeTransport(page.origin, worker.origin);
+    try {
+      const active = [];
+      for (let index = 0; index < 128; index += 1) {
+        active.push(await tunnel(transport, worker.authority));
+      }
+      const overflow = await client(transport);
+      await once(overflow, "close");
+      expect(worker.connections()).toBe(128);
+
+      const closed = once(active[0]!, "close");
+      active[0]!.destroy();
+      await closed;
+      await expect.poll(worker.activeConnections).toBe(127);
+      const replacement = await tunnel(transport, worker.authority);
+      expect(transport.workerConnections()).toBe(129);
+      const echoed = readThrough(replacement, "replacement-tunnel");
+      replacement.write("replacement-tunnel");
+      expect(await echoed).toBe("replacement-tunnel");
+    } finally {
+      await transport.close();
+      await Promise.all([page.close(), worker.close()]);
+    }
+  });
+
   it("closes the listener when the five-minute lifetime expires", async () => {
     vi.useFakeTimers();
     let transport: SmokeTransport | undefined;
     try {
       transport = await createSmokeTransport("https://pages.example", "https://worker.example");
-      await vi.advanceTimersByTimeAsync(300_000);
-      await transport.close();
+      await vi.advanceTimersByTimeAsync(299_999);
+      expect(() => transport!.resumeWorker()).not.toThrow();
+      await vi.advanceTimersByTimeAsync(1);
       expect(() => transport!.interruptWorker()).toThrow();
       expect(() => transport!.resumeWorker()).toThrow();
+      await expect(client(transport)).rejects.toThrow();
     } finally {
       await transport?.close();
       vi.useRealTimers();

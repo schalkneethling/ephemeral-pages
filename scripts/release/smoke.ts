@@ -372,7 +372,7 @@ async function createCollaborativePage(
       response.status === 429 ? "upload.rate-limited" : "upload.request",
       response.status === 429
         ? "The single collaborative upload was rate limited."
-        : "The collaborative upload did not succeed.",
+        : `The collaborative upload returned HTTP ${response.status}.`,
       retryAfterSeconds,
     );
   }
@@ -429,7 +429,7 @@ async function verifyCapture(page: Page, pageId: string, origin: string, expect:
       response.status() === 429 ? "capture.rate-limited" : "capture.request",
       response.status() === 429
         ? "The single screenshot capture was rate limited."
-        : "The screenshot capture did not succeed.",
+        : `The screenshot capture returned HTTP ${response.status()}.`,
       retryAfterSeconds,
     );
   }

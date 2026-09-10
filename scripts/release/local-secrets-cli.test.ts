@@ -25,6 +25,7 @@ import type {
 const SECRET_SENTINEL = "cli-secret-sentinel-must-never-escape-0001";
 const SECOND_SECRET = "cli-secret-sentinel-must-never-escape-0002";
 const THIRD_SECRET = "cli-secret-sentinel-must-never-escape-000003";
+const FOURTH_SECRET = "d".repeat(40);
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 const cliPath = fileURLToPath(new URL("local-secrets-cli.ts", import.meta.url));
 
@@ -64,11 +65,13 @@ const productionConfig = {
           "COLLABORATION_CAPABILITY_CURRENT_SECRET",
           "COLLABORATION_TICKET_SECRET",
           "COLLABORATION_SERVICE_TOKEN",
+          "RATE_LIMIT_SECRET",
         ],
         requiredVariableScopes: {
           COLLABORATION_CAPABILITY_CURRENT_SECRET: ["functions"],
           COLLABORATION_TICKET_SECRET: ["functions"],
           COLLABORATION_SERVICE_TOKEN: ["functions"],
+          RATE_LIMIT_SECRET: ["functions"],
         },
       },
       cloudflare: null,
@@ -102,6 +105,7 @@ const harness = (
     STAGE_COLLABORATION_CAPABILITY_CURRENT_SECRET: SECRET_SENTINEL,
     STAGE_COLLABORATION_TICKET_SECRET: SECOND_SECRET,
     STAGE_COLLABORATION_SERVICE_TOKEN: THIRD_SECRET,
+    STAGE_RATE_LIMIT_SECRET: FOURTH_SECRET,
     UNRELATED: "retained",
   };
   const events: string[] = [];
@@ -250,6 +254,7 @@ describe("runLocalSecretsCli", () => {
       STAGE_COLLABORATION_CAPABILITY_CURRENT_SECRET: SECRET_SENTINEL,
       STAGE_COLLABORATION_TICKET_SECRET: SECOND_SECRET,
       STAGE_COLLABORATION_SERVICE_TOKEN: THIRD_SECRET,
+      STAGE_RATE_LIMIT_SECRET: FOURTH_SECRET,
     });
     expect(state.environment).toEqual({ UNRELATED: "retained" });
     expect(process.argv).toEqual(argvBefore);
@@ -298,9 +303,18 @@ describe("runLocalSecretsCli", () => {
     const extraInput = { ...input, STAGE_COLLABORATION_SERVICE_TOKEN: SECRET_SENTINEL };
     const wrongAccountConfig = structuredClone(productionConfig);
     wrongAccountConfig.environments.production.netlify!.accountId = "other-account";
+    const incompleteSecretConfig = structuredClone(productionConfig);
+    incompleteSecretConfig.environments.production.netlify!.requiredSecretNames.pop();
+    delete (
+      incompleteSecretConfig.environments.production.netlify!.requiredVariableScopes as Record<
+        string,
+        string[]
+      >
+    ).RATE_LIMIT_SECRET;
     for (const options of [
       { input: extraInput },
       { productionConfig: wrongAccountConfig },
+      { productionConfig: incompleteSecretConfig },
       { productionConfig: { ...productionConfig, unexpected: true } },
     ]) {
       const state = harness(options);

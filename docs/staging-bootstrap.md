@@ -160,16 +160,17 @@ Worker before adding the secret.
 
 ## Local secret provisioning with Varlock
 
-`scripts/release/local/staging/.env.schema` resolves only these three references through the
+`scripts/release/local/staging/.env.schema` resolves only these four references through the
 1Password desktop integration. Varlock and its 1Password plugin are pinned in `package.json`.
 The desktop app must be available and may require an unlock or authorization prompt.
 
 - `op://dev/ephemeral-pages/STAGE_COLLABORATION_CAPABILITY_CURRENT_SECRET`
 - `op://dev/ephemeral-pages/STAGE_COLLABORATION_TICKET_SECRET`
 - `op://dev/ephemeral-pages/STAGE_COLLABORATION_SERVICE_TOKEN`
+- `op://dev/ephemeral-pages/STAGE_RATE_LIMIT_SECRET`
 
 The references are safe to version; their resolved values are not. Each value must contain at least
-32 characters and differ from the other two. Generate at least 32 random bytes for each secret.
+32 characters and differ from the other three. Generate at least 32 random bytes for each secret.
 The dedicated schema avoids resolving unrelated application secrets. Caching is disabled and only
 the required variables are injected into the child, without Varlock's configuration graph.
 
@@ -183,7 +184,7 @@ bun run release:secrets:provision \
 
 The Netlify wrapper uses the pinned CLI's normal authentication and API client. It validates the
 unlinked staging site and completed bootstrap checkpoint, rejects existing secret keys, and writes
-the three values as secrets in that site's Production context. Secret scopes are Builds, Functions,
+the four values as secrets in that site's Production context. Secret scopes are Builds, Functions,
 and Runtime; post-processing is excluded because Netlify does not allow secrets in that scope.
 Values stay in memory and are never command arguments, checkpoint contents, or report fields.
 The wrapper limits each request to one HTTP dispatch and bounds execution. An existing provisioning
@@ -192,6 +193,12 @@ checkpoint blocks another attempt; inspect provider metadata before handling an 
 - Netlify `COLLABORATION_CAPABILITY_CURRENT_SECRET` remains Netlify-only.
 - Netlify `COLLABORATION_TICKET_SECRET` and Worker `TICKET_HMAC_SECRET` share the ticket value.
 - Netlify `COLLABORATION_SERVICE_TOKEN` and Worker `ADMIN_TOKEN` share the service value.
+- Netlify `RATE_LIMIT_SECRET` remains Netlify-only and keys upload rate-limit identities.
+
+The completed staging secret checkpoint records the original three collaboration secrets and
+remains historical evidence; do not replay it. Add the missing `RATE_LIMIT_SECRET` through a
+separate one-time checkpoint that verifies the same staging target, confirms the original secrets
+are present, and refuses to write if `RATE_LIMIT_SECRET` already exists.
 
 Netlify CLI `env:set --secret` puts a value in a command argument, and `env:import` does not mark
 values secret. Use the wrapper for this provisioning step. Never put resolved values in Git,
@@ -208,7 +215,7 @@ On 2026-09-10, the wrappers provisioned the isolated staging targets:
 - Netlify project ID: `9c45026a-d351-40e0-a9ed-2eb9dee63bd3`.
 - Worker initial version: `b781f975-c8ce-42cf-9e8f-7aa49bafdfc1`.
 - Worker deployment: `c7f6d649-0b62-4b1f-82a2-213e2d4b23a9`.
-- Netlify configuration and secret provisioning: passed.
+- Netlify configuration and original three-secret provisioning: passed.
 - Worker configuration, secret bindings, and active version verification: passed.
 
 This records provider setup, not a rehearsed release. Application deployment and cross-platform

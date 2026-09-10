@@ -125,12 +125,12 @@ function verifyBinary(binary, config, ignore, root) {
 
   // Generated at runtime so the scanner does not exempt a committed canary.
   const githubCanary = ["gh", "p_", randomBytes(18).toString("hex")].join("");
-  const collaborationCanary = randomBytes(32).toString("hex");
+  const applicationCanary = randomBytes(32).toString("hex");
   const result = execute(binary, scanArguments("stdin", "", config, ignore).slice(0, -1), {
     cwd: root,
     input: [
       `credential = "${githubCanary}"`,
-      `"STAGE_COLLABORATION_TICKET_SECRET": "${collaborationCanary}"`,
+      `"STAGE_RATE_LIMIT_SECRET": "${applicationCanary}"`,
       "",
     ].join("\n"),
   });
@@ -144,9 +144,9 @@ function verifyBinary(binary, config, ignore, root) {
   if (
     result.status !== 1 ||
     !rules.has("github-pat") ||
-    !rules.has("ephemeral-pages-collaboration-secret") ||
+    !rules.has("ephemeral-pages-staging-secret") ||
     result.stdout.includes(githubCanary) ||
-    result.stdout.includes(collaborationCanary)
+    result.stdout.includes(applicationCanary)
   ) {
     throw new Error("Gitleaks detection/redaction canary failed");
   }
