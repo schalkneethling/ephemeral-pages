@@ -36,13 +36,10 @@ export function releaseRoutingDecision(pullRequest, openPullRequests, repository
     if (!Number.isInteger(current.number) || !current.head?.ref || !current.base?.ref) {
       return invalid(pullRequest, "Pull request branch metadata is incomplete.", chain);
     }
-    if (
-      repositoryName(current.head) !== repository ||
-      repositoryName(current.base) !== repository
-    ) {
+    if (repositoryName(current.base) !== repository) {
       return invalid(
         pullRequest,
-        `PR #${current.number} uses a branch outside ${repository}.`,
+        `PR #${current.number} targets a branch outside ${repository}.`,
         chain,
       );
     }
@@ -63,7 +60,11 @@ export function releaseRoutingDecision(pullRequest, openPullRequests, repository
         chain,
       };
     }
-    if (current.head.ref === RELEASE_BRANCH && current.base.ref === PRODUCTION_BRANCH) {
+    if (
+      repositoryName(current.head) === repository &&
+      current.head.ref === RELEASE_BRANCH &&
+      current.base.ref === PRODUCTION_BRANCH
+    ) {
       return {
         allowed: true,
         pullRequest: pullRequest.number,
@@ -75,6 +76,13 @@ export function releaseRoutingDecision(pullRequest, openPullRequests, repository
       return invalid(
         pullRequest,
         `PR #${current.number} targets ${PRODUCTION_BRANCH} without being the ${RELEASE_BRANCH} promotion.`,
+        chain,
+      );
+    }
+    if (repositoryName(current.head) !== repository) {
+      return invalid(
+        pullRequest,
+        `PR #${current.number} cannot use a fork branch in a dependency chain.`,
         chain,
       );
     }
@@ -167,27 +175,42 @@ export async function checkGitHubReleaseRouting({ client, repository, targetUrl 
   const statuses = new Map();
   for (const [index, decision] of decisions.entries()) {
     const pullRequest = pullRequests[index];
-    if (repositoryName(pullRequest.head) !== repository) continue;
     const previous = statuses.get(pullRequest.head.sha);
     statuses.set(pullRequest.head.sha, previous === false ? false : decision.allowed);
   }
+  const errors = [];
   for (const [sha, allowed] of statuses) {
     const desiredState = allowed ? "success" : "failure";
-    const existingStatuses = await client.getCommitStatuses(sha);
-    if (
-      existingStatuses.find(({ context }) => context.toLowerCase() === "release-routing")?.state ===
-      desiredState
-    ) {
+    let currentState;
+    try {
+      const existingStatuses = await client.getCommitStatuses(sha);
+      currentState = existingStatuses.find(
+        ({ context }) => context?.toLowerCase() === "release-routing",
+      )?.state;
+    } catch {
+      // A status read is only a write de-duplication optimization. Publish the desired state.
+    }
+    if (currentState === desiredState) {
       continue;
     }
-    await client.setCommitStatus(sha, {
-      state: desiredState,
-      context: "release-routing",
-      description: allowed
-        ? "Release routing is valid."
-        : "Release routing is invalid; inspect the workflow run.",
-      ...(targetUrl ? { target_url: targetUrl } : {}),
-    });
+    try {
+      await client.setCommitStatus(sha, {
+        state: desiredState,
+        context: "release-routing",
+        description: allowed
+          ? "Release routing is valid."
+          : "Release routing is invalid; inspect the workflow run.",
+        ...(targetUrl ? { target_url: targetUrl } : {}),
+      });
+    } catch (error) {
+      errors.push(new Error(`Could not publish release routing for ${sha}.`, { cause: error }));
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors,
+      `Could not publish ${errors.length} release routing status(es).`,
+    );
   }
   return decisions;
 }

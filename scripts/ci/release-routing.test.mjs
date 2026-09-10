@@ -26,10 +26,17 @@ function pullRequest({
 }
 
 describe("release routing policy", () => {
-  it("accepts unlabeled PRs, direct stage PRs, and the stage promotion", () => {
+  it("accepts unlabeled PRs, direct stage PRs including forks, and the stage promotion", () => {
     const unlabeled = pullRequest({ number: 1, head: "docs", base: "main" });
     const staged = pullRequest({ number: 2, head: "feature", base: "stage", label: true });
     const promotion = pullRequest({ number: 3, head: "stage", base: "main", label: true });
+    const fork = pullRequest({
+      number: 4,
+      head: "fork-feature",
+      base: "stage",
+      label: true,
+      headRepository: "someone/fork",
+    });
     expect(releaseRoutingDecision(unlabeled, [unlabeled], repository).allowed).toBe(true);
     expect(releaseRoutingDecision(staged, [staged], repository)).toMatchObject({
       allowed: true,
@@ -38,6 +45,10 @@ describe("release routing policy", () => {
     expect(releaseRoutingDecision(promotion, [promotion], repository)).toMatchObject({
       allowed: true,
       chain: [3],
+    });
+    expect(releaseRoutingDecision(fork, [fork], repository)).toMatchObject({
+      allowed: true,
+      chain: [4],
     });
   });
 
@@ -77,13 +88,27 @@ describe("release routing policy", () => {
     ).toMatchObject({ allowed: false, reason: expect.stringContaining("Multiple") });
   });
 
-  it("fails closed for cycles and foreign branch references", () => {
+  it("fails closed for cycles, fork dependency chains, and foreign base references", () => {
     const first = pullRequest({ number: 1, head: "feature-a", base: "feature-b", label: true });
     const second = pullRequest({ number: 2, head: "feature-b", base: "feature-a" });
-    const foreign = pullRequest({
+    const forkChain = pullRequest({
       number: 3,
       head: "fork-feature",
+      base: "feature-a",
+      label: true,
+      headRepository: "someone/fork",
+    });
+    const foreignBase = pullRequest({
+      number: 4,
+      head: "feature",
       base: "stage",
+      label: true,
+      baseRepository: "someone/fork",
+    });
+    const forkPromotion = pullRequest({
+      number: 5,
+      head: "stage",
+      base: "main",
       label: true,
       headRepository: "someone/fork",
     });
@@ -91,28 +116,45 @@ describe("release routing policy", () => {
       allowed: false,
       reason: expect.stringContaining("cycle"),
     });
-    expect(releaseRoutingDecision(foreign, [foreign], repository)).toMatchObject({
+    expect(releaseRoutingDecision(forkChain, [forkChain, first, second], repository)).toMatchObject(
+      {
+        allowed: false,
+        reason: expect.stringContaining("fork branch"),
+      },
+    );
+    expect(releaseRoutingDecision(foreignBase, [foreignBase], repository)).toMatchObject({
       allowed: false,
       reason: expect.stringContaining("outside"),
+    });
+    expect(releaseRoutingDecision(forkPromotion, [forkPromotion], repository)).toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining("without being"),
     });
   });
 });
 
 describe("GitHub release routing check", () => {
-  it("refreshes statuses for every same-repository open PR", async () => {
+  it("refreshes statuses for every open PR, including forks", async () => {
     const child = pullRequest({ number: 1, head: "feature-ui", base: "missing", label: true });
     const ordinary = pullRequest({ number: 2, head: "docs", base: "main" });
+    const fork = pullRequest({
+      number: 3,
+      head: "fork-feature",
+      base: "stage",
+      label: true,
+      headRepository: "someone/fork",
+    });
     const statuses = [];
     const decisions = await checkGitHubReleaseRouting({
       repository,
       targetUrl: "https://example.test/run",
       client: {
-        listOpenPullRequests: async () => [child, ordinary],
+        listOpenPullRequests: async () => [child, ordinary, fork],
         getCommitStatuses: async () => [],
         setCommitStatus: async (sha, status) => statuses.push({ sha, ...status }),
       },
     });
-    expect(decisions.map(({ allowed }) => allowed)).toEqual([false, true]);
+    expect(decisions.map(({ allowed }) => allowed)).toEqual([false, true, true]);
     expect(statuses).toEqual([
       expect.objectContaining({
         sha: child.head.sha,
@@ -121,6 +163,11 @@ describe("GitHub release routing check", () => {
       }),
       expect.objectContaining({
         sha: ordinary.head.sha,
+        state: "success",
+        context: "release-routing",
+      }),
+      expect.objectContaining({
+        sha: fork.head.sha,
         state: "success",
         context: "release-routing",
       }),
@@ -182,6 +229,44 @@ describe("GitHub release routing check", () => {
       },
     });
     expect(writes).toBe(0);
+  });
+
+  it("publishes the desired status when the de-duplication read fails", async () => {
+    const ordinary = pullRequest({ number: 1, head: "docs", base: "main" });
+    const writes = [];
+    await checkGitHubReleaseRouting({
+      repository,
+      client: {
+        listOpenPullRequests: async () => [ordinary],
+        getCommitStatuses: async () => {
+          throw new Error("status read failed");
+        },
+        setCommitStatus: async (sha, status) => writes.push({ sha, ...status }),
+      },
+    });
+    expect(writes).toEqual([expect.objectContaining({ sha: ordinary.head.sha, state: "success" })]);
+  });
+
+  it("attempts every SHA before aggregating status write failures", async () => {
+    const first = pullRequest({ number: 1, head: "docs-one", base: "main" });
+    const second = pullRequest({ number: 2, head: "docs-two", base: "main" });
+    const attempts = [];
+    const result = checkGitHubReleaseRouting({
+      repository,
+      client: {
+        listOpenPullRequests: async () => [first, second],
+        getCommitStatuses: async () => [],
+        setCommitStatus: async (sha) => {
+          attempts.push(sha);
+          throw new Error(`write failed for ${sha}`);
+        },
+      },
+    });
+    await expect(result).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.any(Error), expect.any(Error)],
+    });
+    expect(attempts).toEqual([first.head.sha, second.head.sha]);
   });
 
   it("paginates API reads and sends authenticated status writes", async () => {
