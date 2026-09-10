@@ -5,6 +5,10 @@ for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const pageId = "capture-success";
     let requestCount = 0;
+    let requestStarted!: () => void;
+    const firstRequest = new Promise<void>((resolve) => {
+      requestStarted = resolve;
+    });
     let releaseCapture!: () => void;
     const captureGate = new Promise<void>((resolve) => {
       releaseCapture = resolve;
@@ -12,6 +16,7 @@ for (const width of [1280, 390]) {
     await routeCollaborativeViewer(page, pageId);
     await page.route(`**/api/pages/${pageId}/screenshots`, async (route) => {
       requestCount += 1;
+      requestStarted();
       await captureGate;
       await route.fulfill({
         status: 201,
@@ -41,6 +46,7 @@ for (const width of [1280, 390]) {
     expect(await page.locator("#page-iframe").boundingBox()).toEqual(initialFrame);
     expect(await button.boundingBox()).toEqual(initialButton);
     await expect(page.getByRole("status")).toHaveText("Capturing the current shared page…");
+    await firstRequest;
     await button.evaluate((element) => {
       if (element instanceof HTMLButtonElement) {
         element.disabled = false;
@@ -51,6 +57,7 @@ for (const width of [1280, 390]) {
 
     releaseCapture();
     await expect(button).toBeEnabled();
+    expect(requestCount).toBe(1);
     await expect(page.locator("#capture-message")).toHaveText(
       /Screenshot captured at .+ Revision 17\./,
     );
