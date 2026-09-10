@@ -45,6 +45,10 @@ to focus the review on the proposed solution or decision.
 Then explain what changed, why, and how you validated it. Include relevant commands,
 results, and any limitations. Prefer concise, useful evidence over a prescribed reporting format.
 
+For release-system changes, update `docs/release-system-map.html`, `docs/releases.md`, and affected
+operator guidance at completed implementation, validation, review, or rollout checkpoints. Keep
+verified behavior distinct from planned work and link dated evidence; real-time updates are unnecessary.
+
 Review the final version after refactoring and rerun the checks relevant to the change.
 
 Run `bun run security:secrets` with the pinned Gitleaks binary before pushing changes. CI also scans

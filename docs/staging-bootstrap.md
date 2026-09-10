@@ -247,5 +247,7 @@ secrets, and the corrected app deployment includes it. Production was not change
 This establishes the bootstrap baseline, not a prepared-artifact rehearsal or release approval.
 The manual draft returned Netlify's `deploy-preview` context. Publishing or restoring that draft
 must not be assumed to replace its function environment with Production-context secrets.
-The subsequent staging publish used the Production context. The later preparation layer must
-prove that a held Production-context candidate can be inspected and activated without rebuilding.
+The subsequent staging publish used the Production context. The later
+[artifact rehearsal](release-evidence/2026-09-10-staging/README.md) verified that a held
+Production-context candidate could be inspected and activated without rebuilding.
+The IDs above remain historical bootstrap evidence; consult the rehearsal record for its verified pair.

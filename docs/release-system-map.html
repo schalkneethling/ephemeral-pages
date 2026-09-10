@@ -1,0 +1,1130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Ephemeral Pages · Release system map</title>
+    <style>
+      :root {
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        color: #202e31;
+        background: #f6f5f0;
+        line-height: 1.5;
+        --ink: #202e31;
+        --muted: #536467;
+        --line: #cbd2ce;
+        --green: #246452;
+        --amber: #84551d;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      button,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      a:focus-visible,
+      select:focus-visible {
+        outline: 3px solid #207d87;
+        outline-offset: 4px;
+      }
+      button {
+        color: inherit;
+      }
+      a {
+        color: #226671;
+        text-underline-offset: 3px;
+      }
+      header,
+      main,
+      footer {
+        max-width: 1440px;
+        margin: auto;
+        padding: 28px 40px;
+      }
+      header {
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 24px;
+      }
+      .eyebrow {
+        font-size: 12px;
+        font-weight: 750;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--green);
+      }
+      h1 {
+        font-size: clamp(30px, 4vw, 48px);
+        font-weight: 600;
+        line-height: 1.12;
+        letter-spacing: -0.045em;
+        margin: 12px 0;
+      }
+      header p {
+        max-width: 850px;
+        margin: 10px 0;
+        color: var(--muted);
+      }
+      .snapshot {
+        font-size: 13px;
+      }
+      .notice {
+        border-left: 3px solid var(--amber);
+        padding: 10px 16px;
+        background: #efeadf;
+        margin: 20px 0 0;
+        font-size: 14px;
+      }
+      .nav {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 22px;
+      }
+      .nav button {
+        border: 0;
+        background: none;
+        padding: 13px 17px;
+        border-bottom: 3px solid transparent;
+        font-weight: 600;
+      }
+      .nav button[aria-pressed="true"] {
+        border-color: var(--green);
+        color: var(--green);
+        background: #e8ede7;
+      }
+      .legend {
+        display: flex;
+        gap: 10px 24px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: var(--muted);
+        margin: 18px 0;
+      }
+      .badge {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.025em;
+        color: var(--muted);
+      }
+      .live .badge {
+        color: var(--green);
+      }
+      .planned .badge {
+        color: var(--amber);
+      }
+      .assumption .badge {
+        color: #6b547c;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 310px;
+        gap: 30px;
+      }
+      .viewhead {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 20px;
+      }
+      h2 {
+        font-size: 25px;
+        letter-spacing: -0.025em;
+        margin: 0 0 8px;
+      }
+      h3 {
+        font-size: 17px;
+        margin: 0 0 8px;
+      }
+      .intro {
+        color: var(--muted);
+        max-width: 780px;
+        margin: 0 0 16px;
+      }
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 28px 24px;
+        margin-top: 16px;
+      }
+      .lane {
+        min-width: 0;
+      }
+      .lane-title {
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-weight: 750;
+        border-top: 2px solid var(--line);
+        padding-top: 12px;
+        margin-bottom: 14px;
+      }
+      .node {
+        display: block;
+        position: relative;
+        width: 100%;
+        text-align: left;
+        background: #fffef9;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 14px 14px 12px;
+        margin-bottom: 12px;
+        min-height: 98px;
+      }
+      .node strong {
+        font-size: 16px;
+        line-height: 1.3;
+        display: block;
+        margin: 5px 0;
+      }
+      .node .hint {
+        font-size: 12px;
+        line-height: 1.4;
+        display: block;
+        color: var(--muted);
+      }
+      .node.planned {
+        border-style: dashed;
+        background: #f6f1e6;
+      }
+      .node.assumption {
+        background: #efebf0;
+      }
+      .node[aria-pressed="true"] {
+        border: 2px solid var(--green);
+        padding: 13px 13px 11px;
+        background: #edf3ed;
+      }
+      .node.dim {
+        opacity: 0.38;
+      }
+      .connector {
+        font-size: 12px;
+        color: var(--muted);
+        padding: 0 8px 12px;
+      }
+      .connector:before {
+        content: "↓ ";
+        font-size: 16px;
+      }
+      .crossflow {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin: 20px 0;
+        color: var(--green);
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .crossflow svg {
+        flex-shrink: 0;
+        width: 46px;
+        height: 28px;
+      }
+      .feedback {
+        border-top: 1px solid var(--line);
+        padding-top: 17px;
+        margin-top: 22px;
+      }
+      .feedback button {
+        border: 1px solid var(--line);
+        background: transparent;
+        border-radius: 20px;
+        padding: 7px 12px;
+        font-size: 12px;
+        margin: 4px 5px 4px 0;
+      }
+      .feedback button[aria-pressed="true"] {
+        background: var(--ink);
+        color: white;
+      }
+      .feedback p {
+        font-size: 14px;
+        color: var(--muted);
+        min-height: 42px;
+      }
+      .details {
+        border-left: 1px solid var(--line);
+        padding-left: 24px;
+        align-self: start;
+        position: sticky;
+        top: 22px;
+      }
+      .details h3 {
+        font-size: 21px;
+        line-height: 1.25;
+        margin: 12px 0;
+      }
+      .details p {
+        font-size: 14px;
+      }
+      .details ul {
+        padding-left: 18px;
+        font-size: 12px;
+      }
+      .details li {
+        margin: 10px 0;
+        overflow-wrap: anywhere;
+      }
+      .detail-label {
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .source-note {
+        font-size: 12px !important;
+        color: var(--muted);
+      }
+      .walk {
+        display: flex;
+        gap: 18px;
+        align-items: center;
+        border-top: 1px solid var(--line);
+        padding-top: 22px;
+        margin-top: 26px;
+      }
+      .walk p {
+        margin: 0;
+        flex: 1;
+        font-size: 14px;
+      }
+      .walk button {
+        background: var(--ink);
+        color: white;
+        border: 0;
+        padding: 9px 14px;
+        border-radius: 3px;
+        white-space: nowrap;
+      }
+      .walk button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .filter {
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .filter select {
+        display: block;
+        margin-top: 5px;
+        padding: 6px;
+        background: transparent;
+        border: 1px solid var(--line);
+        max-width: 100%;
+      }
+      footer {
+        font-size: 12px;
+        color: var(--muted);
+        padding-top: 10px;
+        padding-bottom: 30px;
+      }
+      footer p {
+        max-width: 950px;
+      }
+      .skip {
+        position: absolute;
+        left: -9999px;
+      }
+      .skip:focus {
+        left: 15px;
+        top: 10px;
+        background: white;
+        padding: 10px;
+        z-index: 5;
+      }
+      @media (max-width: 1050px) {
+        header,
+        main,
+        footer {
+          padding-left: 24px;
+          padding-right: 24px;
+        }
+        .layout {
+          grid-template-columns: minmax(0, 1fr) 265px;
+          gap: 20px;
+        }
+        .flow {
+          gap: 14px;
+        }
+        .node strong {
+          font-size: 14px;
+        }
+      }
+      @media (max-width: 780px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .details {
+          position: static;
+          border-left: 0;
+          border-top: 2px solid var(--line);
+          padding: 22px 0 0;
+        }
+        .flow {
+          gap: 16px;
+        }
+        .viewhead {
+          display: block;
+        }
+        .filter {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+        .filter select {
+          margin: 0;
+        }
+        .walk {
+          flex-wrap: wrap;
+        }
+        .walk p {
+          flex-basis: 100%;
+        }
+      }
+      @media (max-width: 520px) {
+        header,
+        main,
+        footer {
+          padding: 22px 18px;
+        }
+        .flow {
+          grid-template-columns: 1fr;
+          gap: 14px;
+        }
+        .lane-title {
+          margin-top: 5px;
+        }
+        .node {
+          min-height: 0;
+        }
+        .nav button {
+          font-size: 13px;
+          padding: 11px 10px;
+        }
+        .legend {
+          gap: 7px 13px;
+        }
+        .node.dim {
+          opacity: 0.5;
+        }
+        .walk {
+          gap: 10px;
+        }
+        h2 {
+          font-size: 23px;
+        }
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        button {
+          transition: background-color 0.12s;
+        }
+      }
+      @media print {
+        .nav,
+        .filter,
+        .walk,
+        .feedback button {
+          display: none;
+        }
+        .layout {
+          display: block;
+        }
+        .details {
+          position: static;
+        }
+        .node {
+          break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#explorer">Skip to system map</a>
+    <header>
+      <div class="eyebrow">Ephemeral Pages / Systems atlas</div>
+      <h1>A release is a coordinated pair.</h1>
+      <p>
+        Follow a change from review to running software—and see where evidence, configuration and
+        storage make coordination necessary.
+      </p>
+      <div class="snapshot">
+        Checkpoint · 11 September 2026 · Completed staging artifact rehearsal
+      </div>
+      <div class="notice">
+        <strong>Current control gap.</strong> Netlify still publishes production automatically from
+        main. Cloudflare Git deployment is not enabled. These are operator-supplied current
+        assumptions; no fresh provider audit was performed for this map.
+      </div>
+    </header>
+    <main id="explorer">
+      <nav class="nav" aria-label="Map views"></nav>
+      <div class="legend" aria-label="Status legend">
+        <span>● Live verified*</span><span>■ Implemented</span><span>◇ Planned / unverified</span
+        ><span>△ Operational assumption</span>
+      </div>
+      <div class="layout">
+        <section aria-labelledby="view-title">
+          <div class="viewhead">
+            <div>
+              <h2 id="view-title"></h2>
+              <p class="intro" id="view-intro"></p>
+            </div>
+            <label class="filter"
+              >Emphasize status<select id="filter">
+                <option value="all">All statuses</option>
+                <option value="live">Live verified</option>
+                <option value="built">Implemented</option>
+                <option value="planned">Planned / unverified</option>
+                <option value="assumption">Assumptions</option>
+              </select></label
+            >
+          </div>
+          <div class="flow" id="flow"></div>
+          <div class="crossflow">
+            <svg viewBox="0 0 46 28" aria-hidden="true">
+              <path
+                d="M42 4H9a6 6 0 0 0 0 12h28m-6-5 6 5-6 5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              /></svg
+            ><span id="flow-summary"></span>
+          </div>
+          <div class="feedback">
+            <h3>Feedback & control points</h3>
+            <div id="loops" aria-label="Explore feedback paths"></div>
+            <p id="loop-description" aria-live="polite"></p>
+          </div>
+        </section>
+        <aside
+          class="details"
+          id="details"
+          aria-label="Selected node evidence"
+          aria-live="polite"
+        ></aside>
+      </div>
+      <div class="walk" aria-label="Guided walkthrough">
+        <p id="walk-text"></p>
+        <button id="previous">Previous</button><button id="next">Next step →</button>
+      </div>
+    </main>
+    <footer>
+      <p>
+        * “Live verified” refers to dated evidence in the repository, not a real-time monitor.
+        Staging preparation and the full coordinated rehearsal passed for the recorded candidate.
+        Production promotion/resume, recovery drills and publishing cutover remain unimplemented.
+        Layer numbers describe the implementation plan, not command syntax.
+      </p>
+      <p>
+        Portable source links are relative to the intended
+        <code>docs/release-system-map.html</code> location. The page works offline; source files
+        open only when those files are present alongside the repository. Sources link to files
+        rather than line ranges that drift during implementation. Update this map at completed
+        implementation, validation, review or release checkpoints.
+      </p>
+    </footer>
+    <script>
+      "use strict";
+      const statuses = {
+        live: "● Live verified",
+        built: "■ Implemented",
+        planned: "◇ Planned / unverified",
+        assumption: "△ Operational assumption",
+      };
+      // Source tuples contain repository-relative paths. No credentials or runtime payloads.
+      const N = {
+        author: [
+          "Author & reviewer",
+          "built",
+          "Classify and route the combined scope",
+          "Authors label release-sensitive work need-release-process and route the stack to stage. Reviewers assess deployment order, compatibility and recovery. Native protections do not classify risk or enforce label-dependent targets.",
+          [["PR.md"]],
+        ],
+        route: [
+          "Native branch protections",
+          "built",
+          "PRs, passing CI and resolved reviews",
+          "GitHub native protections cover main and stage. The custom routing workflow and checker were removed. Authors and reviewers own label and stack routing; production release prerequisites belong in the runner. Branch protection alone does not coordinate providers.",
+          [["docs/release-routing.md"], [".github/protected-release-branches.json"], ["PR.md"]],
+        ],
+        stage: [
+          "Persistent stage",
+          "built",
+          "Integrate only the next release",
+          "The final stack PR targets stage. Candidate identity is an exact commit, not a moving branch tip. Intervening main changes must be integrated before rehearsal; further changes invalidate prior evidence.",
+          [["docs/releases.md"]],
+        ],
+        ci: [
+          "CI & secret scanning",
+          "built",
+          "Quality, runtime tests and Gitleaks",
+          "CI installs both frozen lockfiles, checks app, release tooling and Worker, runs unit/runtime/browser tests, and builds the app. The unqualified Worker dry run covers default configuration. Gitleaks 8.30.0 scans reachable history and non-ignored files, with a detection/redaction canary. CodeQL adds a separate security policy; none of these alone establishes release readiness.",
+          [
+            [".github/workflows/ci.yml"],
+            ["scripts/ci/gitleaks.mjs"],
+            ["docs/development-governance.md"],
+            ["docs/releases.md"],
+          ],
+        ],
+        plan: [
+          "Plan & status",
+          "built",
+          "Read-only provider inspection",
+          "Plan and status compare explicit targets, non-secret settings, scopes, required secret metadata and the observed deployment pair against a baseline. Planning requires known service source attribution, a clean tree and candidate-bound configuration. Status may retain unknown source attribution. A passed plan is not release approval.",
+          [["docs/releases.md"], ["scripts/release/planner.ts"], ["scripts/release/schema.ts"]],
+        ],
+        bootstrap: [
+          "Staging bootstrap",
+          "live",
+          "Dedicated app, Worker and storage",
+          "The staging pair was provisioned and verified on 10 September. Bootstrap and secret provisioning mutate staging, guarded by pending checkpoints, locks and inspection-based recovery. Shared bootstrap safety helpers were subsequently centralized in coordinator commit 477b4b9; the cited procedure remains the behavioral reference.",
+          [["docs/staging-bootstrap.md"], ["docs/staging-bootstrap.md"]],
+        ],
+        smoke: [
+          "Staging behavior smoke",
+          "live",
+          "Transition and final pair verified",
+          "The exact-candidate rehearsal passed both old-app/new-Worker and final-pair smokes: upload, roles, two-editor synchronization, reload persistence, actual network-loss recovery and PNG download. Total usage was two short-lived pages and two captures. This is dated staging evidence, not production approval.",
+          [
+            ["docs/release-evidence/2026-09-10-staging/README.md"],
+            ["docs/release-evidence/2026-09-10-staging/transition-smoke.json"],
+            ["docs/release-evidence/2026-09-10-staging/pair-smoke.json"],
+            ["scripts/release/smoke.ts"],
+          ],
+        ],
+        main: [
+          "Main auto-publishes",
+          "assumption",
+          "Current production side effect",
+          "The operator briefing says Netlify main automatic production publication is still enabled, and Cloudflare Git deployment is not enabled. The release contract identifies replacing this publish path as a prerequisite to authoritative controlled promotion. This map did not re-query provider settings.",
+          [["docs/releases.md"]],
+        ],
+        baseline: [
+          "Verified production baseline",
+          "live",
+          "Historical pair, not a release approval",
+          "The 9 September collaboration launch has live browser and API smoke evidence. Netlify deploy 6aa1c499a64d39a10fb86df2 and Worker version 4b747f21-d3a0-4566-8026-8dae1ea13109 identify the historical pair. It predates runner artifact hashes and fingerprints; no previous verified production collaboration pair existed.",
+          [["docs/collaboration-production-release.md"]],
+        ],
+        html: [
+          "Uploaded HTML sandbox",
+          "built",
+          "Untrusted document; network blocked",
+          "Uploaded HTML runs with sandbox allow-scripts. Collaboration content permits inline scripts/styles and data/blob media only; external declarative origins are removed to prevent shared state leaking through resource URLs. It communicates through the validated parent bridge.",
+          [["src/csp.ts"], ["README.md"], ["src/collaboration/bootstrap.ts"]],
+        ],
+        parent: [
+          "Trusted app viewer",
+          "built",
+          "Owns capability and WebSocket",
+          "The trusted parent owns the socket and relays validated messages. Editor capabilities stay in URL fragments/session storage. The generated app-shell CSP admits the exact Worker WSS origin, making build-time configuration part of release identity.",
+          [["README.md"], ["src/csp.ts"]],
+        ],
+        functions: [
+          "Netlify Functions",
+          "built",
+          "Pages, tickets, capture and cleanup",
+          "Functions validate uploads, enforce the collaboration gate, mint role-specific tickets and request Worker captures using the service credential. The API also supports read/delete and screenshot retrieval. Disabling the collaboration gate requires a Netlify redeploy and does not revoke existing sockets.",
+          [["netlify/functions/pages.ts"], ["netlify/functions/pages.ts"], ["docs/releases.md"]],
+        ],
+        blobs: [
+          "Netlify Blobs",
+          "built",
+          "HTML, metadata, quotas and PNGs",
+          "A strongly consistent store holds page HTML/metadata, idempotency, rate limits and screenshots. Conditional writes enforce shared limits; compensation handles failed page and screenshot writes. Scheduled cleanup removes expired data. This storage is separate from Cloudflare room state.",
+          [
+            ["netlify/functions/storage.ts"],
+            ["netlify/functions/storage.ts"],
+            ["netlify/functions/cleanup.ts"],
+          ],
+        ],
+        worker: [
+          "Worker admission",
+          "built",
+          "Exact Origin + signed room ticket",
+          "Worker checks exact allowed Origin, protocol order, HMAC ticket signature, audience, expiry and room identity before forwarding validated metadata to the Durable Object. Netlify currently mints 60-second tickets; the Worker accepts no more than five minutes. Ticket IDs are consumed once.",
+          [
+            ["collaboration-worker/src/index.ts"],
+            ["collaboration-worker/src/auth.ts"],
+            ["netlify/functions/collaboration-auth.ts"],
+            ["collaboration-worker/src/room.ts"],
+          ],
+        ],
+        room: [
+          "SQLite room / Durable Object",
+          "built",
+          "Authoritative revision and state",
+          "One room per page persists shared state and revision. It enforces editor/viewer roles, ticket replay prevention, connection and mutation budgets. Deletion leaves a tombstone until expiry; expiry removes storage. Code rollback cannot undo these stored data or migrations.",
+          [
+            ["collaboration-worker/src/room.ts"],
+            ["collaboration-worker/src/room.ts"],
+            ["docs/releases.md"],
+          ],
+        ],
+        capture: [
+          "Frozen Browser Run capture",
+          "live",
+          "One-use snapshot → PNG",
+          "Live staging smoke verified screenshot download. The room freezes state/revision and permits one capture at a time. A token expires within 60 seconds and is stored as a hash. Browser Run visits a trusted wrapper, embedding only the configured app content origin. Capture is 1440×900 with an 8 MiB Worker output limit; capacity failures return bounded errors. The smoke verifies a PNG, not pixel equivalence.",
+          [
+            ["collaboration-worker/README.md"],
+            ["collaboration-worker/src/capture.ts"],
+            ["docs/staging-bootstrap.md"],
+          ],
+        ],
+        secrets: [
+          "1Password → Varlock",
+          "built",
+          "Four staging references only",
+          "Varlock resolves STAGE_COLLABORATION_CAPABILITY_CURRENT_SECRET, STAGE_COLLABORATION_TICKET_SECRET, STAGE_COLLABORATION_SERVICE_TOKEN and STAGE_RATE_LIMIT_SECRET from op://dev/ephemeral-pages/. Desktop unlock may be needed. Caching is disabled; no resolved values belong in arguments, reports, checkpoints or Git.",
+          [["docs/staging-bootstrap.md"], ["package.json"]],
+        ],
+        sharing: [
+          "Cross-platform secret relationship",
+          "built",
+          "Presence does not prove equality",
+          "Netlify COLLABORATION_TICKET_SECRET corresponds to Worker TICKET_HMAC_SECRET; COLLABORATION_SERVICE_TOKEN corresponds to ADMIN_TOKEN. Capability and rate-limit secrets remain Netlify-only. Routine inspection verifies names/metadata; ticket connection and authorized capture test the relationship without exporting values.",
+          [["docs/staging-bootstrap.md"], ["docs/releases.md"]],
+        ],
+        isolation: [
+          "Environment isolation",
+          "live",
+          "Stable origins; separate secrets & storage",
+          "Staging has a dedicated unlinked Netlify project and staging Worker/DO namespace. It must not share production secrets/storage or depend on a historical PR preview origin. A shared staging Worker must not be overwritten by simultaneous candidates.",
+          [["docs/staging-bootstrap.md"], ["docs/staging-bootstrap.md"], ["docs/releases.md"]],
+        ],
+        evidence: [
+          "Sanitized evidence boundary",
+          "built",
+          "IDs and outcomes; never capabilities",
+          "Versioned reports retain fixed outcomes, configuration fingerprints and provider identifiers. Release evidence excludes secret values, editor links, tickets, page contents and raw browser traces. Gitleaks can detect credential patterns but cannot prove arbitrary sensitive content is safe.",
+          [["docs/releases.md"], ["docs/secret-scanning.md"]],
+        ],
+        checkpoint: [
+          "Checkpoint → mutation → observation",
+          "built",
+          "Retain IDs; ambiguity blocks retries",
+          "Bootstrap and rehearsal persist checkpoints before mutation. Rehearsal records activation results separately from readback, so an inspection failure cannot erase a returned deployment ID. A repository-wide local guard blocks a fresh run after possible mutation; completed read-only failures permit another attempt. Generalized resume and distributed production serialization remain future work.",
+          [
+            ["scripts/release/rehearsal.ts"],
+            ["scripts/release/rehearsal-guard.ts"],
+            ["docs/releases.md"],
+          ],
+        ],
+        prepare: [
+          "4 · Prepare & retain",
+          "live",
+          "Private candidate checkout; exact bytes",
+          "Staging and production preparation passed for candidate e0508d5. Both use private detached checkouts, sanitized Git environments and frozen installs. Inventories bind generated CSP, static assets, ten Netlify function ZIPs and deployment configuration, and the Worker bundle. Production preparation was local only. Netlify may acknowledge functions by name only; local hashes and live smoke do not imply independent retrieval of inactive provider bytes.",
+          [
+            ["scripts/release/prepare.ts"],
+            ["docs/release-evidence/2026-09-10-staging/staging-preparation.json"],
+            ["docs/release-evidence/2026-09-10-staging/production-preparation.json"],
+            ["docs/releases.md"],
+          ],
+        ],
+        rehearse: [
+          "4 · Rehearse exact candidate",
+          "live",
+          "Held upload → Worker → app → smoke",
+          "The complete staging rehearsal passed for e0508d5. Netlify held the previous app while the candidate uploaded; the Worker activated first, followed by transition smoke, exact-pair reinspection, publication of the same Netlify deployment and final smoke. Final Netlify deployment: 6aa327145fc723d7169c4879. Worker version: 72189329-0b90-49fb-84ed-eed1c022ff76. Recovery drills and production cutover remain outstanding; a changed candidate requires fresh rehearsal.",
+          [
+            ["scripts/release/rehearsal-cli.ts"],
+            ["docs/release-evidence/2026-09-10-staging/rehearsal.json"],
+            ["docs/release-evidence/2026-09-10-staging/README.md"],
+          ],
+        ],
+        approve: [
+          "5 · Approve & promote",
+          "planned",
+          "Bind approval to source and build",
+          "Promotion PR carries exact candidate, successful rehearsal, production differences and recovery targets. Verify the resulting main source tree against the approved candidate and validate the exact commit. Serialize production releases. A changed commit/build invalidates approval.",
+          [["docs/releases.md"], ["docs/releases.md"]],
+        ],
+        deploy: [
+          "5 · Deploy compatible pair",
+          "planned",
+          "Worker first, then Netlify",
+          "A backward-compatible Worker is deployed and verified before publishing Netlify. It must support the old app and existing sessions during the interval. Incompatible protocol/schema changes need a staged transition; deployment order alone cannot solve compatibility.",
+          [["docs/releases.md"]],
+        ],
+        resume: [
+          "5 · Resume from observations",
+          "planned",
+          "Persist IDs; reconcile before retry",
+          "Staging already retains mutation checkpoints and provider identifiers, but generalized resumption is not implemented. Production must reconcile observed deployments against retained inputs, skip only verified stages, and block missing evidence or ambiguous operations. An inaccessible API is not an absent deployment.",
+          [["scripts/release/rehearsal.ts"], ["docs/releases.md"]],
+        ],
+        recover: [
+          "6 · Explicit recovery",
+          "planned",
+          "Report mixed state; operator decides",
+          "Worker success with Netlify failure is a mixed deployment pair. Retain it only if compatibility was established; otherwise use the recorded recovery plan. Failed production verification halts completion. Recovery requires explicit operator action, restores a compatible pair and preserves secrets/storage compatibility.",
+          [["docs/releases.md"], ["docs/releases.md"]],
+        ],
+        cutover: [
+          "6 · Publishing cutover",
+          "planned",
+          "Replace automatic main publication",
+          "Verify provider capabilities, packaging, authentication and account-plan constraints in staging before replacing automatic Netlify production publication. Controlled promotion becomes authoritative only after this bypass route is closed.",
+          [["docs/releases.md"], ["docs/releases.md"]],
+        ],
+        complete: [
+          "Verify → record → synchronize",
+          "planned",
+          "Only successful verification means shipped",
+          "Confirm intended live IDs, headers and bounded product/API smoke. Persist the verified pair and evidence; move only shipped changelog entries out of Unreleased in a documentation follow-up, then synchronize stage. Partial deployment or failed smoke is not completion.",
+          [["docs/releases.md"], ["docs/releases.md"]],
+        ],
+      };
+      const V = [
+        {
+          name: "Delivery today",
+          title: "Useful gates. An open control gap.",
+          intro:
+            "Read left to right: change intake, existing checks, then the current delivery boundary. Select any node for evidence.",
+          lanes: [
+            [
+              "Change intake",
+              ["author", "route", "stage"],
+              ["label + dependency route", "merge intended scope"],
+            ],
+            [
+              "Existing release primitives",
+              ["ci", "plan", "bootstrap"],
+              ["code checks feed inspection", "provision isolated targets"],
+            ],
+            [
+              "Observed delivery",
+              ["smoke", "main", "baseline"],
+              ["smoke establishes staging baseline", "automatic app publication remains"],
+            ],
+          ],
+          summary: "Passing CI or planning does not authorize production promotion.",
+          loops: [
+            [
+              "Learning loop",
+              ["plan", "smoke", "baseline"],
+              "Observe the deployment pair → test behavior → retain evidence → improve the next plan. This is a workflow learning loop, without modeled causal polarity.",
+            ],
+            [
+              "Control gap",
+              ["route", "main"],
+              "Native protections require reviewed, passing changes; automatic main publishing can still bypass future coordinated release gates.",
+            ],
+            [
+              "Human control",
+              ["author", "stage"],
+              "Authors and reviewers classify scope. Risk classification and stage routing remain human responsibilities.",
+            ],
+          ],
+        },
+        {
+          name: "Runtime collaboration",
+          title: "One experience, two platforms.",
+          intro:
+            "The browser, Netlify and Cloudflare form a coupled runtime. Each boundary has a different authority and storage responsibility.",
+          lanes: [
+            ["Browser boundary", ["html", "parent"], ["validated postMessage"]],
+            ["Netlify boundary", ["functions", "blobs"], ["strongly consistent storage"]],
+            [
+              "Cloudflare boundary",
+              ["worker", "room", "capture"],
+              ["validated ticket → room", "frozen state → trusted capture"],
+            ],
+          ],
+          summary:
+            "Parent → Functions for tickets; parent → Worker over WSS; Functions → Worker for capture.",
+          loops: [
+            [
+              "Runtime verification",
+              ["parent", "functions", "worker", "room", "capture"],
+              "A successful ticket connection and screenshot exercise origins, cross-platform credentials, persistence and Browser Run together. Health alone is insufficient.",
+            ],
+            [
+              "Disconnect & reconnect",
+              ["parent", "worker", "room"],
+              "The staging smoke interrupts the first editor’s Worker TCP connections, requires a fresh connection, and verifies a new mutation reaches the viewer.",
+            ],
+            [
+              "State compatibility",
+              ["room", "functions", "blobs"],
+              "Release compatibility spans both stores and the old browser sessions. Worker rollback preserves DO migration history; reverting code does not rewind data.",
+            ],
+          ],
+        },
+        {
+          name: "Trust & credentials",
+          title: "Keep authority and evidence separate.",
+          intro:
+            "Secret references cross a provisioning boundary. Routine inspection uses names and metadata; behavior verifies that the platforms agree.",
+          lanes: [
+            [
+              "Operator boundary",
+              ["secrets", "checkpoint"],
+              ["resolve only authorized staging references"],
+            ],
+            ["Provider boundary", ["sharing", "isolation"], ["exact origins + distinct resources"]],
+            ["Evidence boundary", ["evidence", "smoke"], ["metadata + bounded behavior checks"]],
+          ],
+          summary:
+            "Provision once; inspect every release. Secret rotation is an explicit separate operation.",
+          loops: [
+            [
+              "Inspection before retry",
+              ["checkpoint", "isolation"],
+              "A pending bootstrap mutation blocks duplicate writes until provider inspection proves the exact expected state. Partial or inaccessible targets remain blocked.",
+            ],
+            [
+              "Presence → behavior",
+              ["sharing", "smoke"],
+              "Secret names establish presence, not equality. Tickets and captures test shared-secret behavior without retaining values.",
+            ],
+            [
+              "Quota pressure",
+              ["smoke", "evidence"],
+              "Collaboration smoke uses one one-hour page and at most one capture; API smoke separately exhausts an upload bucket. Honor retry delays; do not repeatedly consume quota to hide failure.",
+            ],
+          ],
+        },
+        {
+          name: "Coordinated release",
+          title: "Staging verified. Production controls next.",
+          intro:
+            "Layer 4 passed a complete staging rehearsal. Layers 5 and 6 remain planned: production execution, resumption, recovery and publishing cutover.",
+          lanes: [
+            [
+              "Layer 4 / Preparation",
+              ["prepare", "rehearse"],
+              ["inspect retained artifact, then rehearse"],
+            ],
+            [
+              "Layer 5 / Execution",
+              ["approve", "deploy", "resume"],
+              ["source-tree verification", "checkpoint each provider stage"],
+            ],
+            [
+              "Layer 6 / Recovery & cutover",
+              ["recover", "cutover", "complete"],
+              ["prove recovery in staging", "verify before declaring shipped"],
+            ],
+          ],
+          summary:
+            "Preparation → rehearsal → approval → compatible pair → production verification → retained evidence.",
+          loops: [
+            [
+              "Verification / learning",
+              ["prepare", "rehearse", "approve", "complete"],
+              "The next release learns from a recorded pair, artifact/configuration identity and observable smoke outcomes. Changed inputs require fresh rehearsal and approval.",
+            ],
+            [
+              "Mixed-pair failure",
+              ["deploy", "resume", "recover"],
+              "If Worker succeeds and Netlify fails, report both live identities. Inspect before retrying; keep the new Worker only with established old-app compatibility. No automatic rollback.",
+            ],
+            [
+              "Bottleneck: authority",
+              ["approve", "cutover"],
+              "One production release at a time, shared promotion/recovery serialization, and controlled publication are required. Netlify’s automatic main path has not yet been disabled.",
+            ],
+          ],
+        },
+      ];
+      let view = 0,
+        selected = "plan",
+        loop = -1,
+        step = 0;
+      const $ = (id) => document.getElementById(id);
+      const nav = document.querySelector(".nav");
+      V.forEach((v, i) => {
+        const b = document.createElement("button");
+        b.textContent = v.name;
+        b.type = "button";
+        b.onclick = () => {
+          view = i;
+          loop = -1;
+          selected = v.lanes[0][1][0];
+          render();
+        };
+        nav.append(b);
+      });
+      function sourceLink(path) {
+        return path.startsWith("docs/") ? path.slice(5) : "../" + path;
+      }
+      function details() {
+        const n = N[selected];
+        $("details").replaceChildren();
+        const tag = document.createElement("div");
+        tag.className = "detail-label";
+        tag.textContent = "Selected component / evidence";
+        const title = document.createElement("h3");
+        title.textContent = n[0];
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = statuses[n[1]];
+        const p = document.createElement("p");
+        p.textContent = n[3];
+        const label = document.createElement("div");
+        label.className = "detail-label";
+        label.textContent = "Source references";
+        const ul = document.createElement("ul");
+        n[4].forEach(([path]) => {
+          const li = document.createElement("li"),
+            a = document.createElement("a");
+          a.href = sourceLink(path);
+          a.textContent = path;
+          li.append(a);
+          ul.append(li);
+        });
+        $("details").append(tag, title, badge, p, label, ul);
+      }
+      function render() {
+        const v = V[view];
+        [...nav.children].forEach((b, i) => b.setAttribute("aria-pressed", String(i === view)));
+        $("view-title").textContent = v.title;
+        $("view-intro").textContent = v.intro;
+        $("flow-summary").textContent = v.summary;
+        $("flow").replaceChildren();
+        v.lanes.forEach(([label, ids, arrows]) => {
+          const lane = document.createElement("div");
+          lane.className = "lane";
+          const heading = document.createElement("div");
+          heading.className = "lane-title";
+          heading.textContent = label;
+          lane.append(heading);
+          ids.forEach((id, i) => {
+            const n = N[id],
+              b = document.createElement("button");
+            b.type = "button";
+            b.className = "node " + n[1];
+            b.dataset.node = id;
+            b.setAttribute("aria-pressed", String(selected === id));
+            b.setAttribute("aria-controls", "details");
+            const s = document.createElement("span");
+            s.className = "badge";
+            s.textContent = statuses[n[1]];
+            const title = document.createElement("strong");
+            title.textContent = n[0];
+            const hint = document.createElement("span");
+            hint.className = "hint";
+            hint.textContent = n[2];
+            b.append(s, title, hint);
+            b.onclick = () => {
+              selected = id;
+              document
+                .querySelectorAll(".node")
+                .forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.node === id)));
+              details();
+            };
+            lane.append(b);
+            if (arrows[i]) {
+              const a = document.createElement("div");
+              a.className = "connector";
+              a.textContent = arrows[i];
+              lane.append(a);
+            }
+          });
+          $("flow").append(lane);
+        });
+        $("loops").replaceChildren();
+        v.loops.forEach(([name], i) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = name;
+          b.setAttribute("aria-pressed", String(loop === i));
+          b.onclick = () => {
+            loop = loop === i ? -1 : i;
+            [...$("loops").children].forEach((x, j) =>
+              x.setAttribute("aria-pressed", String(loop === j)),
+            );
+            emphasis();
+          };
+          $("loops").append(b);
+        });
+        details();
+        emphasis();
+      }
+      function emphasis() {
+        const f = $("filter").value,
+          active = loop < 0 ? null : V[view].loops[loop];
+        document
+          .querySelectorAll(".node")
+          .forEach((b) =>
+            b.classList.toggle(
+              "dim",
+              (f !== "all" && N[b.dataset.node][1] !== f) ||
+                (active && !active[1].includes(b.dataset.node)),
+            ),
+          );
+        $("loop-description").textContent = active
+          ? active[2]
+          : "Select a feedback path to emphasize its components. Nodes remain available for inspection.";
+      }
+      $("filter").onchange = emphasis;
+      const walk = [
+        [
+          "Start with the control gap. Native branch protections exist, but main still triggers Netlify publication.",
+          0,
+          "main",
+        ],
+        [
+          "Inspect the runtime pair. The old browser, new Worker and stored state must remain compatible during deployment.",
+          1,
+          "room",
+        ],
+        [
+          "Follow authority. Metadata verifies secret presence; live tickets and capture verify the relationship.",
+          2,
+          "sharing",
+        ],
+        [
+          "Inspect the completed checkpoint. Private artifact preparation and coordinated staging activation passed; production controls and recovery drills remain.",
+          3,
+          "prepare",
+        ],
+        [
+          "Close the loop. Record the observed pair, recover explicitly after failure, and mark shipped only after verification.",
+          3,
+          "complete",
+        ],
+      ];
+      function walkthrough() {
+        const [text, v, id] = walk[step];
+        $("walk-text").textContent = step + 1 + " / " + walk.length + " — " + text;
+        $("previous").disabled = step === 0;
+        $("next").textContent = step === walk.length - 1 ? "Restart walkthrough" : "Next step →";
+        view = v;
+        selected = id;
+        loop = -1;
+        $("filter").value = "all";
+        render();
+      }
+      $("previous").onclick = () => {
+        if (step > 0) step--;
+        walkthrough();
+      };
+      $("next").onclick = () => {
+        step = (step + 1) % walk.length;
+        walkthrough();
+      };
+      walkthrough();
+    </script>
+  </body>
+</html>

@@ -10,6 +10,18 @@ This design applies the principles in
 [The release process is part of the product](https://schalkneethling.com/posts/the-release-process-is-part-of-the-product/)
 to the Netlify application and Cloudflare collaboration Worker.
 
+## Documentation checkpoints
+
+Update the [release system map](release-system-map.html), this guide, and affected setup, recovery,
+and PR guidance at meaningful checkpoints: completion of an implementation layer, validation or
+rehearsal, review changes that alter the design, and a release or recovery outcome. Continuous or
+real-time updates are not required.
+
+Before closing a checkpoint, reconcile implemented, verified, planned and assumed behavior against
+current code and retained evidence. Update source links, remaining gates and the map checkpoint date.
+Keep canonical instructions reusable; put candidate-specific IDs and results in dated evidence records.
+A documentation update does not approve a changed candidate or imply that production has shipped.
+
 ## Prepare artifacts and rehearse on staging
 
 Use a clean checkout of the exact candidate commit, with Bun 1.3.14 and the pinned dependencies
@@ -365,10 +377,10 @@ Keep provider calls behind Netlify and Cloudflare adapters so release policy can
 deploying. GitHub Actions should invoke the same runner, supply deployment credentials, serialize
 releases, and retain evidence. Do not build a general-purpose deployment framework first.
 
-The runner currently exposes planning and status operations, documented under
-[Read-only tooling](#read-only-tooling). Preparation, rehearsal, promotion, resumption, and recovery
-remain deferred; their command syntax and record schemas will be defined and tested as those
-operations are implemented.
+The runner currently exposes planning and status under [Read-only tooling](#read-only-tooling),
+and preparation and staging rehearsal under [artifact preparation](#prepare-artifacts-and-rehearse-on-staging).
+Production promotion, resumption and recovery remain deferred; their command syntax and record
+schemas will be defined and tested as those operations are implemented.
 
 Before production promotion can be authoritative, replace the current automatic production publish
 on merge with a controlled publish path. Otherwise a merge can bypass the release checks. Provider
