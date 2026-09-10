@@ -21,7 +21,7 @@ export function setupScreenshotCapture(pageId: string): void {
     if (inFlight) return;
     inFlight = true;
     button.disabled = true;
-    button.innerHTML = `${htmlIcon("loader", "icon btn-icon icon-spin")} Capturing…`;
+    button.innerHTML = `${htmlIcon("loader", "icon btn-icon icon-spin")} Capture screenshot`;
     result.hidden = false;
     status.hidden = false;
     status.setAttribute("role", "status");
