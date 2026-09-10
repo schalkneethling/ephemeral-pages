@@ -28,6 +28,10 @@ The label communicates a release requirement; it does not itself block merging o
 deployment. CI must enforce the target rule, including the promotion exception. Until enforcement
 exists, authors and reviewers must uphold that requirement explicitly.
 
+The approved CI-only bootstrap PR #41 is a one-time, unlabeled exception targeting `main` to
+establish the trusted checker before enforcement. It does not permit application changes to bypass
+`stage`; see the bootstrap exception in the release contract.
+
 For behavior changes, add or update tests that demonstrate the intended behavior. When fixing a bug,
 confirm that the regression test fails without the fix where practical. For behavior-neutral changes,
 use existing checks to establish that behavior is preserved.

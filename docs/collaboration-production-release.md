@@ -39,20 +39,20 @@ Netlify's secret designation.
 ## Release sequence and status
 
 1. Production Worker configuration and initial health check: complete.
-2. Netlify production secrets: saved, user-confirmed on 2026-09-09. The production gate remains unset.
+2. Netlify production secrets: saved, user-confirmed on 2026-09-09. The production gate was unset at this checkpoint.
 3. Matching Worker secrets: saved, user-confirmed and secret names verified on 2026-09-09.
    The production version containing both secrets is `4b747f21-d3a0-4566-8026-8dae1ea13109`.
    Enter or rotate them interactively with
    `bunx wrangler secret put TICKET_HMAC_SECRET --config collaboration-worker/wrangler.jsonc --env production`
    and the same command with `ADMIN_TOKEN` for the service token.
-4. Remaining Netlify production values: saved, user-confirmed on 2026-09-09. Gate remains unset.
+4. Remaining Netlify production values: saved, user-confirmed on 2026-09-09. The gate was still unset at this checkpoint.
 5. Preview rollback drill: complete. Restored version `872b6a39-e8b9-4560-af53-f28906ab6f68`,
    verified health, then restored `9cd69e53-93b1-4604-9989-1c870e0bbe3f` and verified health again.
    This exercised version rollback without reverting Durable Object storage or migrations.
 6. PR #33 merged as `39b7a6a69b6b61400325326473665490538f84c1`.
    Production returned the app-shell CSP with the production Worker WSS origin. Before enablement,
    the ticket endpoint returned HTTP 503 with `Collaboration is disabled`, as expected.
-7. Production enablement and redeployment: user-confirmed on 2026-09-09. The live browser smoke
+7. Production enablement (`COLLABORATION_ENABLED=true`) and redeployment: user-confirmed on 2026-09-09. The live browser smoke
    passed at 20:44 UTC: collaboration upload returned 201; two independent editor sessions
    synchronized card creation and movement; the viewer synchronized changes with editing controls
    disabled; an editor reconnected after reload with state preserved. A separate network-loss
@@ -65,6 +65,12 @@ Netlify's secret designation.
 
 The verified production Worker rollback target is `4b747f21-d3a0-4566-8026-8dae1ea13109`,
 which includes both production secrets. Do not roll back to the initial version without secrets.
+
+Netlify deployment identity was verified through its API on 2026-09-10: published deploy
+`6aa1c499a64d39a10fb86df2`, source commit `39b7a6a69b6b61400325326473665490538f84c1`,
+published at 2026-09-09T20:42:46.198Z. Together with the Worker version above, this identifies the
+deployment pair used by the 20:44 UTC production smoke. This historical log predates the release
+runner and does not contain its proposed artifact hashes or configuration fingerprints.
 
 To disable new collaboration uploads and tickets, set the production `COLLABORATION_ENABLED`
 value to `false` and redeploy Netlify. Existing sockets are not revoked by this flag. Worker rollback
