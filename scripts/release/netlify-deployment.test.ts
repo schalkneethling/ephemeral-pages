@@ -219,3 +219,24 @@ it("rejects a ready deployment from a different candidate before publication", a
   ).rejects.toMatchObject({ kind: "verification" });
   expect(calls).not.toContain("restoreSiteDeploy");
 });
+
+it("accepts an omitted false draft flag for an explicitly production-context deploy", async () => {
+  const { artifacts, client } = await fixture();
+  const dependencies = {
+    checkpoint: async () => {},
+    client: async (
+      operation: Parameters<typeof client>[0],
+      ...args: Parameters<typeof client> extends [unknown, ...infer Rest] ? Rest : never
+    ) => {
+      const value = await client(operation, ...args);
+      if (operation === "getSiteDeploy") {
+        const { draft: _draft, ...remaining } = value as Record<string, unknown>;
+        return remaining;
+      }
+      return value;
+    },
+  };
+  await expect(
+    uploadHeldNetlifyDeployment(input, artifacts, metadata, dependencies),
+  ).resolves.toMatchObject({ state: "ready" });
+});

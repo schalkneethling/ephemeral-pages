@@ -160,7 +160,7 @@ const candidate = async (
     value.id !== deployId ||
     value.site_id !== input.siteId ||
     value.context !== "production" ||
-    value.draft !== false ||
+    (value.draft !== undefined && value.draft !== false) ||
     value.state === "error"
   )
     throw new NetlifyDeploymentError("verification");
@@ -274,7 +274,7 @@ export async function uploadHeldNetlifyDeployment(
     ["required", "file"],
     ["required_functions", "fn"],
   ] as const) {
-    const required = diff[field];
+    const required = diff[field] === undefined ? [] : diff[field];
     if (
       !Array.isArray(required) ||
       required.some((value) => typeof value !== "string" || !uploads.has(`${prefix}:${value}`)) ||
