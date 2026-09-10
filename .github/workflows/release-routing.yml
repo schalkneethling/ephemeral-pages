@@ -1,0 +1,37 @@
+name: Release routing
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, labeled, unlabeled, closed]
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: release-routing
+  cancel-in-progress: false
+
+jobs:
+  release-routing:
+    name: Release routing
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          ref: main
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+
+      - name: Check release routing from trusted repository code
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ci/check-release-routing.mjs
