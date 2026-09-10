@@ -7,6 +7,10 @@ would make review or validation harder.
 When work depends on another change, identify that dependency and explain the intended merge order.
 Use issues or a project board to track implementation plans.
 
+GitHub native protections require pull requests and passing CI for `main` and `stage`.
+Authors and reviewers remain responsible for routing release-sensitive work through `stage`;
+see [branch protection guidance](docs/release-routing.md).
+
 For behavior changes, add or update tests that demonstrate the intended behavior. When fixing a bug,
 confirm that the regression test fails without the fix where practical. For behavior-neutral changes,
 use existing checks to establish that behavior is preserved.
