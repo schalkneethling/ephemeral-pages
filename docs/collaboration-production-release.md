@@ -72,6 +72,12 @@ published at 2026-09-09T20:42:46.198Z. Together with the Worker version above, t
 deployment pair used by the 20:44 UTC production smoke. This historical log predates the release
 runner and does not contain its proposed artifact hashes or configuration fingerprints.
 
+There was no previous verified production collaboration pair: this was its initial release.
+The preview rehearsal did not record an exact candidate-to-promotion source-tree comparison.
+Those omissions cannot be retroactively treated as passing the new release contract. The pair
+above is a verified live baseline for subsequent releases, not a complete runner-generated record
+or evidence that a pre-collaboration rollback was rehearsed.
+
 To disable new collaboration uploads and tickets, set the production `COLLABORATION_ENABLED`
 value to `false` and redeploy Netlify. Existing sockets are not revoked by this flag. Worker rollback
 must retain SQLite migration history; restore a known-good Worker version rather than removing
