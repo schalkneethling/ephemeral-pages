@@ -240,3 +240,46 @@ it("accepts an omitted false draft flag for an explicitly production-context dep
     uploadHeldNetlifyDeployment(input, artifacts, metadata, dependencies),
   ).resolves.toMatchObject({ state: "ready" });
 });
+
+it.each([
+  { response: { name: "function" }, accepted: true },
+  { response: { name: "function", sha: "mismatch" }, accepted: false },
+  { response: { name: "another-function" }, accepted: false },
+])("verifies function upload acknowledgements: $response", async ({ response, accepted }) => {
+  const { artifacts, client } = await fixture();
+  const bytes = Buffer.from("frozen function archive");
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  await writeFile(join(artifacts.artifactDirectory, "function.zip"), bytes);
+  artifacts.inventory.functions = [
+    {
+      name: "function",
+      runtime: "js",
+      relativePath: "function.zip",
+      bytes: bytes.length,
+      sha256: digest,
+    },
+  ];
+  let functionUploaded = false;
+  const result = uploadHeldNetlifyDeployment(
+    input,
+    artifacts,
+    { ...metadata, functions: { function: { runtime: "js" } } },
+    {
+      checkpoint: async () => {},
+      client: async (operation, ...args) => {
+        if (operation === "uploadDeployFunction") {
+          expect(args[0].name).toBe("function");
+          functionUploaded = true;
+          return response;
+        }
+        const value = await client(operation, ...args);
+        return operation === "getSiteDeploy"
+          ? { ...(value as object), required_functions: functionUploaded ? [] : [digest] }
+          : value;
+      },
+    },
+  );
+  if (accepted)
+    await expect(result).resolves.toMatchObject({ state: "ready", acknowledgedUploads: 2 });
+  else await expect(result).rejects.toMatchObject({ kind: "verification" });
+});

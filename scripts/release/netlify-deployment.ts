@@ -298,7 +298,9 @@ export async function uploadHeldNetlifyDeployment(
           { ...checkpoint, deployId },
         );
         if (
-          response.sha !== digest ||
+          (entry.function
+            ? response.sha !== undefined && response.sha !== digest
+            : response.sha !== digest) ||
           (entry.function
             ? response.name !== entry.name
             : response.path !== `/${entry.name}` && response.path !== entry.name) ||

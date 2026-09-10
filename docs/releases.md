@@ -60,7 +60,9 @@ an upload failed; inspect recorded IDs before a separate recovery action.
 
 The ordinary Worker path supports the reviewed `v1` SQLite Durable Object lifecycle with no migration
 change. Different migration state blocks this path. Netlify upload acknowledgements and Cloudflare
-version metadata supplement local byte hashes, but neither API supplies downloadable inactive
+version metadata supplement local byte hashes. Netlify function acknowledgements may contain only
+the function name; a returned hash must match, but an omitted hash is not independent byte verification.
+Neither API supplies downloadable inactive
 function/Worker bytes for independent byte-for-byte retrieval. Staging calibration and runtime smoke
 are required; a ready deployment alone is insufficient proof. A Netlify restore that returns a new
 unmapped deployment ID also blocks further execution.
