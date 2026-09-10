@@ -941,9 +941,8 @@ a {
   background: rgba(255, 252, 235, 0.94);
   border-block-end: var(--line-width) solid var(--line);
   box-shadow: 0 var(--space-sm) 1.375rem rgba(75, 52, 22, 0.08);
-  display: flex;
+  display: grid;
   gap: var(--space-lg);
-  justify-content: space-between;
   padding-block: var(--space-lg);
   padding-inline: clamp(0.875rem, 3vw, 1.5rem);
 }
@@ -952,6 +951,14 @@ a {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
+}
+
+#capture-page {
+  min-inline-size: 14rem;
+  justify-content: center;
+  background: var(--peach);
+  border: var(--line-width) solid var(--line);
+  border-radius: var(--space-sm);
 }
 
 .page-bar-message {
@@ -965,12 +972,13 @@ a {
 }
 
 .capture-result:not([hidden]) {
-  align-items: center;
+  align-content: center;
   background: rgba(255, 252, 235, 0.94);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm) var(--space-xl);
-  justify-content: space-between;
+  display: grid;
+  grid-template-rows: minmax(min-content, 1fr) 1.5rem;
+  gap: var(--space-xs);
+  block-size: 6rem;
+  overflow: auto;
   padding-inline: clamp(0.875rem, 3vw, 1.5rem);
 }
 
@@ -978,6 +986,8 @@ a {
   background: transparent;
   flex: 1;
   padding-inline: 0;
+  align-self: center;
+  padding-block: 0;
 }
 
 .capture-result .page-bar-message[data-state="success"] {
@@ -992,6 +1002,7 @@ a {
   color: var(--action);
   font-size: 0.82rem;
   font-weight: 800;
+  justify-self: start;
 }
 
 .capture-download:focus-visible {
