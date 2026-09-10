@@ -221,3 +221,31 @@ On 2026-09-10, the wrappers provisioned the isolated staging targets:
 This records provider setup, not a rehearsed release. Application deployment and cross-platform
 smoke verification are still required before staging release configuration is enabled. These initial
 IDs are historical observations, not hard-coded targets for subsequent releases or recovery.
+
+## Verified initial staging baseline — 2026-09-10
+
+The dedicated pair passed the live collaboration smoke at its stable origins:
+
+- Netlify site: `9c45026a-d351-40e0-a9ed-2eb9dee63bd3`
+- Published Netlify deployment: `6aa3071fc4ae7b28250acde7`
+- App source: `d91985b3defda60764a92abe8858b4169fb1f214`
+- Worker version: `b781f975-c8ce-42cf-9e8f-7aa49bafdfc1`
+- Worker deployment: `c7f6d649-0b62-4b1f-82a2-213e2d4b23a9`, serving 100% traffic
+
+Upload, editor/viewer permissions, synchronization between two editors and a viewer, reload
+persistence, actual Worker connection interruption and recovery, and PNG screenshot download all
+passed. The run used one one-hour fixture and one capture. No page identifiers, editor links,
+tickets, page contents, or raw browser traces were retained. Provider metadata does not record Git source attribution for either deployment. The app source
+above comes from the guarded local bootstrap checkpoint; do not infer a Worker source from it.
+The read-only release status operation also passed against this pair, including required secrets,
+origins, scopes, and active deployment IDs.
+
+The initial upload check exposed the missing core `RATE_LIMIT_SECRET`. Staging now resolves that
+value from `op://dev/ephemeral-pages/STAGE_RATE_LIMIT_SECRET`, alongside the three collaboration
+secrets, and the corrected app deployment includes it. Production was not changed.
+
+This establishes the bootstrap baseline, not a prepared-artifact rehearsal or release approval.
+The manual draft returned Netlify's `deploy-preview` context. Publishing or restoring that draft
+must not be assumed to replace its function environment with Production-context secrets.
+The subsequent staging publish used the Production context. The later preparation layer must
+prove that a held Production-context candidate can be inspected and activated without rebuilding.

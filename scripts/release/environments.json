@@ -3,8 +3,49 @@
   "integrationBranch": "stage",
   "environments": {
     "staging": {
-      "netlify": null,
-      "cloudflare": null
+      "netlify": {
+        "siteId": "9c45026a-d351-40e0-a9ed-2eb9dee63bd3",
+        "accountId": "5ad7250d11b73b30fd9f052f",
+        "expectedNonSecretVariables": {
+          "PUBLIC_BASE_URL": "https://ephemeral-pages-staging.netlify.app",
+          "COLLABORATION_SERVICE_URL": "https://ephemeral-pages-collaboration-staging.volume4-schalk.workers.dev",
+          "COLLABORATION_WEBSOCKET_URL": "wss://ephemeral-pages-collaboration-staging.volume4-schalk.workers.dev",
+          "COLLABORATION_TICKET_AUDIENCE": "ephemeral-pages-collaboration-staging",
+          "COLLABORATION_CAPABILITY_CURRENT_VERSION": "v1",
+          "COLLABORATION_ENABLED": "true"
+        },
+        "requiredSecretNames": [
+          "COLLABORATION_CAPABILITY_CURRENT_SECRET",
+          "COLLABORATION_TICKET_SECRET",
+          "COLLABORATION_SERVICE_TOKEN",
+          "RATE_LIMIT_SECRET"
+        ],
+        "requiredVariableScopes": {
+          "PUBLIC_BASE_URL": ["functions"],
+          "COLLABORATION_SERVICE_URL": ["functions"],
+          "COLLABORATION_WEBSOCKET_URL": ["builds", "functions"],
+          "COLLABORATION_TICKET_AUDIENCE": ["functions"],
+          "COLLABORATION_CAPABILITY_CURRENT_VERSION": ["functions"],
+          "COLLABORATION_ENABLED": ["functions"],
+          "COLLABORATION_CAPABILITY_CURRENT_SECRET": ["functions"],
+          "COLLABORATION_TICKET_SECRET": ["functions"],
+          "COLLABORATION_SERVICE_TOKEN": ["functions"],
+          "RATE_LIMIT_SECRET": ["functions"]
+        }
+      },
+      "cloudflare": {
+        "accountId": "369e0fbadd08f6f15efd9fb63c7f5193",
+        "workerName": "ephemeral-pages-collaboration-staging",
+        "wranglerEnvironment": "staging",
+        "wranglerConfigPath": "collaboration-worker/wrangler.jsonc",
+        "expectedNonSecretVariables": {
+          "ALLOWED_ORIGINS": "https://ephemeral-pages-staging.netlify.app",
+          "PAGE_CONTENT_ORIGIN": "https://ephemeral-pages-staging.netlify.app",
+          "PUBLIC_WORKER_ORIGIN": "https://ephemeral-pages-collaboration-staging.volume4-schalk.workers.dev",
+          "TICKET_AUDIENCE": "ephemeral-pages-collaboration-staging"
+        },
+        "requiredSecretNames": ["TICKET_HMAC_SECRET", "ADMIN_TOKEN"]
+      }
     },
     "production": {
       "netlify": {
