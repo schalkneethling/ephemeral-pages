@@ -26,8 +26,8 @@ stage or provider write checkpoint. The isolated inspection command environment 
 tokens available to the parent workflow. The correction must forward only the intended provider's
 token to its own CLI; build environments and retained evidence remain credential-free.
 
-This attempt also does not count as rehearsal A or B. Start a fresh calibration after the correction
-passes review and protected staging CI.
+This attempt also does not count as rehearsal A or B. Start a fresh calibration only after the
+correction passes review, is merged into `stage`, and that exact staging commit passes protected CI.
 
 Read-only verification of the corrected inspection environment passed for both staging providers
 using the existing 1Password-backed tokens through Varlock. Expected non-secret variables, required
