@@ -18,7 +18,12 @@ import {
   type RecoveryProviderPlan,
   type RecoveryTargetEvidence,
 } from "./recovery-provider-adapters.ts";
-import { recoveryRecordSchema, type RecoveryRecord } from "./recovery-record.ts";
+import {
+  recoveryRecordSchema,
+  recoveryTargetEvidenceSchema,
+  stagingRecoveryTargetEvidenceSchema,
+  type RecoveryRecord,
+} from "./recovery-record.ts";
 import type { RecoveryDependencies } from "./recovery-runner.ts";
 import {
   inspectCloudflare,
@@ -82,11 +87,12 @@ export type RecoveryProviderFactoryDependencies = RecoveryDependencies;
 export type StagingRecoveryProviderFactoryDependencies = StagingRecoveryDependencies;
 
 type ProviderRecoveryRecord = RecoveryRecord | StagingRecoveryRecord;
-type ProviderDependenciesFor<Record extends ProviderRecoveryRecord> = Omit<
-  RecoveryDependencies,
-  "reconcile"
-> & {
+type ProviderDependenciesFor<
+  Record extends ProviderRecoveryRecord,
+  Evidence extends RecoveryTargetEvidence,
+> = Omit<RecoveryDependencies, "reconcile" | "verifyTargets"> & {
   reconcile(step: "restore-netlify" | "restore-worker", record: Record): Promise<Record["results"]>;
+  verifyTargets(): Promise<Evidence>;
 };
 
 const SAFE_REPORT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
@@ -260,11 +266,15 @@ const mutationStartedWithoutEvidence = (record: ProviderRecoveryRecord): boolean
     record.stages["restore-worker"] !== "pending" ||
     record.journal.some(({ step }) => step === "restore-netlify" || step === "restore-worker"));
 
-async function createProviderDependencies<Record extends ProviderRecoveryRecord>(
+async function createProviderDependencies<
+  Record extends ProviderRecoveryRecord,
+  Evidence extends RecoveryTargetEvidence,
+>(
   rawInput: Omit<RecoveryProviderFactoryInput, "previous"> & { previous?: Record },
   parseRecord: (value: unknown) => Record,
+  parseEvidence: (value: unknown) => Evidence,
   overrides: RecoveryProviderFactoryOverrides = {},
-): Promise<ProviderDependenciesFor<Record>> {
+): Promise<ProviderDependenciesFor<Record, Evidence>> {
   const repositoryRoot = resolve(rawInput.repositoryRoot);
   const smokeOutputDirectory = resolve(rawInput.smokeOutputDirectory);
   const configuration = releaseConfigSchema.parse(rawInput.configuration);
@@ -368,8 +378,10 @@ async function createProviderDependencies<Record extends ProviderRecoveryRecord>
     workerTransport: await getWorkerTransport(),
   });
 
-  let evidence: RecoveryTargetEvidence | undefined = previous?.targetEvidence;
-  const requireEvidence = (): RecoveryTargetEvidence => {
+  let evidence: Evidence | undefined = previous?.targetEvidence
+    ? parseEvidence(previous.targetEvidence)
+    : undefined;
+  const requireEvidence = (): Evidence => {
     if (!evidence) throw new Error("Recovery target evidence is unavailable.");
     return evidence;
   };
@@ -415,12 +427,13 @@ async function createProviderDependencies<Record extends ProviderRecoveryRecord>
     reconcile: async (step, rawRecord) => {
       const record = parseRecord(rawRecord);
       if (!record.targetEvidence) throw new Error("Recovery target evidence is missing.");
-      evidence = record.targetEvidence;
+      const currentEvidence = parseEvidence(record.targetEvidence);
+      evidence = currentEvidence;
       const dependencies = await adapterDependencies();
       if (step === "restore-netlify") {
         const result = await (overrides.adapters?.reconcileNetlify ?? reconcileRecoveryNetlify)(
           plan,
-          evidence,
+          currentEvidence,
           dependencies,
         );
         if (result.status !== "completed") throw new Error("Netlify recovery is ambiguous.");
@@ -429,8 +442,8 @@ async function createProviderDependencies<Record extends ProviderRecoveryRecord>
       if (!record.results.netlify) throw new Error("Netlify recovery evidence is missing.");
       const result = await (overrides.adapters?.reconcileWorker ?? reconcileRecoveryWorker)(
         plan,
-        evidence,
-        restoredNetlify(evidence),
+        currentEvidence,
+        restoredNetlify(currentEvidence),
         latestWorkerResponseId(record),
         dependencies,
       );
@@ -463,18 +476,22 @@ async function createProviderDependencies<Record extends ProviderRecoveryRecord>
     verifyPair: () => writeSmoke("pair"),
     verifyTargets: async () => {
       if (!evidence) {
-        evidence = await (overrides.adapters?.inspectTargets ?? inspectRecoveryTargets)(
-          plan,
-          await adapterDependencies(),
+        evidence = parseEvidence(
+          await (overrides.adapters?.inspectTargets ?? inspectRecoveryTargets)(
+            plan,
+            await adapterDependencies(),
+          ),
         );
         return evidence;
       }
       const current = await inspect();
-      evidence = await (overrides.adapters?.verifyTargets ?? verifyRecoveryTargets)(
-        plan,
-        evidence,
-        current,
-        await adapterDependencies(),
+      evidence = parseEvidence(
+        await (overrides.adapters?.verifyTargets ?? verifyRecoveryTargets)(
+          plan,
+          evidence,
+          current,
+          await adapterDependencies(),
+        ),
       );
       return evidence;
     },
@@ -491,6 +508,7 @@ export async function createRecoveryProviderDependencies(
   return createProviderDependencies(
     rawInput,
     (value) => recoveryRecordSchema.parse(value),
+    (value) => recoveryTargetEvidenceSchema.parse(value),
     overrides,
   );
 }
@@ -504,6 +522,7 @@ export async function createStagingRecoveryProviderDependencies(
   return createProviderDependencies(
     rawInput,
     (value) => stagingRecoveryRecordSchema.parse(value),
+    (value) => stagingRecoveryTargetEvidenceSchema.parse(value),
     overrides,
   );
 }

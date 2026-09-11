@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RecoveryProviderPlan, RecoveryTargetEvidence } from "./recovery-provider-adapters.ts";
+import type { RecoveryTargetEvidenceRecord } from "./recovery-record.ts";
 import { createRecoveryProviderDependencies } from "./recovery-providers.ts";
 import type { RecoveryRecord } from "./recovery-record.ts";
 import type { NetlifyVariableScope } from "./providers.ts";
@@ -143,7 +144,8 @@ const createInput = async () => {
       workerName: "production-worker",
     },
   };
-  const evidence: RecoveryTargetEvidence = {
+  const evidence: RecoveryTargetEvidenceRecord = {
+    inspectionVersion: 2,
     expectedCurrent: plan.expectedCurrent,
     inspectionSha256: "d".repeat(64),
     netlifyIdentity: "source-commit",
@@ -278,7 +280,7 @@ const overrides = (evidence: RecoveryTargetEvidence) => {
   };
 };
 
-const previousRecord = (evidence: RecoveryTargetEvidence): RecoveryRecord => ({
+const previousRecord = (evidence: RecoveryTargetEvidenceRecord): RecoveryRecord => ({
   environment: "production",
   journal: [],
   operation: "production-recovery",

@@ -8,6 +8,7 @@ import type { PreparedRelease } from "./prepare.ts";
 import type { ReleaseConfig } from "./schema.ts";
 import {
   runStagingRecovery,
+  stagingRecoveryRecordSchema,
   type StagingRecoveryDependencies,
   type StagingRecoveryRunInput,
 } from "./staging-recovery-runner.ts";
@@ -182,6 +183,7 @@ async function fixture() {
     verifyTargets: async () => {
       calls.push("verify-targets");
       return {
+        inspectionVersion: 2,
         inspectionSha256: "f".repeat(64),
         requested: target.rehearsal.observedPair,
         expectedCurrent: source.rehearsal.observedPair,
@@ -312,6 +314,73 @@ it("preserves an ambiguous mutation checkpoint and reconciles without repeating 
   expect(fixture_.calls).toContain("reconcile:restore-netlify");
   expect(fixture_.calls).not.toContain("restore-netlify-ambiguous");
   expect(resumed.recoveryRunIds).toEqual([30, 31]);
+});
+
+it("migrates path-bound staging evidence before the first Worker write", async () => {
+  const fixture_ = await fixture();
+  fixture_.dependencies.verifyTransition = async () => {
+    fixture_.calls.push("verify-transition");
+    return false;
+  };
+  const blocked = await runStagingRecovery(fixture_.input, fixture_.dependencies);
+  expect(blocked.stages["restore-netlify"]).toBe("passed");
+  expect(blocked.stages["restore-worker"]).toBe("pending");
+  const legacy = structuredClone(blocked);
+  delete legacy.targetEvidence!.inspectionVersion;
+  legacy.targetEvidence!.inspectionSha256 = "a".repeat(64);
+  expect(stagingRecoveryRecordSchema.safeParse(legacy).success).toBe(true);
+  fixture_.calls.length = 0;
+  fixture_.dependencies.verifyTransition = async () => {
+    fixture_.calls.push("verify-transition");
+    return true;
+  };
+
+  const resumed = await runStagingRecovery(
+    {
+      ...fixture_.input,
+      currentRunId: 31,
+      previous: legacy,
+      reportDirectory: join(fixture_.root, "resume-portable"),
+    },
+    fixture_.dependencies,
+  );
+
+  expect(resumed.outcome).toBe("passed");
+  expect(resumed.targetEvidence).toMatchObject({
+    inspectionVersion: 2,
+    inspectionSha256: "f".repeat(64),
+  });
+  expect(fixture_.calls.indexOf("verify-targets")).toBeLessThan(
+    fixture_.calls.indexOf("restore-worker"),
+  );
+});
+
+it("blocks legacy evidence after a Worker write has started", async () => {
+  const fixture_ = await fixture();
+  fixture_.dependencies.verifyTransition = async () => false;
+  const blocked = await runStagingRecovery(fixture_.input, fixture_.dependencies);
+  const legacy = structuredClone(blocked);
+  delete legacy.targetEvidence!.inspectionVersion;
+  legacy.journal.push({
+    step: "restore-worker",
+    value: {
+      phase: "pending-activation",
+      versionId: fixture_.target.rehearsal.observedPair.workerVersionId,
+    },
+  });
+
+  const result = await runStagingRecovery(
+    {
+      ...fixture_.input,
+      currentRunId: 31,
+      previous: legacy,
+      reportDirectory: join(fixture_.root, "unsafe-legacy"),
+    },
+    fixture_.dependencies,
+  );
+
+  expect(result.outcome).toBe("blocked");
+  expect(result.failure).toEqual({ kind: "unknown", stage: "inspect" });
 });
 
 it("blocks changed source or configuration on resume before provider work", async () => {

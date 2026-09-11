@@ -35,7 +35,12 @@ export function verifyCompletedRecoveryEvidence(input: {
   source: ProductionRecord;
   target: RecoveryTarget;
 }): VerifiedCompletedRecovery {
-  const { preflight, recovery, run, source, target } = input;
+  const parsedRecovery = recoveryRecordSchema.safeParse(input.recovery);
+  if (!parsedRecovery.success) {
+    throw new Error("Recovery completion evidence differs.");
+  }
+  const { preflight, run, source, target } = input;
+  const recovery = parsedRecovery.data;
   const sourceSha256 = artifactHash(JSON.stringify(source));
   const targetSha256 = artifactHash(JSON.stringify(target));
   const recoveryPlanSha256 = artifactHash(

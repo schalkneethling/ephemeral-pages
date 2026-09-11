@@ -48,6 +48,7 @@ export type RecoveryProviderPlan = {
 };
 
 export type RecoveryTargetEvidence = {
+  inspectionVersion?: 2;
   inspectionSha256: string;
   requested: RecoveryPair;
   expectedCurrent: RecoveryPair;
@@ -180,13 +181,19 @@ const planDigest = (plan: RecoveryProviderPlan): string =>
         stable({
           environment: plan.environment,
           expectedCurrent: plan.expectedCurrent,
+          inspectionVersion: 2,
           netlify: plan.netlify,
           requested: plan.requested,
           productionSiteId: plan.productionSiteId,
           productionWorkerName: plan.productionWorkerName,
           worker: {
             accountId: plan.worker.accountId,
-            artifactInput: plan.worker.artifactInput,
+            artifactInput: {
+              environment: plan.worker.artifactInput.environment,
+              productionWorkerName: plan.worker.artifactInput.productionWorkerName,
+              sourceConfigSha256: plan.worker.artifactInput.sourceConfigSha256,
+              target: plan.worker.artifactInput.target,
+            },
             manifestSha256: plan.worker.preparedArtifacts.manifestSha256,
             targetArtifactSha256: plan.worker.targetArtifactSha256,
             targetScriptEtag: plan.worker.targetScriptEtag,
@@ -644,16 +651,47 @@ const inspectWorker = async (
   return { deployments, manifest };
 };
 
-const assertEvidence = (plan: RecoveryProviderPlan, evidence: RecoveryTargetEvidence): void => {
+const assertEvidenceBindings = (
+  plan: RecoveryProviderPlan,
+  evidence: RecoveryTargetEvidence,
+): void => {
   if (
-    evidence.inspectionSha256 !== planDigest(plan) ||
+    evidence.netlifyIdentity !== plan.netlify.targetIdentity.kind ||
+    evidence.netlifyVariablesVerified !== true ||
     evidence.workerArtifactSha256 !== plan.worker.targetArtifactSha256 ||
+    evidence.workerMigrationTag !== "v1" ||
     evidence.workerScriptEtag !== plan.worker.targetScriptEtag ||
+    JSON.stringify(evidence.workerSecretBindingNames) !==
+      JSON.stringify(plan.worker.preparedArtifacts.manifest.policy.requiredSecretNames) ||
+    evidence.workerSecretValuesObservable !== false ||
     JSON.stringify(evidence.requested) !== JSON.stringify(plan.requested) ||
     JSON.stringify(evidence.expectedCurrent) !== JSON.stringify(plan.expectedCurrent)
   )
     throw new RecoveryProviderError("invalid-input");
 };
+
+const assertEvidence = (plan: RecoveryProviderPlan, evidence: RecoveryTargetEvidence): void => {
+  assertEvidenceBindings(plan, evidence);
+  if (evidence.inspectionVersion !== 2 || evidence.inspectionSha256 !== planDigest(plan))
+    throw new RecoveryProviderError("invalid-input");
+};
+
+const targetEvidence = (
+  plan: RecoveryProviderPlan,
+  manifest: WorkerArtifactManifest,
+): RecoveryTargetEvidence => ({
+  expectedCurrent: { ...plan.expectedCurrent },
+  inspectionSha256: planDigest(plan),
+  inspectionVersion: 2,
+  netlifyIdentity: plan.netlify.targetIdentity.kind,
+  netlifyVariablesVerified: true,
+  requested: { ...plan.requested },
+  workerArtifactSha256: plan.worker.targetArtifactSha256,
+  workerMigrationTag: "v1",
+  workerScriptEtag: plan.worker.targetScriptEtag,
+  workerSecretBindingNames: [...manifest.policy.requiredSecretNames],
+  workerSecretValuesObservable: false,
+});
 
 export const inspectRecoveryTargets = async (
   plan: RecoveryProviderPlan,
@@ -663,18 +701,7 @@ export const inspectRecoveryTargets = async (
   try {
     await inspectNetlify(plan, dependencies, plan.expectedCurrent.netlifyDeployId);
     const { manifest } = await inspectWorker(plan, dependencies);
-    return {
-      expectedCurrent: { ...plan.expectedCurrent },
-      inspectionSha256: planDigest(plan),
-      netlifyIdentity: plan.netlify.targetIdentity.kind,
-      netlifyVariablesVerified: true,
-      requested: { ...plan.requested },
-      workerArtifactSha256: plan.worker.targetArtifactSha256,
-      workerMigrationTag: "v1",
-      workerScriptEtag: plan.worker.targetScriptEtag,
-      workerSecretBindingNames: [...manifest.policy.requiredSecretNames],
-      workerSecretValuesObservable: false,
-    };
+    return targetEvidence(plan, manifest);
   } catch (error) {
     if (error instanceof RecoveryProviderError && error.kind === "invalid-input") throw error;
     throw new RecoveryProviderError("preflight");
@@ -688,16 +715,26 @@ export const verifyRecoveryTargets = async (
   dependencies: RecoveryProviderDependencies,
 ): Promise<RecoveryTargetEvidence> => {
   validatePlan(plan);
-  assertEvidence(plan, evidence);
+  assertEvidenceBindings(plan, evidence);
+  const legacyStagingEvidence =
+    evidence.inspectionVersion === undefined && plan.environment === "staging";
+  if (evidence.inspectionVersion === undefined && !legacyStagingEvidence)
+    throw new RecoveryProviderError("invalid-input");
+  if (!legacyStagingEvidence && evidence.inspectionSha256 !== planDigest(plan))
+    throw new RecoveryProviderError("invalid-input");
+  if (evidence.inspectionVersion !== undefined && evidence.inspectionVersion !== 2)
+    throw new RecoveryProviderError("invalid-input");
   if (!Object.values(current).every((id) => SAFE_ID.test(id)))
     throw new RecoveryProviderError("invalid-input");
   try {
     await inspectNetlify(plan, dependencies, current.netlifyDeployId);
-    await inspectWorker(plan, dependencies, {
+    const { manifest } = await inspectWorker(plan, dependencies, {
       deploymentId: current.workerDeploymentId,
       versionId: current.workerVersionId,
     });
-    return evidence;
+    const verified = targetEvidence(plan, manifest);
+    assertEvidenceBindings(plan, verified);
+    return legacyStagingEvidence ? verified : evidence;
   } catch {
     throw new RecoveryProviderError("verification");
   }

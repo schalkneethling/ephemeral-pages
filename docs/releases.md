@@ -9,7 +9,7 @@ the staging workflows are registered on the default branch. Protected calibratio
 correcting workflow metadata, isolated inspection credentials, and the old staging app's runtime
 OIDC configuration. Both transition and final-pair browser smokes passed; see
 [the checkpoint](release-evidence/2026-09-11-staging/README.md). Calibration B also passed with A as its prior pair. Recovery preflight exposed workflow lookup and Netlify checkpoint-shape mismatches, both corrected
-and regression-tested before provider mutation. The live recovery drill, publishing cutover, the attributable baseline, and the first production release remain gates.
+and regression-tested before provider mutation. The live drill restored Netlify A and stopped at transition role verification; a full local smoke later passed. Explicit resume exposed a temporary-path-dependent inspection fingerprint. The portable resume correction still requires protected workflow verification. Recovery completion, publishing cutover, the attributable baseline, and the first production release remain gates.
 Production publishing settings have not been changed by this increment.
 
 This design applies the principles in

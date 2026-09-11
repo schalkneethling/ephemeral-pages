@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "operation": "staging-recovery",
+  "environment": "staging",
+  "sourceRehearsalRunId": 34643899329,
+  "sourceRehearsalSha256": "6183d2bb3f6d765d35a9c645763ae5fc53096d22f38811337784b140d0bab411",
+  "targetRehearsalRunId": 34642239601,
+  "targetRehearsalSha256": "7b6a22f4762cc0e1d676c415a6f4bafd66d9c49a6f0dc4925aad9f52fb0175ae",
+  "sourceSha256": "a5ad2be8395183a1dd2d9a64e618a3f23b8cee7afcf9413ecf38aabc32c3f14c",
+  "configurationFingerprint": "98642ac680525668839e2213ff846a591ddf0f95d007972b6e960990ec64609b",
+  "recoveryPlanSha256": "8757f7e827d9b022fab9221a3c0dadaab5c5414bd69fdd2a9e8c187ffdd8a25f",
+  "recoveryRunIds": [34648240950],
+  "startingPair": {
+    "netlifyDeployId": "6aa46366dace99455126237f",
+    "workerDeploymentId": "4bb572cc-8991-4127-8fbe-1bd76f219a37",
+    "workerVersionId": "6e4ee754-a886-40cd-82aa-6966123385fa"
+  },
+  "targetPair": {
+    "netlifyDeployId": "6aa45f0f2b404d22d09d9b75",
+    "workerDeploymentId": "3e1252c7-2f45-4b00-a582-c940e01e1e79",
+    "workerVersionId": "57437e24-e988-44bd-b9f1-b65180c0c0e5"
+  },
+  "targetEvidence": {
+    "inspectionSha256": "c513c9eca2785ab8edaae87f2b967ef2883efc0919e0ca1fc916397762dff9ea",
+    "requested": {
+      "netlifyDeployId": "6aa45f0f2b404d22d09d9b75",
+      "workerDeploymentId": "3e1252c7-2f45-4b00-a582-c940e01e1e79",
+      "workerVersionId": "57437e24-e988-44bd-b9f1-b65180c0c0e5"
+    },
+    "expectedCurrent": {
+      "netlifyDeployId": "6aa46366dace99455126237f",
+      "workerDeploymentId": "4bb572cc-8991-4127-8fbe-1bd76f219a37",
+      "workerVersionId": "6e4ee754-a886-40cd-82aa-6966123385fa"
+    },
+    "netlifyIdentity": "release-artifact",
+    "netlifyVariablesVerified": true,
+    "workerArtifactSha256": "e2c4a2450762c551a9d37722b58f553c4fad2b862a3b4d07218b7d00e19a8e8f",
+    "workerMigrationTag": "v1",
+    "workerScriptEtag": "38144714aa12a4cb5ce2089c6acd360323f0655a7cf8844f1b61d3da8fe7effd",
+    "workerSecretBindingNames": ["TICKET_HMAC_SECRET", "ADMIN_TOKEN"],
+    "workerSecretValuesObservable": false
+  },
+  "observedPair": {
+    "netlifyDeployId": "6aa45f0f2b404d22d09d9b75",
+    "workerDeploymentId": "4bb572cc-8991-4127-8fbe-1bd76f219a37",
+    "workerVersionId": "6e4ee754-a886-40cd-82aa-6966123385fa"
+  },
+  "outcome": "blocked",
+  "stages": {
+    "inspect": "passed",
+    "restore-netlify": "passed",
+    "verify-transition": "blocked",
+    "restore-worker": "pending",
+    "verify-pair": "pending"
+  },
+  "results": {
+    "netlify": {
+      "publishedDeployId": "6aa45f0f2b404d22d09d9b75"
+    }
+  },
+  "journal": [
+    {
+      "step": "restore-netlify",
+      "value": {
+        "operation": "restoreSiteDeploy",
+        "phase": "pending-mutation",
+        "siteId": "9c45026a-d351-40e0-a9ed-2eb9dee63bd3",
+        "artifactSha256": "a29a7d2a4af4654a83fb0f162d09f4bd5695affd08d287b7dcb137b4c5c6f737",
+        "deployId": "6aa45f0f2b404d22d09d9b75"
+      }
+    },
+    {
+      "step": "restore-netlify",
+      "value": {
+        "operation": "restoreSiteDeploy",
+        "phase": "mutation-response-received",
+        "siteId": "9c45026a-d351-40e0-a9ed-2eb9dee63bd3",
+        "artifactSha256": "a29a7d2a4af4654a83fb0f162d09f4bd5695affd08d287b7dcb137b4c5c6f737",
+        "deployId": "6aa45f0f2b404d22d09d9b75",
+        "publishedDeployId": "6aa45f0f2b404d22d09d9b75"
+      }
+    }
+  ],
+  "failure": {
+    "stage": "verify-transition",
+    "kind": "unknown"
+  }
+}

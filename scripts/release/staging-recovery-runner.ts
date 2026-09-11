@@ -13,8 +13,8 @@ import {
 import {
   recoverySteps,
   recoveryStepSchema,
-  recoveryTargetEvidenceSchema,
-  type RecoveryTargetEvidenceRecord,
+  stagingRecoveryTargetEvidenceSchema,
+  type StagingRecoveryTargetEvidenceRecord,
   type RecoveryStep,
 } from "./recovery-record.ts";
 import type { DeploymentPair } from "./rehearsal.ts";
@@ -39,7 +39,7 @@ export const stagingRecoveryRecordSchema = z.strictObject({
   recoveryRunIds: z.array(z.number().int().positive()).min(1).max(100),
   startingPair: pairSchema,
   targetPair: pairSchema,
-  targetEvidence: recoveryTargetEvidenceSchema.optional(),
+  targetEvidence: stagingRecoveryTargetEvidenceSchema.optional(),
   observedPair: pairSchema.optional(),
   recoveredPair: pairSchema.optional(),
   outcome: stageOutcomeSchema,
@@ -77,7 +77,7 @@ export type StagingRecoveryDependencies = {
     checkpoint: StagingRecoveryCheckpoint,
   ): Promise<{ deploymentId: string; versionId: string }>;
   verifyPair(): Promise<boolean>;
-  verifyTargets(): Promise<RecoveryTargetEvidenceRecord>;
+  verifyTargets(): Promise<StagingRecoveryTargetEvidenceRecord>;
   verifyTransition(): Promise<boolean>;
 };
 
@@ -212,6 +212,34 @@ export async function runStagingRecovery(
       throw new Error("Unexpected live staging pair.");
   };
   try {
+    if (
+      input.previous?.targetEvidence &&
+      input.previous.targetEvidence.inspectionVersion === undefined
+    ) {
+      if (
+        !record.targetEvidence ||
+        record.stages["restore-netlify"] !== "passed" ||
+        !record.results.netlify ||
+        record.stages["restore-worker"] !== "pending" ||
+        record.results.worker ||
+        record.journal.some(({ step }) => step === "restore-worker")
+      ) {
+        throw new Error("Legacy staging recovery evidence cannot be migrated safely.");
+      }
+      active = "inspect";
+      await inspect();
+      record.targetEvidence = stagingRecoveryTargetEvidenceSchema.parse(
+        await dependencies.verifyTargets(),
+      );
+      if (
+        record.targetEvidence.inspectionVersion !== 2 ||
+        !samePair(record.targetEvidence.requested, targetPair) ||
+        !samePair(record.targetEvidence.expectedCurrent, startingPair)
+      ) {
+        throw new Error("Migrated staging recovery target evidence differs.");
+      }
+      await save();
+    }
     for (const step of ["restore-netlify", "restore-worker"] as const) {
       if (!["running", "blocked", "failed"].includes(record.stages[step])) continue;
       active = step;
@@ -225,7 +253,9 @@ export async function runStagingRecovery(
       await save();
     }
     active = "inspect";
-    record.targetEvidence = recoveryTargetEvidenceSchema.parse(await dependencies.verifyTargets());
+    record.targetEvidence = stagingRecoveryTargetEvidenceSchema.parse(
+      await dependencies.verifyTargets(),
+    );
     if (
       !samePair(record.targetEvidence.requested, targetPair) ||
       !samePair(record.targetEvidence.expectedCurrent, startingPair)

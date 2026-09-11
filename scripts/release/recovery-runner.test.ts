@@ -63,6 +63,7 @@ async function fixture() {
     verifyTargets: async () => {
       calls.push("verify-targets");
       return {
+        inspectionVersion: 2,
         inspectionSha256: "f".repeat(64),
         requested: target,
         expectedCurrent: input.startingPair,
