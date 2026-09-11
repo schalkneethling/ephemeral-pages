@@ -3,7 +3,7 @@
 Status: protected staging calibrations A/B and explicit B-to-A recovery passed. The recovery
 resumed from its retained checkpoint, preserved the completed Netlify restore, and passed both
 transition and final-pair browser smokes. A subsequent forward calibration passed and left staging
-on the latest exercised candidate. See [the verified checkpoint](release-evidence/2026-09-12-staging/README.md).
+on the latest exercised candidate. See [the verified checkpoint](release-evidence/2026-09-11-staging-recovery-34652303609/README.md).
 Production remains disabled in `production-policy.json`. Production publishing cutover, the
 attributable initial baseline, and the first coordinated production release remain outstanding.
 
@@ -73,7 +73,7 @@ intended final staging candidate and retain its newly observed IDs.
 These operations are implemented and locally tested. The registration-only bootstrap was merged
 through reviewed CI-only PR #50; the full implementations are now merged into protected `stage`.
 [Protected calibrations A and B](release-evidence/2026-09-11-staging/README.md) passed.
-The [protected recovery and resume drill](release-evidence/2026-09-12-staging/README.md) also passed.
+The [protected recovery and resume drill](release-evidence/2026-09-11-staging-recovery-34652303609/README.md) also passed.
 It verified the retained Netlify restore, portable inspection evidence, restored Worker version,
 and both live browser smokes. Production recovery remains unverified.
 See [the staging recovery workflow](../.github/workflows/release-staging-recovery.yml),

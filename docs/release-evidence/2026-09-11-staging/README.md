@@ -1,6 +1,6 @@
 # Protected staging calibration checkpoint — 11 September 2026
 
-This is the historical attempt log. See [the 12 September recovery checkpoint](../2026-09-12-staging/README.md)
+This is the historical attempt log. See [the 11 September UTC recovery checkpoint](../2026-09-11-staging-recovery-34652303609/README.md)
 for the completed protected restore and resume.
 
 The release stack and toolbar fix are merged into `stage`. Required CI and secret scanning passed

@@ -2,7 +2,7 @@
 
 Status: protected staging preparation, calibrations A/B, explicit B-to-A recovery with resume,
 and the final forward calibration passed. Both recovery and forward deployment passed their
-transition and final-pair browser smokes. See [the verified checkpoint](release-evidence/2026-09-12-staging/README.md)
+transition and final-pair browser smokes. See [the verified checkpoint](release-evidence/2026-09-11-staging-recovery-34652303609/README.md)
 and [earlier findings](release-evidence/2026-09-11-staging/README.md). Native branch protections
 and branch-restricted deployment credentials are configured. Production orchestration and recovery
 are implemented but remain live-unverified. Publishing cutover, the attributable production

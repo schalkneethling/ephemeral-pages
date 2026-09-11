@@ -465,7 +465,7 @@
         storage make coordination necessary.
       </p>
       <div class="snapshot">
-        Documentation checkpoint · 12 September 2026 · Staging recovery, resume and forward
+        Documentation checkpoint · 11 September 2026 UTC · Staging recovery, resume and forward
         deployment verified
       </div>
       <div class="notice">
@@ -607,9 +607,13 @@
           "Transition and final pair verified",
           "The exact-candidate rehearsal passed both old-app/new-Worker and final-pair smokes: upload, roles, two-editor synchronization, reload persistence, actual network-loss recovery and PNG download. Total usage was two short-lived pages and two captures. This is dated staging evidence, not production approval.",
           [
-            ["docs/release-evidence/2026-09-12-staging/README.md"],
-            ["docs/release-evidence/2026-09-12-staging/forward-transition-smoke.json"],
-            ["docs/release-evidence/2026-09-12-staging/forward-pair-smoke.json"],
+            ["docs/release-evidence/2026-09-11-staging-recovery-34652303609/README.md"],
+            [
+              "docs/release-evidence/2026-09-11-staging-recovery-34652303609/forward-transition-smoke.json",
+            ],
+            [
+              "docs/release-evidence/2026-09-11-staging-recovery-34652303609/forward-pair-smoke.json",
+            ],
             ["scripts/release/smoke.ts"],
           ],
         ],
@@ -735,7 +739,9 @@
           "Protected staging preparation passed for candidate 293f5ed. Production preparation was demonstrated locally for the earlier candidate e0508d5. Both use private detached checkouts, sanitized Git environments and frozen installs. Inventories bind generated CSP, static assets, ten Netlify function ZIPs and deployment configuration, and the Worker bundle. Production preparation was local only. Netlify may acknowledge functions by name only; local hashes and live smoke do not imply independent retrieval of inactive provider bytes.",
           [
             ["scripts/release/prepare.ts"],
-            ["docs/release-evidence/2026-09-12-staging/forward-preparation.json"],
+            [
+              "docs/release-evidence/2026-09-11-staging-recovery-34652303609/forward-preparation.json",
+            ],
             ["docs/release-evidence/2026-09-10-staging/production-preparation.json"],
             ["docs/releases.md"],
           ],
@@ -747,8 +753,10 @@
           "Protected calibrations A and B passed with identical configuration and distinct reviewed commits and provider IDs. Netlify held the previous app while the Worker activated, followed by transition smoke, publication of the held Netlify deployment and final smoke. Explicit B-to-A recovery and resume also passed, followed by a forward calibration of 293f5ed with the recovered pair as its prior pair. Final staging Netlify deployment: 6aa47c40f0b74e3ac28b75ea. Worker version: c12bb05c-bf4e-408f-b96f-e4b65d13a07a. Calibration never issues production approval; a changed candidate requires fresh rehearsal.",
           [
             ["scripts/release/rehearsal-cli.ts"],
-            ["docs/release-evidence/2026-09-12-staging/forward-rehearsal.json"],
-            ["docs/release-evidence/2026-09-12-staging/README.md"],
+            [
+              "docs/release-evidence/2026-09-11-staging-recovery-34652303609/forward-rehearsal.json",
+            ],
+            ["docs/release-evidence/2026-09-11-staging-recovery-34652303609/README.md"],
           ],
         ],
         approve: [
@@ -793,7 +801,7 @@
           "6 · Explicit recovery",
           "live",
           "Restore a verified pair; reconcile interruptions",
-          "Protected staging B-to-A recovery and resume passed on 12 September. The first live attempt restored Netlify A and stopped at role verification. A later full local smoke passed. Resume exposed a temporary-path-dependent inspection fingerprint; the reviewed correction reverified the retained evidence read-only and persisted portable version-2 evidence before further mutation. The successful resume retained the completed Netlify step, passed transition smoke, restored Worker version A under a new deployment ID, and passed final-pair smoke. Both smokes included ticket authorization, synchronization, reload, network-loss recovery and screenshot download. Production recovery remains live-unverified. Publishing cutover and an attributable initial production baseline remain outstanding; the operator accepted one-time fail-forward adoption without a legacy restore subsystem.",
+          "Protected staging B-to-A recovery and resume passed on 11 September UTC. The first live attempt restored Netlify A and stopped at role verification. A later full local smoke passed. Resume exposed a temporary-path-dependent inspection fingerprint; the reviewed correction reverified the retained evidence read-only and persisted portable version-2 evidence before further mutation. The successful resume retained the completed Netlify step, passed transition smoke, restored Worker version A under a new deployment ID, and passed final-pair smoke. Both smokes included ticket authorization, synchronization, reload, network-loss recovery and screenshot download. Production recovery remains live-unverified. Publishing cutover and an attributable initial production baseline remain outstanding; the operator accepted one-time fail-forward adoption without a legacy restore subsystem.",
           [
             ["scripts/release/recovery-runner.ts"],
             ["scripts/release/recovery-cli.ts"],
@@ -808,7 +816,7 @@
             ["scripts/release/recovery-provider-adapters.ts"],
             ["scripts/release/recovery-github.ts"],
             ["docs/recovery.md"],
-            ["docs/release-evidence/2026-09-12-staging/README.md"],
+            ["docs/release-evidence/2026-09-11-staging-recovery-34652303609/README.md"],
           ],
         ],
         cutover: [

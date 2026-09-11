@@ -1,4 +1,4 @@
-# Protected staging recovery checkpoint — 12 September 2026
+# Protected staging recovery checkpoint — 11 September 2026 UTC
 
 [Recovery run 34652303609](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34652303609)
 on reviewed staging commit `293f5edbac5a9a29bbb3507a4910f677c6a66597` passed every recovery stage.
