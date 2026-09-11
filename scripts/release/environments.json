@@ -12,7 +12,8 @@
           "COLLABORATION_WEBSOCKET_URL": "wss://ephemeral-pages-collaboration-staging.volume4-schalk.workers.dev",
           "COLLABORATION_TICKET_AUDIENCE": "ephemeral-pages-collaboration-staging",
           "COLLABORATION_CAPABILITY_CURRENT_VERSION": "v1",
-          "COLLABORATION_ENABLED": "true"
+          "COLLABORATION_ENABLED": "true",
+          "GITHUB_OIDC_AUDIENCE": "https://ephemeral-pages-staging.netlify.app"
         },
         "requiredSecretNames": [
           "COLLABORATION_CAPABILITY_CURRENT_SECRET",
@@ -30,7 +31,8 @@
           "COLLABORATION_CAPABILITY_CURRENT_SECRET": ["functions"],
           "COLLABORATION_TICKET_SECRET": ["functions"],
           "COLLABORATION_SERVICE_TOKEN": ["functions"],
-          "RATE_LIMIT_SECRET": ["functions"]
+          "RATE_LIMIT_SECRET": ["functions"],
+          "GITHUB_OIDC_AUDIENCE": ["functions"]
         }
       },
       "cloudflare": {
@@ -57,7 +59,8 @@
           "COLLABORATION_WEBSOCKET_URL": "wss://ephemeral-pages-collaboration.volume4-schalk.workers.dev",
           "COLLABORATION_TICKET_AUDIENCE": "ephemeral-pages-collaboration",
           "COLLABORATION_CAPABILITY_CURRENT_VERSION": "v1",
-          "COLLABORATION_ENABLED": "true"
+          "COLLABORATION_ENABLED": "true",
+          "GITHUB_OIDC_AUDIENCE": "https://ephemeral.schalkneethling.com"
         },
         "requiredSecretNames": [
           "COLLABORATION_CAPABILITY_CURRENT_SECRET",
@@ -75,7 +78,8 @@
           "COLLABORATION_CAPABILITY_CURRENT_SECRET": ["functions"],
           "COLLABORATION_TICKET_SECRET": ["functions"],
           "COLLABORATION_SERVICE_TOKEN": ["functions"],
-          "RATE_LIMIT_SECRET": ["functions"]
+          "RATE_LIMIT_SECRET": ["functions"],
+          "GITHUB_OIDC_AUDIENCE": ["functions"]
         }
       },
       "cloudflare": {

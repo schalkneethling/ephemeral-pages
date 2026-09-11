@@ -1,10 +1,11 @@
 # Repeatable releases
 
-Status: Native branch protections, read-only planning, local artifact preparation, and staging
-rehearsal tooling are implemented. The first full [staging calibration](release-evidence/2026-09-10-staging/README.md)
-passed, including both transition and final-pair browser smokes. Each release still requires its own
-exact-candidate rehearsal. Production promotion, resumption, recovery, and publishing cutover remain
-implementation work. Production publishing settings have not been changed by this increment.
+Status: Native branch protections, read-only planning, local artifact preparation, staging rehearsal,
+and the production provider/runner implementation are present. The first full [staging calibration](release-evidence/2026-09-10-staging/README.md)
+passed, including both transition and final-pair browser smokes. Manual production orchestration and resumption are implemented;
+live verification remains pending; recovery drills, publishing cutover, the attributable baseline,
+scoped workflow credentials, and the first production release are still gates. Production publishing
+settings have not been changed by this increment.
 
 This design applies the principles in
 [The release process is part of the product](https://schalkneethling.com/posts/the-release-process-is-part-of-the-product/)
@@ -184,6 +185,33 @@ immediately before collaboration smoke from the same anonymous client. It stops 
 quota response and records a validated retry delay when available. Failure does not trigger retries.
 The manually dispatched production API smoke workflow supplies the production origin explicitly
 and runs trusted `main` code with GitHub OIDC.
+
+## Production orchestration checkpoint
+
+The production implementation is split between GitHub provenance/artifact verification, a provider
+boundary, and a resumable runner. The protected workflow must establish the exact promotion commit,
+successful CI, a recent `release-rehearsal` artifact, the reviewed production baseline, and the
+approval hash before provider credentials are made available. Production policy remains disabled
+until the integrated workflow and prerequisites have been verified.
+
+The production CLI has separate `preflight` and `execute` phases. Its reviewed parser accepts only
+the `promote` or `resume` operation plus promotion/rehearsal identifiers, an approval digest, and an
+external workspace; resume also names the interrupted production run. Production targets and policy
+come from checked-in configuration. Preflight seals production artifacts and evidence; execution
+revalidates provenance, approval, preparation and configuration before creating provider adapters.
+The workflow is the interface for these phases; this guide intentionally does not prescribe a
+standalone production command line.
+
+The runner persists sanitized stage outcomes, provider identifiers, the prior and observed pairs,
+artifact bindings, checkpoints and run lineage. It holds the Netlify deployment, uploads and
+activates the Worker, verifies the old-app/new-Worker transition, publishes the held Netlify ID,
+and verifies the final pair. Resume reconciles incomplete writes against retained IDs or a unique
+release marker and blocks ambiguity; it does not repeat a possibly completed mutation. Failed
+verification stops with evidence and requires an explicit recovery action.
+
+See [production orchestration](production-orchestration.md) for the reusable operator model and its
+remaining rollout gates. The 10 September staging rehearsal remains historical calibration; it is
+not approval for this 11 September documentation checkpoint or for a production release.
 
 Reports contain fixed check outcomes and request counts, never page links, page contents, or raw
 errors. A blocked result exits nonzero. Missing either opt-in or an invalid origin causes no network
@@ -379,8 +407,9 @@ releases, and retain evidence. Do not build a general-purpose deployment framewo
 
 The runner currently exposes planning and status under [Read-only tooling](#read-only-tooling),
 and preparation and staging rehearsal under [artifact preparation](#prepare-artifacts-and-rehearse-on-staging).
-Production promotion, resumption and recovery remain deferred; their command syntax and record
-schemas will be defined and tested as those operations are implemented.
+Production promotion and resumption use the manual workflows and tested interfaces described in
+[production orchestration](production-orchestration.md). The checked-in production gate stays off
+until rollout prerequisites pass. Explicit recovery remains the next implementation layer.
 
 Before production promotion can be authoritative, replace the current automatic production publish
 on merge with a controlled publish path. Otherwise a merge can bypass the release checks. Provider

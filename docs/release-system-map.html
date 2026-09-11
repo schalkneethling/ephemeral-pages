@@ -529,8 +529,9 @@
       <p>
         * “Live verified” refers to dated evidence in the repository, not a real-time monitor.
         Staging preparation and the full coordinated rehearsal passed for the recorded candidate.
-        Production promotion/resume, recovery drills and publishing cutover remain unimplemented.
-        Layer numbers describe the implementation plan, not command syntax.
+        Production promotion/resume provider and runner code is implemented but live-unverified;
+        recovery drills and publishing cutover remain unimplemented. Layer numbers describe the
+        implementation plan, not command syntax.
       </p>
       <p>
         Portable source links are relative to the intended
@@ -620,8 +621,8 @@
           "Verified production baseline",
           "live",
           "Historical pair, not a release approval",
-          "The 9 September collaboration launch has live browser and API smoke evidence. Netlify deploy 6aa1c499a64d39a10fb86df2 and Worker version 4b747f21-d3a0-4566-8026-8dae1ea13109 identify the historical pair. It predates runner artifact hashes and fingerprints; no previous verified production collaboration pair existed.",
-          [["docs/collaboration-production-release.md"]],
+          "The 9 September collaboration launch has live browser and API smoke evidence. Netlify deploy 6aa1c499a64d39a10fb86df2 and Worker version 4b747f21-d3a0-4566-8026-8dae1ea13109 identify the historical pair. It predates runner artifact hashes and fingerprints; it is not the required known-source docs/release-evidence/production-baseline.json.",
+          [["docs/collaboration-production-release.md"], ["docs/production-orchestration.md"]],
         ],
         html: [
           "Uploaded HTML sandbox",
@@ -745,24 +746,41 @@
         ],
         approve: [
           "5 · Approve & promote",
-          "planned",
+          "built",
           "Bind approval to source and build",
-          "Promotion PR carries exact candidate, successful rehearsal, production differences and recovery targets. Verify the resulting main source tree against the approved candidate and validate the exact commit. Serialize production releases. A changed commit/build invalidates approval.",
-          [["docs/releases.md"]],
+          "The production context verifies the protected main workflow, merged stage-to-main promotion, exact source tree, CI result, recent staging rehearsal artifact and reviewed approval bundle before provider credentials are used. A changed commit/build invalidates approval; live workflow verification remains pending.",
+          [
+            ["scripts/release/github-release.ts"],
+            ["scripts/release/production-context.ts"],
+            ["scripts/release/production-approval.ts"],
+            [".github/workflows/release-production.yml"],
+            [".github/workflows/release-rehearsal.yml"],
+            ["docs/production-orchestration.md"],
+          ],
         ],
         deploy: [
           "5 · Deploy compatible pair",
-          "planned",
+          "built",
           "Worker first, then Netlify",
-          "A backward-compatible Worker is deployed and verified before publishing Netlify. It must support the old app and existing sessions during the interval. Incompatible protocol/schema changes need a staged transition; deployment order alone cannot solve compatibility.",
-          [["docs/releases.md"]],
+          "The production runner holds the Netlify candidate, uploads and activates the Worker, verifies the old-app/new-Worker transition, publishes the held Netlify ID and verifies the final pair. Incompatible protocol/schema changes remain outside the ordinary v1 path; live provider behavior is unverified.",
+          [
+            ["scripts/release/production-runner.ts"],
+            ["scripts/release/production-providers.ts"],
+            ["scripts/release/production-record.ts"],
+            ["docs/production-orchestration.md"],
+          ],
         ],
         resume: [
           "5 · Resume from observations",
-          "planned",
+          "built",
           "Persist IDs; reconcile before retry",
-          "Staging already retains mutation checkpoints and provider identifiers, but generalized resumption is not implemented. Production must reconcile observed deployments against retained inputs, skip only verified stages, and block missing evidence or ambiguous operations. An inaccessible API is not an absent deployment.",
-          [["scripts/release/rehearsal.ts"], ["docs/releases.md"]],
+          "Production records retain stage outcomes, provider IDs, checkpoints, sealed artifact bindings and run lineage. A fresh resume verifies the retained run, reconciles incomplete writes by exact IDs or a unique release marker, and blocks missing or ambiguous matches. Live workflow verification remains pending.",
+          [
+            ["scripts/release/production-cli.ts"],
+            ["scripts/release/production-runner.ts"],
+            ["scripts/release/production-record.ts"],
+            ["scripts/release/github-release.ts"],
+          ],
         ],
         recover: [
           "6 · Explicit recovery",
@@ -900,7 +918,7 @@
           name: "Coordinated release",
           title: "Staging verified. Production controls next.",
           intro:
-            "Layer 4 passed a complete staging rehearsal. Layers 5 and 6 remain planned: production execution, resumption, recovery and publishing cutover.",
+            "Layer 4 passed a complete staging rehearsal. Layer 5 provider and runner code is implemented; live workflow verification remains pending. Layer 6 recovery and publishing cutover remain planned.",
           lanes: [
             [
               "Layer 4 / Preparation",

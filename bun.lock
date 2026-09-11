@@ -31,6 +31,7 @@
         "vite-plus": "latest",
         "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
         "wrangler": "4.125.0",
+        "yauzl": "3.4.0",
       },
     },
   },

@@ -4,10 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  reconcileNetlifyDeployment,
   uploadHeldNetlifyDeployment,
+  uploadHeldProductionNetlifyDeployment,
   publishHeldNetlifyDeployment,
+  publishHeldProductionNetlifyDeployment,
+  verifyRetainedNetlifyDeployment,
   type NetlifyDeploymentClient,
   type NetlifyDeploymentInput,
+  type ProductionNetlifyDeploymentInput,
 } from "./netlify-deployment.ts";
 import type { PreparedNetlifyArtifacts } from "./netlify-artifacts.ts";
 
@@ -41,8 +46,25 @@ const input: NetlifyDeploymentInput = {
     },
   },
 };
+const productionAuthorization = {
+  assertArtifact: vi.fn(() => undefined),
+};
+const productionInput: ProductionNetlifyDeploymentInput = {
+  ...input,
+  authorization: productionAuthorization,
+  environment: "production",
+  origin: "https://production.example.com",
+  preparation: {
+    ...input.preparation,
+    source: { ...input.preparation.source, environment: "production" },
+  },
+  siteId: input.productionSiteId,
+};
 const metadata = { functionSchedules: [], functionsConfig: {}, functions: {} };
-async function fixture() {
+async function fixture(
+  target: NetlifyDeploymentInput | ProductionNetlifyDeploymentInput = input,
+  initiallyLocked = false,
+) {
   const root = await mkdtemp(join(tmpdir(), "netlify-held-"));
   roots.push(root);
   await mkdir(join(root, "publish"));
@@ -70,16 +92,16 @@ async function fixture() {
     },
   };
   const calls: string[] = [];
-  let locked = false;
+  let locked = initiallyLocked;
   let uploaded = false;
   let published = "baseline";
   const client: NetlifyDeploymentClient = async (operation, params) => {
     calls.push(operation);
     if (operation === "getSite")
       return {
-        id: input.siteId,
-        account_id: input.accountId,
-        ssl_url: input.origin,
+        id: target.siteId,
+        account_id: target.accountId,
+        ssl_url: target.origin,
         build_settings: {},
         published_deploy: { id: published, locked },
       };
@@ -95,10 +117,10 @@ async function fixture() {
     if (operation === "getSiteDeploy")
       return {
         id: "candidate",
-        site_id: input.siteId,
+        site_id: target.siteId,
         draft: false,
         context: "production",
-        title: `release-${input.candidate}-${input.preparation.artifacts.netlify.sha256}`,
+        title: `release-${target.candidate}-${target.preparation.artifacts.netlify.sha256}`,
         state: uploaded ? "ready" : "prepared",
         required: [createHash("sha1").update(bytes).digest("hex")],
         required_functions: [],
@@ -124,23 +146,30 @@ it("holds the live deployment throughout upload and publishes only in the separa
   const checkpoints: string[] = [];
   const dependencies = {
     client,
-    checkpoint: async ({ operation }: { operation: string }) => {
-      checkpoints.push(operation);
-      expect(calls.at(-1)).not.toBe(operation);
+    checkpoint: async ({ operation, phase }: { operation: string; phase: string }) => {
+      checkpoints.push(`${phase}:${operation}`);
+      if (phase === "pending-mutation") expect(calls.at(-1)).not.toBe(operation);
+      else expect(calls.at(-1)).toBe(operation);
     },
   };
   const held = await uploadHeldNetlifyDeployment(input, artifacts, metadata, dependencies);
   expect(held.acknowledgedUploads).toBe(1);
   expect(calls).not.toContain("restoreSiteDeploy");
   expect(checkpoints).toEqual([
-    "lockDeploy",
-    "createSiteDeploy",
-    "updateSiteDeploy",
-    "uploadDeployFile",
+    "pending-mutation:lockDeploy",
+    "mutation-response-received:lockDeploy",
+    "pending-mutation:createSiteDeploy",
+    "mutation-response-received:createSiteDeploy",
+    "pending-mutation:updateSiteDeploy",
+    "pending-mutation:uploadDeployFile",
   ]);
   await expect(publishHeldNetlifyDeployment(input, held, dependencies)).resolves.toEqual({
     publishedDeployId: "candidate",
   });
+  expect(checkpoints.slice(-2)).toEqual([
+    "pending-mutation:restoreSiteDeploy",
+    "mutation-response-received:restoreSiteDeploy",
+  ]);
 });
 it("does not dispatch when its durable checkpoint cannot be written", async () => {
   const { artifacts, calls, client } = await fixture();
@@ -282,4 +311,308 @@ it.each([
   if (accepted)
     await expect(result).resolves.toMatchObject({ state: "ready", acknowledgedUploads: 2 });
   else await expect(result).rejects.toMatchObject({ kind: "verification" });
+});
+
+it("uses explicit authorization and an already locked production publication", async () => {
+  productionAuthorization.assertArtifact.mockClear();
+  const { artifacts, calls, client } = await fixture(productionInput, true);
+  const checkpoints: Array<{ operation: string; phase: string }> = [];
+  const dependencies = {
+    checkpoint: async (value: { operation: string; phase: string }) => {
+      checkpoints.push(value);
+    },
+    client,
+  };
+
+  const held = await uploadHeldProductionNetlifyDeployment(
+    productionInput,
+    artifacts,
+    metadata,
+    dependencies,
+  );
+  expect(productionAuthorization.assertArtifact).toHaveBeenCalledWith(
+    "netlify",
+    { accountId: productionInput.accountId, siteId: productionInput.siteId },
+    artifacts.inventorySha256,
+  );
+  expect(calls).not.toContain("lockDeploy");
+  expect(checkpoints.some(({ operation }) => operation === "lockDeploy")).toBe(false);
+  await expect(
+    publishHeldProductionNetlifyDeployment(productionInput, held, dependencies),
+  ).resolves.toEqual({ publishedDeployId: "candidate" });
+});
+
+it("blocks production hold without an existing publication lock and never locks it", async () => {
+  const { artifacts, calls, client } = await fixture(productionInput, false);
+  await expect(
+    uploadHeldProductionNetlifyDeployment(productionInput, artifacts, metadata, {
+      checkpoint: async () => undefined,
+      client,
+    }),
+  ).rejects.toMatchObject({ kind: "preflight" });
+  expect(calls).toEqual(["getSite"]);
+});
+
+it("persists Netlify response IDs before readback and stops if persistence fails", async () => {
+  const created = await fixture(productionInput, true);
+  await expect(
+    uploadHeldProductionNetlifyDeployment(productionInput, created.artifacts, metadata, {
+      checkpoint: async (value) => {
+        if (value.phase === "mutation-response-received") {
+          expect(value).toMatchObject({ deployId: "candidate", operation: "createSiteDeploy" });
+          throw new Error();
+        }
+      },
+      client: created.client,
+    }),
+  ).rejects.toMatchObject({ kind: "ambiguous" });
+  expect(created.calls.at(-1)).toBe("createSiteDeploy");
+
+  const published = await fixture(productionInput, true);
+  const held = await uploadHeldProductionNetlifyDeployment(
+    productionInput,
+    published.artifacts,
+    metadata,
+    { checkpoint: async () => undefined, client: published.client },
+  );
+  await expect(
+    publishHeldProductionNetlifyDeployment(productionInput, held, {
+      checkpoint: async (value) => {
+        if (value.phase === "mutation-response-received") {
+          expect(value).toMatchObject({
+            operation: "restoreSiteDeploy",
+            publishedDeployId: "candidate",
+          });
+          throw new Error();
+        }
+      },
+      client: published.client,
+    }),
+  ).rejects.toMatchObject({ kind: "ambiguous" });
+  expect(published.calls.at(-1)).toBe("restoreSiteDeploy");
+});
+
+it("authorizes before provider access and keeps staging entry points production-safe", async () => {
+  const { artifacts, calls, client } = await fixture(productionInput, true);
+  const denied = {
+    ...productionInput,
+    authorization: {
+      assertArtifact: () => {
+        expect(calls).toEqual([]);
+        throw new Error("denied");
+      },
+    },
+  };
+  await expect(
+    uploadHeldProductionNetlifyDeployment(denied, artifacts, metadata, {
+      checkpoint: async () => undefined,
+      client,
+    }),
+  ).rejects.toMatchObject({ kind: "preflight" });
+  expect(calls).toEqual([]);
+  await expect(
+    uploadHeldNetlifyDeployment(
+      productionInput as unknown as NetlifyDeploymentInput,
+      artifacts,
+      metadata,
+      {
+        checkpoint: async () => undefined,
+        client,
+      },
+    ),
+  ).rejects.toMatchObject({ kind: "preflight" });
+  expect(calls).toEqual([]);
+});
+
+it("reconciles only one exact production candidate marker without mutations", async () => {
+  const { artifacts, calls, client } = await fixture(productionInput, true);
+  const title = `release-${productionInput.candidate}-${artifacts.inventorySha256}`;
+  const readOnlyClient: NetlifyDeploymentClient = async (operation, ...args) => {
+    if (operation === "listSiteDeploys") {
+      calls.push(operation);
+      return [{ id: "candidate", site_id: productionInput.siteId, title }];
+    }
+    const value = await client(operation, ...args);
+    return operation === "getSiteDeploy" ? { ...(value as object), state: "ready" } : value;
+  };
+
+  await expect(
+    reconcileNetlifyDeployment(
+      productionInput,
+      { phase: "candidate-create-pending" },
+      {
+        checkpoint: async () => {
+          throw new Error("reconciliation must not checkpoint");
+        },
+        client: readOnlyClient,
+      },
+    ),
+  ).resolves.toMatchObject({ candidateDeployId: "candidate", state: "ready" });
+  expect(calls).toEqual(["getSite", "listSiteDeploys", "getSiteDeploy", "getSite"]);
+});
+
+it("blocks duplicate production reconciliation markers", async () => {
+  const { artifacts, calls, client } = await fixture(productionInput, true);
+  const title = `release-${productionInput.candidate}-${artifacts.inventorySha256}`;
+  await expect(
+    reconcileNetlifyDeployment(
+      productionInput,
+      { phase: "candidate-create-pending" },
+      {
+        checkpoint: async () => undefined,
+        client: async (operation, ...args) => {
+          if (operation === "listSiteDeploys") {
+            calls.push(operation);
+            return [
+              { id: "candidate-one", title },
+              { id: "candidate-two", title },
+            ];
+          }
+          return client(operation, ...args);
+        },
+      },
+    ),
+  ).rejects.toMatchObject({ kind: "ambiguous" });
+  expect(calls).not.toContain("createSiteDeploy");
+});
+
+it("checks every Netlify deploy page before accepting a unique marker", async () => {
+  const { artifacts, calls, client } = await fixture(productionInput, true);
+  const title = `release-${productionInput.candidate}-${artifacts.inventorySha256}`;
+  const pages: number[] = [];
+  const readOnlyClient: NetlifyDeploymentClient = async (operation, parameters, signal) => {
+    if (operation === "listSiteDeploys") {
+      calls.push(operation);
+      pages.push(parameters.page as number);
+      return parameters.page === 1
+        ? Array.from({ length: 100 }, (_, index) => ({ id: `other-${index}` }))
+        : [{ id: "candidate", title }];
+    }
+    const value = await client(operation, parameters, signal);
+    return operation === "getSiteDeploy" ? { ...(value as object), state: "ready" } : value;
+  };
+  await expect(
+    reconcileNetlifyDeployment(
+      productionInput,
+      { phase: "candidate-create-pending" },
+      { checkpoint: async () => undefined, client: readOnlyClient },
+    ),
+  ).resolves.toMatchObject({ candidateDeployId: "candidate" });
+  expect(pages).toEqual([1, 2]);
+});
+
+it("reconciles a returned candidate ID without listing or mutating deploys", async () => {
+  const { calls, client } = await fixture(productionInput, true);
+  const readyClient: NetlifyDeploymentClient = async (operation, parameters, signal) => {
+    const value = await client(operation, parameters, signal);
+    return operation === "getSiteDeploy" ? { ...(value as object), state: "ready" } : value;
+  };
+  await expect(
+    reconcileNetlifyDeployment(
+      productionInput,
+      { deployId: "candidate", phase: "candidate-create-response-received" },
+      { checkpoint: async () => undefined, client: readyClient },
+    ),
+  ).resolves.toMatchObject({
+    acknowledgedUploads: null,
+    candidateDeployId: "candidate",
+    state: "ready",
+  });
+  expect(calls).toEqual(["getSite", "getSiteDeploy", "getSite"]);
+});
+
+it("reconciles publication only when the exact candidate remains published and locked", async () => {
+  const { artifacts, calls, client } = await fixture(productionInput, true);
+  const held = await uploadHeldProductionNetlifyDeployment(productionInput, artifacts, metadata, {
+    checkpoint: async () => undefined,
+    client,
+  });
+  calls.length = 0;
+  const publishedClient: NetlifyDeploymentClient = async (operation, parameters, signal) => {
+    if (operation === "getSite") {
+      calls.push(operation);
+      return {
+        account_id: productionInput.accountId,
+        build_settings: {},
+        id: productionInput.siteId,
+        published_deploy: { id: held.candidateDeployId, locked: true },
+        ssl_url: productionInput.origin,
+      };
+    }
+    return client(operation, parameters, signal);
+  };
+  await expect(
+    reconcileNetlifyDeployment(
+      productionInput,
+      { held, phase: "publish-pending" },
+      { checkpoint: async () => undefined, client: publishedClient },
+    ),
+  ).resolves.toEqual({ publishedDeployId: "candidate" });
+  expect(calls).toEqual(["getSiteDeploy", "getSite"]);
+
+  await expect(
+    reconcileNetlifyDeployment(
+      productionInput,
+      { held, phase: "publish-response-received", publishedDeployId: "another-deploy" },
+      { checkpoint: async () => undefined, client: publishedClient },
+    ),
+  ).rejects.toMatchObject({ kind: "verification" });
+});
+
+it("treats a production restore that releases the publication lock as ambiguous", async () => {
+  const { artifacts, calls, client } = await fixture(productionInput, true);
+  const dependencies = { checkpoint: async () => undefined, client };
+  const held = await uploadHeldProductionNetlifyDeployment(
+    productionInput,
+    artifacts,
+    metadata,
+    dependencies,
+  );
+  await expect(
+    publishHeldProductionNetlifyDeployment(productionInput, held, {
+      checkpoint: async () => undefined,
+      client: async (operation, parameters, signal) => {
+        const value = await client(operation, parameters, signal);
+        if (operation !== "getSite" || !calls.includes("restoreSiteDeploy")) return value;
+        const site = value as Record<string, unknown>;
+        return { ...site, published_deploy: { id: "candidate", locked: false } };
+      },
+    }),
+  ).rejects.toMatchObject({ kind: "ambiguous" });
+  expect(calls.filter((operation) => operation === "restoreSiteDeploy")).toHaveLength(1);
+});
+
+it("rejects a retained Netlify ID when the exact artifact marker belongs to another deploy", async () => {
+  const { artifacts, calls, client } = await fixture(productionInput, true);
+  const held = await uploadHeldProductionNetlifyDeployment(productionInput, artifacts, metadata, {
+    checkpoint: async () => undefined,
+    client,
+  });
+  calls.length = 0;
+  const title = `release-${productionInput.candidate}-${artifacts.inventorySha256}`;
+  await expect(
+    verifyRetainedNetlifyDeployment(
+      productionInput,
+      { ...held, candidateDeployId: "forged-candidate" },
+      productionInput.baselineDeployId,
+      {
+        checkpoint: async () => undefined,
+        client: async (operation, parameters, signal) => {
+          if (operation === "listSiteDeploys") return [{ id: "candidate", title }];
+          if (operation === "getSiteDeploy") {
+            return {
+              context: "production",
+              draft: false,
+              id: "forged-candidate",
+              site_id: productionInput.siteId,
+              state: "ready",
+              title,
+            };
+          }
+          return client(operation, parameters, signal);
+        },
+      },
+    ),
+  ).rejects.toMatchObject({ kind: "verification" });
+  expect(calls).toEqual([]);
 });

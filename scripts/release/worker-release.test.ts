@@ -12,11 +12,16 @@ import type {
 } from "./worker-artifacts.ts";
 import {
   activatePreparedStagingWorker,
+  activatePreparedProductionWorker,
   createCloudflareWorkerFetchTransport,
   createWranglerAccessTokenResolver,
+  reconcileWorkerRelease,
   uploadPreparedStagingWorker,
+  uploadPreparedProductionWorker,
+  verifyRetainedWorkerRelease,
   WorkerReleaseError,
   type PreparedStagingWorkerRelease,
+  type PreparedProductionWorkerRelease,
   type UploadedStagingWorkerVersion,
   type WorkerReleaseCheckpoint,
   type WorkerReleaseRequest,
@@ -131,7 +136,50 @@ const createFixture = async (): Promise<{
   };
 };
 
-const bindings = (input: PreparedStagingWorkerRelease): readonly Record<string, unknown>[] => [
+const createProductionFixture = async (): Promise<{
+  input: PreparedProductionWorkerRelease;
+  manifest: WorkerArtifactManifest;
+}> => {
+  const stage = await createFixture();
+  const variables = {
+    ALLOWED_ORIGINS: "https://production.example.test",
+    PAGE_CONTENT_ORIGIN: "https://production.example.test",
+    PUBLIC_WORKER_ORIGIN: "https://production-worker.example.workers.dev",
+    TICKET_AUDIENCE: "production-worker",
+  } as const;
+  const artifactInput: PrepareWorkerArtifactsInput = {
+    ...stage.input.artifactInput,
+    environment: "production",
+    target: {
+      ...stage.input.artifactInput.target,
+      expectedNonSecretVariables: variables,
+      workerName: "production-worker",
+      wranglerEnvironment: "production",
+    },
+  };
+  const manifest: WorkerArtifactManifest = {
+    ...stage.manifest,
+    target: {
+      ...stage.manifest.target,
+      environment: "production",
+      workerName: "production-worker",
+      wranglerEnvironment: "production",
+    },
+  };
+  return {
+    input: {
+      ...stage.input,
+      artifactInput,
+      authorization: { assertArtifact: vi.fn(() => undefined) },
+      prepared: { ...stage.input.prepared, manifest },
+    },
+    manifest,
+  };
+};
+
+const bindings = (
+  input: PreparedStagingWorkerRelease | PreparedProductionWorkerRelease,
+): readonly Record<string, unknown>[] => [
   { name: "TICKET_HMAC_SECRET", type: "secret_text" },
   { name: "ADMIN_TOKEN", type: "secret_text" },
   ...Object.entries(input.artifactInput.target.expectedNonSecretVariables).map(([name, text]) => ({
@@ -148,7 +196,7 @@ const bindings = (input: PreparedStagingWorkerRelease): readonly Record<string, 
 ];
 
 const version = (
-  input: PreparedStagingWorkerRelease,
+  input: PreparedStagingWorkerRelease | PreparedProductionWorkerRelease,
   id: string,
   annotation?: string,
   quotedEtag = false,
@@ -608,6 +656,268 @@ describe("activatePreparedStagingWorker", () => {
     ).rejects.toMatchObject({ kind: "ambiguous" });
     expect(events.at(-1)).toBe("checkpoint:activation-response-received");
     expect(events.filter((event) => event.endsWith("/deployments"))).toHaveLength(2);
+  });
+});
+
+describe("production Worker operations", () => {
+  it("authorizes the exact production artifact before upload and activation reads", async () => {
+    const { input, manifest } = await createProductionFixture();
+    const authorization = vi.fn(
+      (
+        _provider: "cloudflare" | "netlify",
+        _target: { accountId: string; siteId?: string; workerName?: string },
+        _sha: string,
+      ) => undefined,
+    );
+    input.authorization = {
+      assertArtifact: (...args) => {
+        expect(uploadTransport.requests).toHaveLength(0);
+        authorization(...args);
+      },
+    };
+    const uploadTransport = new ScriptedTransport([
+      service,
+      deployments("baseline-deployment", "baseline-version"),
+      version(input, "baseline-version"),
+      { id: "production-version" },
+      version(input, "production-version", input.prepared.manifestSha256),
+    ]);
+    const upload = await uploadPreparedProductionWorker(input, {
+      checkpoint: async () => undefined,
+      transport: uploadTransport,
+      verifyArtifacts: async () => manifest,
+    });
+    expect(authorization).toHaveBeenCalledWith(
+      "cloudflare",
+      { accountId: "account-id", workerName: "production-worker" },
+      input.prepared.manifestSha256,
+    );
+
+    const activationTransport = new ScriptedTransport([
+      service,
+      deployments("baseline-deployment", "baseline-version"),
+      version(input, "baseline-version"),
+      version(input, "production-version", input.prepared.manifestSha256),
+      service,
+      { id: "production-deployment" },
+      deployments("production-deployment", "production-version"),
+      service,
+      version(input, "production-version", input.prepared.manifestSha256),
+    ]);
+    input.authorization = {
+      assertArtifact: (...args) => {
+        expect(activationTransport.requests).toHaveLength(0);
+        authorization(...args);
+      },
+    };
+    await expect(
+      activatePreparedProductionWorker(
+        { ...input, upload },
+        {
+          checkpoint: async () => undefined,
+          transport: activationTransport,
+          verifyArtifacts: async () => manifest,
+        },
+      ),
+    ).resolves.toMatchObject({
+      deploymentId: "production-deployment",
+      status: "activated",
+      versionId: "production-version",
+      workerName: "production-worker",
+    });
+  });
+
+  it("keeps staging entry points production-safe", async () => {
+    const { input, manifest } = await createProductionFixture();
+    const transport = new ScriptedTransport([]);
+    await expect(
+      uploadPreparedStagingWorker(input, {
+        checkpoint: async () => undefined,
+        transport,
+        verifyArtifacts: async () => manifest,
+      }),
+    ).rejects.toMatchObject({ kind: "invalid-input" });
+    expect(transport.requests).toHaveLength(0);
+  });
+
+  it("reconciles one exact uploaded artifact marker without mutations", async () => {
+    const { input, manifest } = await createProductionFixture();
+    const transport = new ScriptedTransport([
+      service,
+      deployments("baseline-deployment", "baseline-version"),
+      version(input, "baseline-version"),
+      {
+        items: [
+          {
+            annotations: { "workers/tag": input.prepared.manifestSha256 },
+            id: "recovered-version",
+          },
+        ],
+      },
+      version(input, "recovered-version", input.prepared.manifestSha256),
+    ]);
+    await expect(
+      reconcileWorkerRelease(
+        input,
+        { phase: "version-upload-pending" },
+        {
+          checkpoint: async () => {
+            throw new Error("reconciliation must not checkpoint");
+          },
+          transport,
+          verifyArtifacts: async () => manifest,
+        },
+      ),
+    ).resolves.toMatchObject({ status: "uploaded", versionId: "recovered-version" });
+    expect(transport.requests.every(({ method }) => method === "GET")).toBe(true);
+  });
+
+  it("blocks multiple uploaded artifact markers", async () => {
+    const { input, manifest } = await createProductionFixture();
+    const marker = { annotations: { "workers/tag": input.prepared.manifestSha256 } };
+    const transport = new ScriptedTransport([
+      service,
+      deployments("baseline-deployment", "baseline-version"),
+      version(input, "baseline-version"),
+      {
+        items: [
+          { ...marker, id: "first-version" },
+          { ...marker, id: "second-version" },
+        ],
+      },
+    ]);
+    await expect(
+      reconcileWorkerRelease(
+        input,
+        { phase: "version-upload-pending" },
+        {
+          checkpoint: async () => undefined,
+          transport,
+          verifyArtifacts: async () => manifest,
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "ambiguous" });
+    expect(transport.requests.every(({ method }) => method === "GET")).toBe(true);
+  });
+
+  it("reconciles a returned version ID without listing or mutating versions", async () => {
+    const { input, manifest } = await createProductionFixture();
+    const transport = new ScriptedTransport([
+      service,
+      deployments("baseline-deployment", "baseline-version"),
+      version(input, "baseline-version"),
+      version(input, "returned-version", input.prepared.manifestSha256),
+    ]);
+    await expect(
+      reconcileWorkerRelease(
+        input,
+        { phase: "version-upload-response-received", versionId: "returned-version" },
+        {
+          checkpoint: async () => undefined,
+          transport,
+          verifyArtifacts: async () => manifest,
+        },
+      ),
+    ).resolves.toMatchObject({ status: "uploaded", versionId: "returned-version" });
+    expect(transport.requests.some(({ path }) => path.includes("deployable=true"))).toBe(false);
+    expect(transport.requests.every(({ method }) => method === "GET")).toBe(true);
+  });
+
+  it("reconciles activation only when the exact uploaded version is currently active", async () => {
+    const { input, manifest } = await createProductionFixture();
+    const upload = {
+      accountId: "account-id",
+      artifactManifestSha256: input.prepared.manifestSha256,
+      baselineDeploymentId: input.expectedBaselineDeploymentId,
+      migrationPolicy: input.migrationPolicy,
+      scriptEtag: digest("recovered-version"),
+      status: "uploaded" as const,
+      versionId: "recovered-version",
+      workerName: "production-worker",
+    };
+    const transport = new ScriptedTransport([
+      service,
+      version(input, "recovered-version", input.prepared.manifestSha256),
+      deployments("recovered-deployment", "recovered-version"),
+    ]);
+    await expect(
+      reconcileWorkerRelease(
+        input,
+        { phase: "activation-pending", upload },
+        {
+          checkpoint: async () => undefined,
+          transport,
+          verifyArtifacts: async () => manifest,
+        },
+      ),
+    ).resolves.toMatchObject({
+      deploymentId: "recovered-deployment",
+      status: "activated",
+      versionId: "recovered-version",
+    });
+    expect(transport.requests.every(({ method }) => method === "GET")).toBe(true);
+  });
+
+  it("binds activation reconciliation to the returned deployment ID", async () => {
+    const { input, manifest } = await createProductionFixture();
+    const upload = {
+      accountId: "account-id",
+      artifactManifestSha256: input.prepared.manifestSha256,
+      baselineDeploymentId: input.expectedBaselineDeploymentId,
+      migrationPolicy: input.migrationPolicy,
+      scriptEtag: digest("recovered-version"),
+      status: "uploaded" as const,
+      versionId: "recovered-version",
+      workerName: "production-worker",
+    };
+    const transport = new ScriptedTransport([
+      service,
+      version(input, "recovered-version", input.prepared.manifestSha256),
+      deployments("different-deployment", "recovered-version"),
+    ]);
+    await expect(
+      reconcileWorkerRelease(
+        input,
+        { deploymentId: "returned-deployment", phase: "activation-response-received", upload },
+        {
+          checkpoint: async () => undefined,
+          transport,
+          verifyArtifacts: async () => manifest,
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "ambiguous" });
+    expect(transport.requests.every(({ method }) => method === "GET")).toBe(true);
+  });
+
+  it("rejects a retained Worker version whose live artifact marker changed", async () => {
+    const { input, manifest } = await createProductionFixture();
+    const upload = {
+      accountId: "account-id",
+      artifactManifestSha256: input.prepared.manifestSha256,
+      baselineDeploymentId: input.expectedBaselineDeploymentId,
+      migrationPolicy: input.migrationPolicy,
+      scriptEtag: digest("retained-version"),
+      status: "uploaded" as const,
+      versionId: "retained-version",
+      workerName: "production-worker",
+    };
+    const transport = new ScriptedTransport([
+      service,
+      version(input, "retained-version", "f".repeat(64)),
+    ]);
+    await expect(
+      verifyRetainedWorkerRelease(
+        input,
+        upload,
+        { deploymentId: "retained-deployment", versionId: "retained-version" },
+        {
+          checkpoint: async () => undefined,
+          transport,
+          verifyArtifacts: async () => manifest,
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "verification" });
+    expect(transport.requests.every(({ method }) => method === "GET")).toBe(true);
   });
 });
 

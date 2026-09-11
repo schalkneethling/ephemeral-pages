@@ -1,0 +1,143 @@
+name: Production release
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Start a fresh promotion or resume an unresolved production run
+        required: true
+        type: choice
+        options:
+          - promote
+          - resume
+      promotion_pr:
+        description: Merged stage-to-main promotion pull request number
+        required: true
+        type: string
+      rehearsal_run_id:
+        description: Successful protected-stage rehearsal workflow run ID
+        required: true
+        type: string
+      approval_sha256:
+        description: SHA-256 of the reviewed rehearsal approval JSON
+        required: true
+        type: string
+      resume_run_id:
+        description: Latest unresolved production run ID; required only for resume
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  # runCollaborationSmoke requests GitHub OIDC for the production upload check.
+  id-token: write
+  pull-requests: read
+
+concurrency:
+  group: release-production
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  production:
+    name: Production release
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    env:
+      RELEASE_WORKSPACE: /tmp/release-production-${{ github.run_id }}
+    steps:
+      - name: Check out the trusted production source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install release dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify evidence and prepare sealed artifacts
+        env:
+          APPROVAL_SHA256: ${{ inputs.approval_sha256 }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMOTION_PR: ${{ inputs.promotion_pr }}
+          REHEARSAL_RUN_ID: ${{ inputs.rehearsal_run_id }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_args=(
+            "$RELEASE_OPERATION"
+            --promotion-pr "$PROMOTION_PR"
+            --rehearsal-run-id "$REHEARSAL_RUN_ID"
+            --approval-sha256 "$APPROVAL_SHA256"
+            --workspace "$RELEASE_WORKSPACE"
+          )
+          case "$RELEASE_OPERATION" in
+            promote)
+              test -z "$RESUME_RUN_ID"
+              ;;
+            resume)
+              test -n "$RESUME_RUN_ID"
+              release_args+=(--resume-run-id "$RESUME_RUN_ID")
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
+          bun scripts/release/production-cli.ts preflight "${release_args[@]}"
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Activate approved release
+        env:
+          APPROVAL_SHA256: ${{ inputs.approval_sha256 }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          PROMOTION_PR: ${{ inputs.promotion_pr }}
+          REHEARSAL_RUN_ID: ${{ inputs.rehearsal_run_id }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_args=(
+            "$RELEASE_OPERATION"
+            --promotion-pr "$PROMOTION_PR"
+            --rehearsal-run-id "$REHEARSAL_RUN_ID"
+            --approval-sha256 "$APPROVAL_SHA256"
+            --workspace "$RELEASE_WORKSPACE"
+          )
+          case "$RELEASE_OPERATION" in
+            promote)
+              test -z "$RESUME_RUN_ID"
+              ;;
+            resume)
+              test -n "$RESUME_RUN_ID"
+              release_args+=(--resume-run-id "$RESUME_RUN_ID")
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
+          bun scripts/release/production-cli.ts execute "${release_args[@]}"
+
+      - name: Retain production evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-production
+          path: ${{ env.RELEASE_WORKSPACE }}
+          if-no-files-found: warn
+          retention-days: 7

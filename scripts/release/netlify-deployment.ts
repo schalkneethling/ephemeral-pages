@@ -7,10 +7,12 @@ import { NetlifyAPI } from "netlify-cli/dist/index.js";
 import { getToken, USER_AGENT } from "netlify-cli/dist/utils/command-helpers.js";
 import { createSingleDispatchAgent } from "./local-secrets.ts";
 import { assertPinnedCliVersions } from "./bootstrap-safety.ts";
+import type { ProductionProviderAuthorization } from "./production-authorization.ts";
 import { verifyNetlifyArtifacts, type PreparedNetlifyArtifacts } from "./netlify-artifacts.ts";
 
 export type NetlifyDeploymentOperation =
   | "getSite"
+  | "listSiteDeploys"
   | "lockDeploy"
   | "createSiteDeploy"
   | "updateSiteDeploy"
@@ -23,18 +25,36 @@ export type NetlifyDeploymentClient = (
   parameters: Record<string, unknown>,
   signal: AbortSignal,
 ) => Promise<unknown>;
-export type NetlifyDeploymentCheckpoint = {
-  operation: Exclude<NetlifyDeploymentOperation, "getSite" | "getSiteDeploy">;
-  deployId?: string;
-  artifactSha256: string;
-};
+type NetlifyMutationOperation = Exclude<
+  NetlifyDeploymentOperation,
+  "getSite" | "getSiteDeploy" | "listSiteDeploys"
+>;
+export type NetlifyDeploymentCheckpoint =
+  | {
+      operation: NetlifyMutationOperation;
+      phase: "pending-mutation";
+      deployId?: string;
+      artifactSha256: string;
+    }
+  | {
+      operation: "lockDeploy" | "createSiteDeploy";
+      phase: "mutation-response-received";
+      deployId: string;
+      artifactSha256: string;
+    }
+  | {
+      operation: "restoreSiteDeploy";
+      phase: "mutation-response-received";
+      deployId: string;
+      artifactSha256: string;
+      publishedDeployId: string;
+    };
 export type NetlifyDeploymentDependencies = {
   client: NetlifyDeploymentClient;
   checkpoint: (value: NetlifyDeploymentCheckpoint) => Promise<void>;
   wait?: () => Promise<void>;
 };
-export type NetlifyDeploymentInput = {
-  environment: "staging";
+type NetlifyDeploymentBaseInput = {
   siteId: string;
   accountId: string;
   origin: string;
@@ -42,6 +62,13 @@ export type NetlifyDeploymentInput = {
   baselineDeployId: string;
   candidate: string;
   preparation: PreparedRelease;
+};
+export type NetlifyDeploymentInput = NetlifyDeploymentBaseInput & {
+  environment: "staging";
+};
+export type ProductionNetlifyDeploymentInput = NetlifyDeploymentBaseInput & {
+  authorization: ProductionProviderAuthorization;
+  environment: "production";
 };
 export type NetlifyDeployMetadata = {
   functionSchedules: readonly { name: string; cron: string }[];
@@ -58,7 +85,7 @@ export type HeldNetlifyDeployment = {
   artifactSha256: string;
   context: "production";
   state: "ready";
-  acknowledgedUploads: number;
+  acknowledgedUploads: number | null;
 };
 export class NetlifyDeploymentError extends Error {
   readonly kind: "preflight" | "checkpoint" | "ambiguous" | "verification";
@@ -79,21 +106,28 @@ const identifier = (value: unknown): value is string =>
   typeof value === "string" && /^[a-zA-Z0-9-]{1,128}$/u.test(value);
 const sha = (algorithm: "sha1" | "sha256", bytes: Buffer) =>
   createHash(algorithm).update(bytes).digest("hex");
-const validateTarget = (input: NetlifyDeploymentInput) => {
+type NetlifyDeploymentCoreInput = NetlifyDeploymentInput | ProductionNetlifyDeploymentInput;
+
+const validateTarget = (
+  input: NetlifyDeploymentCoreInput,
+  environment: "staging" | "production",
+) => {
   const parsed = preparedReleaseSchema.safeParse(input.preparation);
   if (
     !parsed.success ||
-    parsed.data.source.environment !== "staging" ||
+    parsed.data.source.environment !== environment ||
     parsed.data.source.candidate !== input.candidate
   )
     throw new NetlifyDeploymentError("preflight");
   if (
-    input.environment !== "staging" ||
+    input.environment !== environment ||
     !identifier(input.siteId) ||
     !identifier(input.accountId) ||
     !identifier(input.productionSiteId) ||
     !identifier(input.baselineDeployId) ||
-    input.siteId === input.productionSiteId ||
+    (environment === "staging"
+      ? input.siteId === input.productionSiteId
+      : input.siteId !== input.productionSiteId) ||
     !/^[a-f0-9]{40}$/u.test(input.candidate)
   )
     throw new NetlifyDeploymentError("preflight");
@@ -110,25 +144,37 @@ const call = async (
     return object(await dependencies.client(operation, parameters, AbortSignal.timeout(30_000)));
   } catch {
     throw new NetlifyDeploymentError(
-      operation === "getSite" || operation === "getSiteDeploy" ? "verification" : "ambiguous",
+      operation === "getSite" || operation === "getSiteDeploy" || operation === "listSiteDeploys"
+        ? "verification"
+        : "ambiguous",
     );
   }
 };
 const mutate = async (
   dependencies: NetlifyDeploymentDependencies,
-  operation: NetlifyDeploymentCheckpoint["operation"],
+  operation: NetlifyMutationOperation,
   parameters: Record<string, unknown>,
-  checkpoint: Omit<NetlifyDeploymentCheckpoint, "operation">,
+  checkpoint: { artifactSha256: string; deployId?: string },
 ) => {
   try {
-    await dependencies.checkpoint({ operation, ...checkpoint });
+    await dependencies.checkpoint({ operation, phase: "pending-mutation", ...checkpoint });
   } catch {
     throw new NetlifyDeploymentError("checkpoint");
   }
   return call(dependencies, operation, parameters);
 };
+const checkpointMutationResponse = async (
+  dependencies: NetlifyDeploymentDependencies,
+  value: Extract<NetlifyDeploymentCheckpoint, { phase: "mutation-response-received" }>,
+) => {
+  try {
+    await dependencies.checkpoint(value);
+  } catch {
+    throw new NetlifyDeploymentError("ambiguous");
+  }
+};
 const site = async (
-  input: NetlifyDeploymentInput,
+  input: NetlifyDeploymentCoreInput,
   dependencies: NetlifyDeploymentDependencies,
   deployId: string,
   locked: boolean | null,
@@ -149,7 +195,7 @@ const site = async (
   return published;
 };
 const candidate = async (
-  input: NetlifyDeploymentInput,
+  input: NetlifyDeploymentCoreInput,
   dependencies: NetlifyDeploymentDependencies,
   deployId: string,
 ) => {
@@ -167,7 +213,7 @@ const candidate = async (
   return value;
 };
 const poll = async (
-  input: NetlifyDeploymentInput,
+  input: NetlifyDeploymentCoreInput,
   dependencies: NetlifyDeploymentDependencies,
   deployId: string,
   ready: boolean,
@@ -186,13 +232,14 @@ const poll = async (
   throw new NetlifyDeploymentError("ambiguous");
 };
 
-export async function uploadHeldNetlifyDeployment(
-  input: NetlifyDeploymentInput,
+async function uploadHeldNetlifyDeploymentCore(
+  input: NetlifyDeploymentCoreInput,
   artifacts: PreparedNetlifyArtifacts,
   metadata: NetlifyDeployMetadata,
   dependencies: NetlifyDeploymentDependencies,
+  environment: "staging" | "production",
 ): Promise<HeldNetlifyDeployment> {
-  validateTarget(input);
+  validateTarget(input, environment);
   if (artifacts.inventorySha256 !== input.preparation.artifacts.netlify.sha256)
     throw new NetlifyDeploymentError("preflight");
   await verifyNetlifyArtifacts(artifacts);
@@ -229,12 +276,20 @@ export async function uploadHeldNetlifyDeployment(
   const before = await site(input, dependencies, input.baselineDeployId, null);
   const checkpoint = { artifactSha256: artifacts.inventorySha256 };
   if (before.locked !== true) {
-    await mutate(
+    if (environment === "production") throw new NetlifyDeploymentError("preflight");
+    const locked = await mutate(
       dependencies,
       "lockDeploy",
       { deployId: input.baselineDeployId },
       { ...checkpoint, deployId: input.baselineDeployId },
     );
+    if (locked.id !== input.baselineDeployId) throw new NetlifyDeploymentError("ambiguous");
+    await checkpointMutationResponse(dependencies, {
+      ...checkpoint,
+      deployId: input.baselineDeployId,
+      operation: "lockDeploy",
+      phase: "mutation-response-received",
+    });
   }
   await site(input, dependencies, input.baselineDeployId, true);
   const created = await mutate(
@@ -250,6 +305,12 @@ export async function uploadHeldNetlifyDeployment(
   if (!identifier(created.id) || created.id === input.baselineDeployId)
     throw new NetlifyDeploymentError("ambiguous");
   const deployId = created.id;
+  await checkpointMutationResponse(dependencies, {
+    ...checkpoint,
+    deployId,
+    operation: "createSiteDeploy",
+    phase: "mutation-response-received",
+  });
   await site(input, dependencies, input.baselineDeployId, true);
   await candidate(input, dependencies, deployId);
   await mutate(
@@ -325,12 +386,47 @@ export async function uploadHeldNetlifyDeployment(
   };
 }
 
-export async function publishHeldNetlifyDeployment(
+export async function uploadHeldNetlifyDeployment(
   input: NetlifyDeploymentInput,
+  artifacts: PreparedNetlifyArtifacts,
+  metadata: NetlifyDeployMetadata,
+  dependencies: NetlifyDeploymentDependencies,
+): Promise<HeldNetlifyDeployment> {
+  return uploadHeldNetlifyDeploymentCore(input, artifacts, metadata, dependencies, "staging");
+}
+
+const authorizeProductionNetlify = (
+  input: ProductionNetlifyDeploymentInput,
+  artifactSha256: string,
+): void => {
+  try {
+    input.authorization.assertArtifact(
+      "netlify",
+      { accountId: input.accountId, siteId: input.siteId },
+      artifactSha256,
+    );
+  } catch {
+    throw new NetlifyDeploymentError("preflight");
+  }
+};
+
+export async function uploadHeldProductionNetlifyDeployment(
+  input: ProductionNetlifyDeploymentInput,
+  artifacts: PreparedNetlifyArtifacts,
+  metadata: NetlifyDeployMetadata,
+  dependencies: NetlifyDeploymentDependencies,
+): Promise<HeldNetlifyDeployment> {
+  authorizeProductionNetlify(input, artifacts.inventorySha256);
+  return uploadHeldNetlifyDeploymentCore(input, artifacts, metadata, dependencies, "production");
+}
+
+async function publishHeldNetlifyDeploymentCore(
+  input: NetlifyDeploymentCoreInput,
   held: HeldNetlifyDeployment,
   dependencies: NetlifyDeploymentDependencies,
+  environment: "staging" | "production",
 ): Promise<{ publishedDeployId: string }> {
-  validateTarget(input);
+  validateTarget(input, environment);
   if (
     held.candidate !== input.candidate ||
     held.artifactSha256 !== input.preparation.artifacts.netlify.sha256 ||
@@ -351,8 +447,180 @@ export async function publishHeldNetlifyDeployment(
   );
   // A new restore ID needs an independently verified content mapping; fail closed until calibrated.
   if (result.id !== held.candidateDeployId) throw new NetlifyDeploymentError("ambiguous");
-  await site(input, dependencies, held.candidateDeployId, null);
+  await checkpointMutationResponse(dependencies, {
+    artifactSha256: held.artifactSha256,
+    deployId: held.candidateDeployId,
+    operation: "restoreSiteDeploy",
+    phase: "mutation-response-received",
+    publishedDeployId: held.candidateDeployId,
+  });
+  try {
+    await site(
+      input,
+      dependencies,
+      held.candidateDeployId,
+      environment === "production" ? true : null,
+    );
+  } catch {
+    throw new NetlifyDeploymentError("ambiguous");
+  }
   return { publishedDeployId: held.candidateDeployId };
+}
+
+export async function publishHeldNetlifyDeployment(
+  input: NetlifyDeploymentInput,
+  held: HeldNetlifyDeployment,
+  dependencies: NetlifyDeploymentDependencies,
+): Promise<{ publishedDeployId: string }> {
+  return publishHeldNetlifyDeploymentCore(input, held, dependencies, "staging");
+}
+
+export async function publishHeldProductionNetlifyDeployment(
+  input: ProductionNetlifyDeploymentInput,
+  held: HeldNetlifyDeployment,
+  dependencies: NetlifyDeploymentDependencies,
+): Promise<{ publishedDeployId: string }> {
+  authorizeProductionNetlify(input, held.artifactSha256);
+  return publishHeldNetlifyDeploymentCore(input, held, dependencies, "production");
+}
+
+export type NetlifyDeploymentReconciliation =
+  | { phase: "candidate-create-pending" }
+  | { deployId: string; phase: "candidate-create-response-received" }
+  | { held: HeldNetlifyDeployment; phase: "publish-pending" }
+  | {
+      held: HeldNetlifyDeployment;
+      phase: "publish-response-received";
+      publishedDeployId: string;
+    };
+
+const listCandidateDeploys = async (
+  input: ProductionNetlifyDeploymentInput,
+  dependencies: NetlifyDeploymentDependencies,
+): Promise<string> => {
+  const title = `release-${input.candidate}-${input.preparation.artifacts.netlify.sha256}`;
+  const matching: unknown[] = [];
+  const signal = AbortSignal.timeout(30_000);
+  for (let page = 1; page <= 100; page += 1) {
+    let value: unknown;
+    try {
+      value = await dependencies.client(
+        "listSiteDeploys",
+        { page, per_page: 100, production: true, siteId: input.siteId },
+        signal,
+      );
+    } catch {
+      throw new NetlifyDeploymentError("verification");
+    }
+    if (!Array.isArray(value)) throw new NetlifyDeploymentError("verification");
+    matching.push(
+      ...value.filter(
+        (entry) =>
+          entry !== null &&
+          typeof entry === "object" &&
+          !Array.isArray(entry) &&
+          (entry as Record<string, unknown>).title === title,
+      ),
+    );
+    if (matching.length > 1) throw new NetlifyDeploymentError("ambiguous");
+    if (value.length < 100) break;
+    if (page === 100) throw new NetlifyDeploymentError("ambiguous");
+  }
+  if (matching.length !== 1) throw new NetlifyDeploymentError("ambiguous");
+  const deployId = (matching[0] as Record<string, unknown>).id;
+  if (!identifier(deployId) || deployId === input.baselineDeployId)
+    throw new NetlifyDeploymentError("verification");
+  return deployId;
+};
+
+const validateHeld = (
+  input: ProductionNetlifyDeploymentInput,
+  held: HeldNetlifyDeployment,
+): void => {
+  if (
+    held.candidate !== input.candidate ||
+    held.artifactSha256 !== input.preparation.artifacts.netlify.sha256 ||
+    held.siteId !== input.siteId ||
+    held.baselineDeployId !== input.baselineDeployId ||
+    !identifier(held.candidateDeployId) ||
+    held.context !== "production" ||
+    held.state !== "ready"
+  ) {
+    throw new NetlifyDeploymentError("preflight");
+  }
+};
+
+export async function reconcileNetlifyDeployment(
+  input: ProductionNetlifyDeploymentInput,
+  reconciliation: NetlifyDeploymentReconciliation,
+  dependencies: NetlifyDeploymentDependencies,
+): Promise<HeldNetlifyDeployment | { publishedDeployId: string }> {
+  authorizeProductionNetlify(input, input.preparation.artifacts.netlify.sha256);
+  validateTarget(input, "production");
+  if (
+    reconciliation.phase === "candidate-create-pending" ||
+    reconciliation.phase === "candidate-create-response-received"
+  ) {
+    await site(input, dependencies, input.baselineDeployId, true);
+    const deployId =
+      reconciliation.phase === "candidate-create-pending"
+        ? await listCandidateDeploys(input, dependencies)
+        : reconciliation.deployId;
+    if (!identifier(deployId)) throw new NetlifyDeploymentError("verification");
+    const deploy = await candidate(input, dependencies, deployId);
+    if (deploy.state !== "ready") throw new NetlifyDeploymentError("ambiguous");
+    await site(input, dependencies, input.baselineDeployId, true);
+    return {
+      acknowledgedUploads: null,
+      artifactSha256: input.preparation.artifacts.netlify.sha256,
+      baselineDeployId: input.baselineDeployId,
+      candidate: input.candidate,
+      candidateDeployId: deployId,
+      context: "production",
+      siteId: input.siteId,
+      state: "ready",
+    };
+  }
+  validateHeld(input, reconciliation.held);
+  if (
+    reconciliation.phase === "publish-response-received" &&
+    reconciliation.publishedDeployId !== reconciliation.held.candidateDeployId
+  ) {
+    throw new NetlifyDeploymentError("verification");
+  }
+  const deploy = await candidate(input, dependencies, reconciliation.held.candidateDeployId);
+  if (deploy.state !== "ready") throw new NetlifyDeploymentError("ambiguous");
+  try {
+    await site(input, dependencies, reconciliation.held.candidateDeployId, true);
+  } catch {
+    throw new NetlifyDeploymentError("ambiguous");
+  }
+  return { publishedDeployId: reconciliation.held.candidateDeployId };
+}
+
+export async function verifyRetainedNetlifyDeployment(
+  input: ProductionNetlifyDeploymentInput,
+  held: HeldNetlifyDeployment,
+  expectedPublishedDeployId: string,
+  dependencies: NetlifyDeploymentDependencies,
+): Promise<void> {
+  authorizeProductionNetlify(input, held.artifactSha256);
+  validateTarget(input, "production");
+  validateHeld(input, held);
+  if (
+    !identifier(expectedPublishedDeployId) ||
+    (expectedPublishedDeployId !== input.baselineDeployId &&
+      expectedPublishedDeployId !== held.candidateDeployId)
+  ) {
+    throw new NetlifyDeploymentError("preflight");
+  }
+  const discoveredDeployId = await listCandidateDeploys(input, dependencies);
+  if (discoveredDeployId !== held.candidateDeployId) {
+    throw new NetlifyDeploymentError("verification");
+  }
+  const deploy = await candidate(input, dependencies, held.candidateDeployId);
+  if (deploy.state !== "ready") throw new NetlifyDeploymentError("verification");
+  await site(input, dependencies, expectedPublishedDeployId, true);
 }
 
 export async function createAuthenticatedNetlifyDeploymentClient(

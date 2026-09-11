@@ -11,6 +11,7 @@ import {
   type WorkerArtifactManifest,
 } from "./worker-artifacts.ts";
 import { assertPinnedCliVersions } from "./bootstrap-safety.ts";
+import type { ProductionProviderAuthorization } from "./production-authorization.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -69,14 +70,20 @@ export type WorkerReleaseCheckpoint =
       workerName: string;
     };
 
-export type PreparedStagingWorkerRelease = {
+type PreparedWorkerRelease = {
   artifactInput: PrepareWorkerArtifactsInput;
   expectedBaselineDeploymentId: string;
   migrationPolicy: WorkerMigrationPolicy;
   prepared: PreparedWorkerArtifacts;
 };
 
-export type UploadedStagingWorkerVersion = {
+export type PreparedStagingWorkerRelease = PreparedWorkerRelease;
+
+export type PreparedProductionWorkerRelease = PreparedWorkerRelease & {
+  authorization: ProductionProviderAuthorization;
+};
+
+export type UploadedWorkerVersion = {
   accountId: string;
   artifactManifestSha256: string;
   baselineDeploymentId: string;
@@ -86,8 +93,10 @@ export type UploadedStagingWorkerVersion = {
   versionId: string;
   workerName: string;
 };
+export type UploadedStagingWorkerVersion = UploadedWorkerVersion;
+export type UploadedProductionWorkerVersion = UploadedWorkerVersion;
 
-export type ActivatedStagingWorkerVersion = {
+export type ActivatedWorkerVersion = {
   accountId: string;
   artifactManifestSha256: string;
   deploymentId: string;
@@ -97,9 +106,15 @@ export type ActivatedStagingWorkerVersion = {
   versionId: string;
   workerName: string;
 };
+export type ActivatedStagingWorkerVersion = ActivatedWorkerVersion;
+export type ActivatedProductionWorkerVersion = ActivatedWorkerVersion;
 
 export type ActivatePreparedStagingWorkerInput = PreparedStagingWorkerRelease & {
   upload: UploadedStagingWorkerVersion;
+};
+
+export type ActivatePreparedProductionWorkerInput = PreparedProductionWorkerRelease & {
+  upload: UploadedProductionWorkerVersion;
 };
 
 export type WorkerReleaseDependencies = {
@@ -444,12 +459,17 @@ export const createWranglerAccessTokenResolver = (
   };
 };
 
-const validateReleaseInput = (input: PreparedStagingWorkerRelease): void => {
+const validateReleaseInput = (
+  input: PreparedWorkerRelease,
+  environment: "staging" | "production",
+): void => {
   try {
     if (
-      input.artifactInput.environment !== "staging" ||
-      input.artifactInput.target.wranglerEnvironment !== "staging" ||
-      input.artifactInput.target.workerName === input.artifactInput.productionWorkerName ||
+      input.artifactInput.environment !== environment ||
+      input.artifactInput.target.wranglerEnvironment !== environment ||
+      (environment === "staging"
+        ? input.artifactInput.target.workerName === input.artifactInput.productionWorkerName
+        : input.artifactInput.target.workerName !== input.artifactInput.productionWorkerName) ||
       !SAFE_ID.test(input.artifactInput.target.accountId) ||
       !SAFE_ID.test(input.artifactInput.target.workerName) ||
       !SAFE_ID.test(input.expectedBaselineDeploymentId) ||
@@ -464,17 +484,18 @@ const validateReleaseInput = (input: PreparedStagingWorkerRelease): void => {
 };
 
 const verifyPrepared = async (
-  input: PreparedStagingWorkerRelease,
+  input: PreparedWorkerRelease,
   dependencies: WorkerReleaseDependencies,
+  environment: "staging" | "production",
 ): Promise<WorkerArtifactManifest> => {
-  validateReleaseInput(input);
+  validateReleaseInput(input, environment);
   try {
     const manifest = await (dependencies.verifyArtifacts ?? verifyWorkerArtifacts)(
       input.artifactInput,
       input.prepared,
     );
     if (
-      manifest.target.environment !== "staging" ||
+      manifest.target.environment !== environment ||
       manifest.target.accountId !== input.artifactInput.target.accountId ||
       manifest.target.workerName !== input.artifactInput.target.workerName ||
       manifest.policy.migrations.length !== 1 ||
@@ -609,7 +630,7 @@ const parseVersionAgainstInput = (
   value: unknown,
   versionId: string,
   manifest: WorkerArtifactManifest,
-  input: PreparedStagingWorkerRelease,
+  input: PreparedWorkerRelease,
   expectedAnnotation?: string,
 ): string => {
   const scriptEtag =
@@ -650,7 +671,7 @@ const parseVersionAgainstInput = (
 };
 
 const inspectBaseline = async (
-  input: PreparedStagingWorkerRelease,
+  input: PreparedWorkerRelease,
   manifest: WorkerArtifactManifest,
   dependencies: WorkerReleaseDependencies,
 ): Promise<void> => {
@@ -684,7 +705,7 @@ const inspectBaseline = async (
 };
 
 const readEntrypoint = async (
-  input: PreparedStagingWorkerRelease,
+  input: PreparedWorkerRelease,
   manifest: WorkerArtifactManifest,
 ): Promise<ArrayBuffer> => {
   const expected = manifest.files.find(({ path }) => path === manifest.entrypoint);
@@ -710,7 +731,7 @@ const readEntrypoint = async (
 };
 
 const createUploadBody = async (
-  input: PreparedStagingWorkerRelease,
+  input: PreparedWorkerRelease,
   manifest: WorkerArtifactManifest,
 ): Promise<FormData> => {
   const body = new FormData();
@@ -777,11 +798,12 @@ const mutation = async (
   }
 };
 
-export const uploadPreparedStagingWorker = async (
-  input: PreparedStagingWorkerRelease,
+const uploadPreparedWorker = async (
+  input: PreparedWorkerRelease,
   dependencies: WorkerReleaseDependencies,
+  environment: "staging" | "production",
 ): Promise<UploadedStagingWorkerVersion> => {
-  const manifest = await verifyPrepared(input, dependencies);
+  const manifest = await verifyPrepared(input, dependencies, environment);
   await inspectBaseline(input, manifest, dependencies);
   const { accountId, workerName } = input.artifactInput.target;
   const body = await createUploadBody(input, manifest);
@@ -839,11 +861,12 @@ export const uploadPreparedStagingWorker = async (
   };
 };
 
-export const activatePreparedStagingWorker = async (
-  input: ActivatePreparedStagingWorkerInput,
+const activatePreparedWorker = async (
+  input: PreparedWorkerRelease & { upload: UploadedStagingWorkerVersion },
   dependencies: WorkerReleaseDependencies,
+  environment: "staging" | "production",
 ): Promise<ActivatedStagingWorkerVersion> => {
-  const manifest = await verifyPrepared(input, dependencies);
+  const manifest = await verifyPrepared(input, dependencies, environment);
   const { accountId, workerName } = input.artifactInput.target;
   if (
     input.upload.status !== "uploaded" ||
@@ -961,4 +984,269 @@ export const activatePreparedStagingWorker = async (
     versionId: input.upload.versionId,
     workerName,
   };
+};
+
+export const uploadPreparedStagingWorker = async (
+  input: PreparedStagingWorkerRelease,
+  dependencies: WorkerReleaseDependencies,
+): Promise<UploadedStagingWorkerVersion> => uploadPreparedWorker(input, dependencies, "staging");
+
+export const activatePreparedStagingWorker = async (
+  input: ActivatePreparedStagingWorkerInput,
+  dependencies: WorkerReleaseDependencies,
+): Promise<ActivatedStagingWorkerVersion> => activatePreparedWorker(input, dependencies, "staging");
+
+const authorizeProductionWorker = (input: PreparedProductionWorkerRelease): void => {
+  try {
+    input.authorization.assertArtifact(
+      "cloudflare",
+      {
+        accountId: input.artifactInput.target.accountId,
+        workerName: input.artifactInput.target.workerName,
+      },
+      input.prepared.manifestSha256,
+    );
+  } catch {
+    throw new WorkerReleaseError("preflight");
+  }
+};
+
+export const uploadPreparedProductionWorker = async (
+  input: PreparedProductionWorkerRelease,
+  dependencies: WorkerReleaseDependencies,
+): Promise<UploadedProductionWorkerVersion> => {
+  authorizeProductionWorker(input);
+  return uploadPreparedWorker(input, dependencies, "production");
+};
+
+export const activatePreparedProductionWorker = async (
+  input: ActivatePreparedProductionWorkerInput,
+  dependencies: WorkerReleaseDependencies,
+): Promise<ActivatedProductionWorkerVersion> => {
+  authorizeProductionWorker(input);
+  return activatePreparedWorker(input, dependencies, "production");
+};
+
+export type WorkerReleaseReconciliation =
+  | { phase: "version-upload-pending" }
+  | { phase: "version-upload-response-received"; versionId: string }
+  | { phase: "activation-pending"; upload: UploadedProductionWorkerVersion }
+  | {
+      deploymentId: string;
+      phase: "activation-response-received";
+      upload: UploadedProductionWorkerVersion;
+    };
+
+const discoverVersionId = async (
+  input: PreparedProductionWorkerRelease,
+  dependencies: WorkerReleaseDependencies,
+): Promise<string> => {
+  const { accountId, workerName } = input.artifactInput.target;
+  const value = await readProvider(
+    dependencies,
+    `${workerPath(accountId, workerName, "/versions")}?deployable=true`,
+    "verification",
+  );
+  if (!isObject(value) || !Array.isArray(value.items)) {
+    throw new WorkerReleaseError("verification");
+  }
+  const matches = value.items.filter(
+    (item) =>
+      isObject(item) &&
+      isObject(item.annotations) &&
+      item.annotations["workers/tag"] === input.prepared.manifestSha256,
+  );
+  if (matches.length !== 1) throw new WorkerReleaseError("ambiguous");
+  const versionId = matches[0].id;
+  if (typeof versionId !== "string" || !SAFE_ID.test(versionId)) {
+    throw new WorkerReleaseError("verification");
+  }
+  return versionId;
+};
+
+const findActivatedDeployment = (
+  value: unknown,
+  versionId: string,
+  deploymentId?: string,
+): string => {
+  if (!isObject(value) || !Array.isArray(value.deployments)) {
+    throw new WorkerReleaseError("verification");
+  }
+  const matches = value.deployments.filter((deployment, index) => {
+    if (
+      !isObject(deployment) ||
+      typeof deployment.id !== "string" ||
+      !SAFE_ID.test(deployment.id) ||
+      !Array.isArray(deployment.versions) ||
+      deployment.versions.length !== 1
+    ) {
+      return false;
+    }
+    const traffic = deployment.versions[0];
+    return (
+      isObject(traffic) &&
+      traffic.version_id === versionId &&
+      traffic.percentage === 100 &&
+      index === 0 &&
+      (deploymentId === undefined || deployment.id === deploymentId)
+    );
+  });
+  if (matches.length !== 1) throw new WorkerReleaseError("ambiguous");
+  return (matches[0] as JsonObject).id as string;
+};
+
+const validateReconciledUpload = (
+  input: PreparedProductionWorkerRelease,
+  upload: UploadedProductionWorkerVersion,
+): void => {
+  const { accountId, workerName } = input.artifactInput.target;
+  if (
+    upload.status !== "uploaded" ||
+    upload.accountId !== accountId ||
+    upload.workerName !== workerName ||
+    upload.artifactManifestSha256 !== input.prepared.manifestSha256 ||
+    upload.baselineDeploymentId !== input.expectedBaselineDeploymentId ||
+    !sameMigrationPolicy(upload.migrationPolicy) ||
+    !SAFE_ID.test(upload.versionId) ||
+    normalizeScriptEtag(upload.scriptEtag) !== upload.scriptEtag
+  ) {
+    throw new WorkerReleaseError("preflight");
+  }
+};
+
+export const reconcileWorkerRelease = async (
+  input: PreparedProductionWorkerRelease,
+  reconciliation: WorkerReleaseReconciliation,
+  dependencies: WorkerReleaseDependencies,
+): Promise<UploadedProductionWorkerVersion | ActivatedProductionWorkerVersion> => {
+  authorizeProductionWorker(input);
+  const manifest = await verifyPrepared(input, dependencies, "production");
+  const { accountId, workerName } = input.artifactInput.target;
+  if (
+    reconciliation.phase === "version-upload-pending" ||
+    reconciliation.phase === "version-upload-response-received"
+  ) {
+    await inspectBaseline(input, manifest, dependencies);
+    const versionId =
+      reconciliation.phase === "version-upload-pending"
+        ? await discoverVersionId(input, dependencies)
+        : reconciliation.versionId;
+    if (!SAFE_ID.test(versionId)) throw new WorkerReleaseError("verification");
+    const scriptEtag = parseVersionAgainstInput(
+      await readProvider(
+        dependencies,
+        workerPath(accountId, workerName, `/versions/${encodeURIComponent(versionId)}`),
+        "verification",
+      ),
+      versionId,
+      manifest,
+      input,
+      input.prepared.manifestSha256,
+    );
+    return {
+      accountId,
+      artifactManifestSha256: input.prepared.manifestSha256,
+      baselineDeploymentId: input.expectedBaselineDeploymentId,
+      migrationPolicy: input.migrationPolicy,
+      scriptEtag,
+      status: "uploaded",
+      versionId,
+      workerName,
+    };
+  }
+  validateReconciledUpload(input, reconciliation.upload);
+  parseCurrentServicePolicy(
+    await readProvider(dependencies, servicePath(accountId, workerName), "verification"),
+    manifest,
+  );
+  const scriptEtag = parseVersionAgainstInput(
+    await readProvider(
+      dependencies,
+      workerPath(
+        accountId,
+        workerName,
+        `/versions/${encodeURIComponent(reconciliation.upload.versionId)}`,
+      ),
+      "verification",
+    ),
+    reconciliation.upload.versionId,
+    manifest,
+    input,
+    input.prepared.manifestSha256,
+  );
+  if (scriptEtag !== reconciliation.upload.scriptEtag) {
+    throw new WorkerReleaseError("verification");
+  }
+  const deploymentId = findActivatedDeployment(
+    await readProvider(
+      dependencies,
+      workerPath(accountId, workerName, "/deployments"),
+      "verification",
+    ),
+    reconciliation.upload.versionId,
+    reconciliation.phase === "activation-response-received"
+      ? reconciliation.deploymentId
+      : undefined,
+  );
+  return {
+    accountId,
+    artifactManifestSha256: input.prepared.manifestSha256,
+    deploymentId,
+    migrationPolicy: input.migrationPolicy,
+    scriptEtag,
+    status: "activated",
+    versionId: reconciliation.upload.versionId,
+    workerName,
+  };
+};
+
+export type RetainedWorkerActivation = {
+  deploymentId: string;
+  versionId: string;
+};
+
+export const verifyRetainedWorkerRelease = async (
+  input: PreparedProductionWorkerRelease,
+  upload: UploadedProductionWorkerVersion,
+  activation: RetainedWorkerActivation | undefined,
+  dependencies: WorkerReleaseDependencies,
+): Promise<void> => {
+  authorizeProductionWorker(input);
+  const manifest = await verifyPrepared(input, dependencies, "production");
+  validateReconciledUpload(input, upload);
+  const { accountId, workerName } = input.artifactInput.target;
+  try {
+    parseCurrentServicePolicy(
+      await readProvider(dependencies, servicePath(accountId, workerName), "verification"),
+      manifest,
+    );
+    const scriptEtag = parseVersionAgainstInput(
+      await readProvider(
+        dependencies,
+        workerPath(accountId, workerName, `/versions/${encodeURIComponent(upload.versionId)}`),
+        "verification",
+      ),
+      upload.versionId,
+      manifest,
+      input,
+      input.prepared.manifestSha256,
+    );
+    if (scriptEtag !== upload.scriptEtag) throw new Error();
+    if (activation !== undefined) {
+      if (!SAFE_ID.test(activation.deploymentId) || activation.versionId !== upload.versionId) {
+        throw new Error();
+      }
+      findActivatedDeployment(
+        await readProvider(
+          dependencies,
+          workerPath(accountId, workerName, "/deployments"),
+          "verification",
+        ),
+        upload.versionId,
+        activation.deploymentId,
+      );
+    }
+  } catch {
+    throw new WorkerReleaseError("verification");
+  }
 };
