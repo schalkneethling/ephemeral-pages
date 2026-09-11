@@ -1,0 +1,31 @@
+name: Staging recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_rehearsal_run_id:
+        description: Successful staging rehearsal B diagnostics run to recover from
+        required: true
+        type: string
+      target_rehearsal_run_id:
+        description: Successful staging rehearsal A diagnostics run to restore
+        required: true
+        type: string
+      resume_recovery_run_id:
+        description: Latest interrupted staging recovery run; empty for a fresh recovery
+        required: false
+        type: string
+
+# Registration-only bootstrap on main. Dispatch the implemented workflow from
+# protected stage; this placeholder cannot run a deployment or issue approval.
+permissions:
+  contents: read
+
+jobs:
+  registration:
+    name: Select the protected stage implementation
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Registration placeholder cannot perform releases
+        run: exit 1

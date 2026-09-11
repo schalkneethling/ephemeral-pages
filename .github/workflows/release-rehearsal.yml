@@ -1,0 +1,27 @@
+name: Staging release rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Issue a production approval or retain staging calibration diagnostics only
+        required: true
+        default: approval
+        type: choice
+        options:
+          - approval
+          - calibration
+
+# Registration-only bootstrap on main. Dispatch the implemented workflow from
+# protected stage; this placeholder cannot run a deployment or issue approval.
+permissions:
+  contents: read
+
+jobs:
+  registration:
+    name: Select the protected stage implementation
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Registration placeholder cannot perform releases
+        run: exit 1
