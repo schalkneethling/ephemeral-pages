@@ -1,60 +1,76 @@
 import { expect, test, type Page } from "@playwright/test";
 
-test("captures by keyboard, prevents concurrent requests, and exposes a safe download", async ({
-  page,
-}) => {
-  const pageId = "capture-success";
-  let requestCount = 0;
-  let releaseCapture!: () => void;
-  const captureGate = new Promise<void>((resolve) => {
-    releaseCapture = resolve;
-  });
-  await routeCollaborativeViewer(page, pageId);
-  await page.route(`**/api/pages/${pageId}/screenshots`, async (route) => {
-    requestCount += 1;
-    await captureGate;
-    await route.fulfill({
-      status: 201,
-      contentType: "application/json",
-      body: JSON.stringify({
-        id: "shot-1",
-        pageId,
-        createdAt: "2026-08-23T10:15:00.000Z",
-        expiresAt: "2026-08-23T22:15:00.000Z",
-        revision: 17,
-        sizeBytes: 42_000,
-        url: `/api/pages/${pageId}/screenshots/shot-1`,
-      }),
+for (const width of [1280, 390]) {
+  test(`captures without layout shifts at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const pageId = "capture-success";
+    let requestCount = 0;
+    let requestStarted!: () => void;
+    const firstRequest = new Promise<void>((resolve) => {
+      requestStarted = resolve;
     });
+    let releaseCapture!: () => void;
+    const captureGate = new Promise<void>((resolve) => {
+      releaseCapture = resolve;
+    });
+    await routeCollaborativeViewer(page, pageId);
+    await page.route(`**/api/pages/${pageId}/screenshots`, async (route) => {
+      requestCount += 1;
+      requestStarted();
+      await captureGate;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "shot-1",
+          pageId,
+          createdAt: "2026-08-23T10:15:00.000Z",
+          expiresAt: "2026-08-23T22:15:00.000Z",
+          revision: 17,
+          sizeBytes: 42_000,
+          url: `/api/pages/${pageId}/screenshots/shot-1`,
+        }),
+      });
+    });
+
+    await page.goto(`/p/${pageId}`);
+    const button = page.locator("#capture-page");
+    await expect(button).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    const initialFrame = await page.locator("#page-iframe").boundingBox();
+    const initialButton = await button.boundingBox();
+    await button.focus();
+    await page.keyboard.press("Enter");
+
+    await expect(button).toBeDisabled();
+    expect(await page.locator("#page-iframe").boundingBox()).toEqual(initialFrame);
+    expect(await button.boundingBox()).toEqual(initialButton);
+    await expect(page.getByRole("status")).toHaveText("Capturing the current shared page…");
+    await firstRequest;
+    await button.evaluate((element) => {
+      if (element instanceof HTMLButtonElement) {
+        element.disabled = false;
+        element.click();
+      }
+    });
+    expect(requestCount).toBe(1);
+
+    releaseCapture();
+    await expect(button).toBeEnabled();
+    expect(requestCount).toBe(1);
+    await expect(page.locator("#capture-message")).toHaveText(
+      /Screenshot captured at .+ Revision 17\./,
+    );
+    expect(await page.locator("#page-iframe").boundingBox()).toEqual(initialFrame);
+    expect(await button.boundingBox()).toEqual(initialButton);
+    const download = page.getByRole("link", { name: "Download screenshot (revision 17)" });
+    await expect(download).toHaveAttribute(
+      "href",
+      `http://127.0.0.1:5173/api/pages/${pageId}/screenshots/shot-1`,
+    );
+    await expect(download).toHaveAttribute("download", `ephemeral-page-${pageId}-revision-17.png`);
   });
-
-  await page.goto(`/p/${pageId}`);
-  const button = page.locator("#capture-page");
-  await button.focus();
-  await page.keyboard.press("Enter");
-
-  await expect(button).toBeDisabled();
-  await expect(page.getByRole("status")).toHaveText("Capturing the current shared page…");
-  await button.evaluate((element) => {
-    if (element instanceof HTMLButtonElement) {
-      element.disabled = false;
-      element.click();
-    }
-  });
-  expect(requestCount).toBe(1);
-
-  releaseCapture();
-  await expect(button).toBeEnabled();
-  await expect(page.locator("#capture-message")).toHaveText(
-    /Screenshot captured at .+ Revision 17\./,
-  );
-  const download = page.getByRole("link", { name: "Download screenshot (revision 17)" });
-  await expect(download).toHaveAttribute(
-    "href",
-    `http://127.0.0.1:5173/api/pages/${pageId}/screenshots/shot-1`,
-  );
-  await expect(download).toHaveAttribute("download", `ephemeral-page-${pageId}-revision-17.png`);
-});
+}
 
 const failureScenarios: Array<{
   name: string;
