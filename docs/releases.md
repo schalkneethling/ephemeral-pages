@@ -1,16 +1,13 @@
 # Repeatable releases
 
-Status: Native branch protections, read-only planning, local artifact preparation, staging rehearsal,
-and the production provider/runner implementation are present. The first full [staging calibration](release-evidence/2026-09-10-staging/README.md)
-passed, including both transition and final-pair browser smokes. Manual production orchestration and resumption are implemented;
-live verification remains pending. Recovery and the toolbar improvements are merged into protected `stage`, and deployment credentials
-are provisioned in branch-restricted GitHub environments. Read-only provider inspection passed, and
-the staging workflows are registered on the default branch. Protected calibration A passed after
-correcting workflow metadata, isolated inspection credentials, and the old staging app's runtime
-OIDC configuration. Both transition and final-pair browser smokes passed; see
-[the checkpoint](release-evidence/2026-09-11-staging/README.md). Calibration B also passed with A as its prior pair. Recovery preflight exposed workflow lookup and Netlify checkpoint-shape mismatches, both corrected
-and regression-tested before provider mutation. The live drill restored Netlify A and stopped at transition role verification; a full local smoke later passed. Explicit resume exposed a temporary-path-dependent inspection fingerprint. The portable resume correction still requires protected workflow verification. Recovery completion, publishing cutover, the attributable baseline, and the first production release remain gates.
-Production publishing settings have not been changed by this increment.
+Status: protected staging preparation, calibrations A/B, explicit B-to-A recovery with resume,
+and the final forward calibration passed. Both recovery and forward deployment passed their
+transition and final-pair browser smokes. See [the verified checkpoint](release-evidence/2026-09-12-staging/README.md)
+and [earlier findings](release-evidence/2026-09-11-staging/README.md). Native branch protections
+and branch-restricted deployment credentials are configured. Production orchestration and recovery
+are implemented but remain live-unverified. Publishing cutover, the attributable production
+baseline, and the first coordinated production release remain gates. Production publishing settings
+have not been changed by this exercise.
 
 This design applies the principles in
 [The release process is part of the product](https://schalkneethling.com/posts/the-release-process-is-part-of-the-product/)
@@ -414,7 +411,7 @@ The runner currently exposes planning and status under [Read-only tooling](#read
 and preparation and staging rehearsal under [artifact preparation](#prepare-artifacts-and-rehearse-on-staging).
 Production promotion and resumption use the manual workflows and tested interfaces described in
 [production orchestration](production-orchestration.md). The checked-in production gate stays off
-until rollout prerequisites pass. Explicit recovery is implemented in the final layer and remains under validation; live drills and publishing cutover are outstanding. See [recovery and cutover](recovery.md).
+until rollout prerequisites pass. Explicit staging recovery and resume passed their protected live drill. Production recovery and publishing cutover remain unverified. See [recovery and cutover](recovery.md).
 
 Before production promotion can be authoritative, replace the current automatic production publish
 on merge with a controlled publish path. Otherwise a merge can bypass the release checks. Provider
