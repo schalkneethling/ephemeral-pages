@@ -16,6 +16,10 @@ import {
 
 const sha = "a".repeat(40);
 const now = new Date("2026-09-11T12:00:00.000Z");
+const repositoryPath = "/repos/schalkneethling/ephemeral-pages";
+const recoveryWorkflowPath = `${repositoryPath}/actions/workflows/release-staging-recovery.yml`;
+const recoveryRunsPath = `${recoveryWorkflowPath}/runs`;
+const rehearsalWorkflowPath = `${repositoryPath}/actions/workflows/release-rehearsal.yml`;
 const api = (handler: (request: GitHubApiRequest) => unknown): GitHubReleaseApi => ({
   get: async (request) => handler(request),
 });
@@ -77,8 +81,7 @@ describe("staging recovery GitHub evidence", () => {
           conclusion: null,
           runPath: STAGING_RECOVERY_WORKFLOW_PATH,
         });
-      if (path.endsWith(`/actions/workflows/${STAGING_RECOVERY_WORKFLOW_PATH}`))
-        return workflow(STAGING_RECOVERY_WORKFLOW_PATH, 12);
+      if (path === recoveryWorkflowPath) return workflow(STAGING_RECOVERY_WORKFLOW_PATH, 12);
       if (path.endsWith("/branches/stage")) return { protected: true, commit: { sha } };
       if (path.endsWith("/environments/staging"))
         return {
@@ -120,7 +123,7 @@ describe("staging recovery GitHub evidence", () => {
             runPath,
           });
         }
-        if (path.endsWith(`/actions/workflows/${STAGING_RECOVERY_WORKFLOW_PATH}`)) {
+        if (path === recoveryWorkflowPath) {
           return workflow(STAGING_RECOVERY_WORKFLOW_PATH, 12);
         }
         if (path.endsWith("/branches/stage")) return { protected: true, commit: { sha } };
@@ -150,7 +153,7 @@ describe("staging recovery GitHub evidence", () => {
           ...run({ id: 70, workflowId: 11, path: ".github/workflows/release-rehearsal.yml" }),
           head_sha: historicalSha,
         };
-      if (path.endsWith("/actions/workflows/.github/workflows/release-rehearsal.yml"))
+      if (path === rehearsalWorkflowPath)
         return workflow(".github/workflows/release-rehearsal.yml", 11);
       if (path.endsWith("/actions/runs/70/artifacts")) {
         const value = artifact(70, "release-rehearsal-diagnostics");
@@ -216,9 +219,8 @@ describe("staging recovery GitHub evidence", () => {
       ],
     });
     const client = api(({ path }) => {
-      if (path.endsWith(`/actions/workflows/${STAGING_RECOVERY_WORKFLOW_PATH}`))
-        return workflow(STAGING_RECOVERY_WORKFLOW_PATH, 12);
-      if (path.endsWith(`/${STAGING_RECOVERY_WORKFLOW_PATH}/runs`))
+      if (path === recoveryWorkflowPath) return workflow(STAGING_RECOVERY_WORKFLOW_PATH, 12);
+      if (path === recoveryRunsPath)
         return { total_count: 3, workflow_runs: [currentRun, skipped, unresolved] };
       if (path.endsWith("/actions/runs/100/attempts/1/jobs"))
         return { total_count: 1, jobs: [job("skipped")] };
@@ -258,9 +260,8 @@ describe("staging recovery GitHub evidence", () => {
       conclusion: "failure",
     });
     const client = api(({ path }) => {
-      if (path.endsWith(`/actions/workflows/${STAGING_RECOVERY_WORKFLOW_PATH}`))
-        return workflow(STAGING_RECOVERY_WORKFLOW_PATH, 12);
-      if (path.endsWith(`/${STAGING_RECOVERY_WORKFLOW_PATH}/runs`))
+      if (path === recoveryWorkflowPath) return workflow(STAGING_RECOVERY_WORKFLOW_PATH, 12);
+      if (path === recoveryRunsPath)
         return { total_count: 301, workflow_runs: [currentRun, prior] };
       if (path.endsWith("/actions/runs/100/attempts/1/jobs"))
         return {

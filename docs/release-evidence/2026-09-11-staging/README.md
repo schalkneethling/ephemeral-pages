@@ -92,3 +92,41 @@ repository records are sanitized summaries, not a replacement for its bundles an
 Calibration mode issued no production approval. Next, merge the reviewed evidence update into
 `stage`, validate its exact commit, and obtain calibration B with unchanged deployment configuration
 and A as its prior pair. Then exercise explicit B-to-A staging recovery with both retained run IDs.
+
+## Successful protected calibration B
+
+[Run 34643899329](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34643899329)
+on reviewed candidate `8b0a0e306cdaeebc2ec3b706c563350b974761f2` passed all ten rehearsal stages
+and both full browser smokes. This candidate includes the reviewed documentation checkpoint in
+PR #53; its deployment configuration fingerprint is identical to A. B's prior pair exactly matches
+A's observed pair, and each resulting deployment/version ID is distinct.
+
+See [preparation](preparation-b.json), [rehearsal B](rehearsal-b.json),
+[transition smoke](transition-smoke-b.json), and [final-pair smoke](pair-smoke-b.json).
+B's verified pair is:
+
+- Netlify deployment: `6aa46366dace99455126237f`.
+- Worker deployment: `4bb572cc-8991-4127-8fbe-1bd76f219a37`.
+- Worker version: `6e4ee754-a886-40cd-82aa-6966123385fa`.
+
+Usage was two short-lived uploads and two screenshot requests. The complete diagnostics artifact is
+retained for seven days. Calibration issued no production approval.
+
+## Recovery preflight correction
+
+[Recovery run 34644336012](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34644336012)
+stopped during GitHub evidence preflight. The credentialed restore step was skipped, so B remains
+live. No recovery workspace artifact was created. The verifier constructed the workflow lookup URL
+using the full repository path; the GitHub API requires a workflow ID or filename in that URL.
+The full-path request returned HTTP 404, while the filename request returned the active workflow.
+The same correction is required for the workflow run-history URL.
+
+After the focused correction passes review, is merged into `stage`, and that exact commit passes CI,
+dispatch a fresh recovery with B run `34643899329` and A run `34642239601`. This preflight-only
+failure does not require a resume ID because the provider mutation step never ran. Retained A/B
+artifacts and live targets must still pass the normal verification gates.
+
+Read-only validation of the corrected verifier accepted the real diagnostics metadata for both A
+and B, including their successful run identities, artifact digests, sizes, and expiry. Four regression
+cases failed against the previous endpoint construction and passed with the correction. This validates
+the lookup fix; only a fresh protected recovery run can verify the complete restore operation.

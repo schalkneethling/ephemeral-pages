@@ -126,6 +126,8 @@ export type VerifiedStagingRecoveryInvocation = VerifiedStagingRecoveryRun & {
 };
 
 const repositoryPath = (suffix: string): string => `/repos/${GITHUB_RELEASE_REPOSITORY}/${suffix}`;
+const workflowPath = (path: string): string =>
+  repositoryPath(`actions/workflows/${encodeURIComponent(path.split("/").at(-1)!)}`);
 
 const parse = <T>(schema: z.ZodType<T>, value: unknown): T => {
   const parsed = schema.safeParse(value);
@@ -134,10 +136,7 @@ const parse = <T>(schema: z.ZodType<T>, value: unknown): T => {
 };
 
 const readWorkflow = async (api: GitHubReleaseApi, path: string) => {
-  const workflow = parse(
-    workflowSchema,
-    await api.get({ path: repositoryPath(`actions/workflows/${path}`) }),
-  );
+  const workflow = parse(workflowSchema, await api.get({ path: workflowPath(path) }));
   if (workflow.path !== path || workflow.state !== "active") throw new StagingRecoveryGitHubError();
   return workflow;
 };
@@ -325,7 +324,7 @@ export async function verifyStagingRecoveryHistory(
     const response = parse(
       runsSchema,
       await api.get({
-        path: repositoryPath(`actions/workflows/${STAGING_RECOVERY_WORKFLOW_PATH}/runs`),
+        path: `${workflowPath(STAGING_RECOVERY_WORKFLOW_PATH)}/runs`,
         query: {
           branch: "stage",
           event: "workflow_dispatch",
