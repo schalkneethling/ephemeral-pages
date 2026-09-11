@@ -204,6 +204,15 @@ class ScriptedTransport implements WorkerReleaseTransport {
   }
 }
 
+const recordingTransport = (responses: unknown[], events: string[]): WorkerReleaseTransport => ({
+  dispatch: async (request) => {
+    events.push(`dispatch:${request.method}:${request.path}`);
+    const response = responses.shift();
+    if (response instanceof Error) throw response;
+    return response;
+  },
+});
+
 describe("uploadPreparedStagingWorker", () => {
   it("rejects an additional executable module before provider inspection or mutation", async () => {
     const { input, manifest } = await createFixture();
@@ -253,6 +262,10 @@ describe("uploadPreparedStagingWorker", () => {
     });
     expect(checkpoints).toEqual([
       expect.objectContaining({ phase: "pending-version-upload", workerName: "stage-worker" }),
+      expect.objectContaining({
+        phase: "version-upload-response-received",
+        versionId: "uploaded-version",
+      }),
     ]);
     const mutations = transport.requests.filter(({ method }) => method === "POST");
     expect(mutations).toHaveLength(1);
@@ -374,6 +387,70 @@ describe("uploadPreparedStagingWorker", () => {
     ).rejects.toEqual(new WorkerReleaseError("ambiguous"));
     expect(requests.filter(({ method }) => method === "POST")).toHaveLength(1);
   });
+
+  it("checkpoints the returned version ID before a failing readback", async () => {
+    const { input, manifest } = await createFixture();
+    const events: string[] = [];
+    const checkpoints: WorkerReleaseCheckpoint[] = [];
+    const transport = recordingTransport(
+      [
+        service,
+        deployments("baseline-deployment", "baseline-version"),
+        version(input, "baseline-version"),
+        { id: "returned-version" },
+        new Error("unverified readback failure"),
+      ],
+      events,
+    );
+
+    await expect(
+      uploadPreparedStagingWorker(input, {
+        checkpoint: async (value) => {
+          checkpoints.push(value);
+          events.push(`checkpoint:${value.phase}`);
+        },
+        transport,
+        verifyArtifacts: async () => manifest,
+      }),
+    ).rejects.toMatchObject({ kind: "ambiguous" });
+    expect(checkpoints.at(-1)).toMatchObject({
+      phase: "version-upload-response-received",
+      versionId: "returned-version",
+    });
+    const returnedIndex = events.indexOf("checkpoint:version-upload-response-received");
+    expect(events[returnedIndex + 1]).toBe(
+      "dispatch:GET:/accounts/account-id/workers/scripts/stage-worker/versions/returned-version",
+    );
+  });
+
+  it("does not read back when the returned version ID checkpoint cannot persist", async () => {
+    const { input, manifest } = await createFixture();
+    const events: string[] = [];
+    const transport = recordingTransport(
+      [
+        service,
+        deployments("baseline-deployment", "baseline-version"),
+        version(input, "baseline-version"),
+        { id: "returned-version" },
+      ],
+      events,
+    );
+
+    await expect(
+      uploadPreparedStagingWorker(input, {
+        checkpoint: async (value) => {
+          events.push(`checkpoint:${value.phase}`);
+          if (value.phase === "version-upload-response-received") throw new Error();
+        },
+        transport,
+        verifyArtifacts: async () => manifest,
+      }),
+    ).rejects.toMatchObject({ kind: "ambiguous" });
+    expect(events.at(-1)).toBe("checkpoint:version-upload-response-received");
+    expect(events).not.toContain(
+      "dispatch:GET:/accounts/account-id/workers/scripts/stage-worker/versions/returned-version",
+    );
+  });
 });
 
 describe("activatePreparedStagingWorker", () => {
@@ -422,6 +499,11 @@ describe("activatePreparedStagingWorker", () => {
     });
     expect(checkpoints).toEqual([
       expect.objectContaining({ phase: "pending-activation", versionId: "uploaded-version" }),
+      expect.objectContaining({
+        deploymentId: "new-deployment",
+        phase: "activation-response-received",
+        versionId: "uploaded-version",
+      }),
     ]);
     const mutations = transport.requests.filter(({ method }) => method === "POST");
     expect(mutations).toHaveLength(1);
@@ -453,6 +535,79 @@ describe("activatePreparedStagingWorker", () => {
     ).rejects.toMatchObject({ kind: "preflight" });
     expect(checkpoint).not.toHaveBeenCalled();
     expect(transport.requests.filter(({ method }) => method === "POST")).toHaveLength(0);
+  });
+
+  it("checkpoints the returned deployment ID before a failing activation readback", async () => {
+    const { input, manifest } = await createFixture();
+    const events: string[] = [];
+    const checkpoints: WorkerReleaseCheckpoint[] = [];
+    const transport = recordingTransport(
+      [
+        service,
+        deployments("baseline-deployment", "baseline-version"),
+        version(input, "baseline-version"),
+        version(input, "uploaded-version", input.prepared.manifestSha256),
+        service,
+        { id: "returned-deployment" },
+        new Error("unverified activation readback failure"),
+      ],
+      events,
+    );
+
+    await expect(
+      activatePreparedStagingWorker(
+        { ...input, upload: uploaded(input) },
+        {
+          checkpoint: async (value) => {
+            checkpoints.push(value);
+            events.push(`checkpoint:${value.phase}`);
+          },
+          transport,
+          verifyArtifacts: async () => manifest,
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "ambiguous" });
+    expect(checkpoints.at(-1)).toMatchObject({
+      deploymentId: "returned-deployment",
+      phase: "activation-response-received",
+      versionId: "uploaded-version",
+    });
+    const returnedIndex = events.indexOf("checkpoint:activation-response-received");
+    expect(events[returnedIndex + 1]).toBe(
+      "dispatch:GET:/accounts/account-id/workers/scripts/stage-worker/deployments",
+    );
+  });
+
+  it("does not read back when the returned deployment ID checkpoint cannot persist", async () => {
+    const { input, manifest } = await createFixture();
+    const events: string[] = [];
+    const transport = recordingTransport(
+      [
+        service,
+        deployments("baseline-deployment", "baseline-version"),
+        version(input, "baseline-version"),
+        version(input, "uploaded-version", input.prepared.manifestSha256),
+        service,
+        { id: "returned-deployment" },
+      ],
+      events,
+    );
+
+    await expect(
+      activatePreparedStagingWorker(
+        { ...input, upload: uploaded(input) },
+        {
+          checkpoint: async (value) => {
+            events.push(`checkpoint:${value.phase}`);
+            if (value.phase === "activation-response-received") throw new Error();
+          },
+          transport,
+          verifyArtifacts: async () => manifest,
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "ambiguous" });
+    expect(events.at(-1)).toBe("checkpoint:activation-response-received");
+    expect(events.filter((event) => event.endsWith("/deployments"))).toHaveLength(2);
   });
 });
 

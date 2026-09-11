@@ -48,6 +48,25 @@ export type WorkerReleaseCheckpoint =
       phase: "pending-activation";
       versionId: string;
       workerName: string;
+    }
+  | {
+      accountId: string;
+      artifactManifestSha256: string;
+      baselineDeploymentId: string;
+      migrationPolicy: WorkerMigrationPolicy;
+      phase: "version-upload-response-received";
+      versionId: string;
+      workerName: string;
+    }
+  | {
+      accountId: string;
+      artifactManifestSha256: string;
+      baselineDeploymentId: string;
+      deploymentId: string;
+      migrationPolicy: WorkerMigrationPolicy;
+      phase: "activation-response-received";
+      versionId: string;
+      workerName: string;
     };
 
 export type PreparedStagingWorkerRelease = {
@@ -736,6 +755,17 @@ const checkpoint = async (
   }
 };
 
+const checkpointMutationResponse = async (
+  dependencies: WorkerReleaseDependencies,
+  value: WorkerReleaseCheckpoint,
+): Promise<void> => {
+  try {
+    await dependencies.checkpoint(value);
+  } catch {
+    throw new WorkerReleaseError("ambiguous");
+  }
+};
+
 const mutation = async (
   dependencies: WorkerReleaseDependencies,
   request: Omit<WorkerReleaseRequest, "signal">,
@@ -772,6 +802,15 @@ export const uploadPreparedStagingWorker = async (
     throw new WorkerReleaseError("ambiguous");
   }
   const versionId = result.id;
+  await checkpointMutationResponse(dependencies, {
+    accountId,
+    artifactManifestSha256: input.prepared.manifestSha256,
+    baselineDeploymentId: input.expectedBaselineDeploymentId,
+    migrationPolicy: input.migrationPolicy,
+    phase: "version-upload-response-received",
+    versionId,
+    workerName,
+  });
   let scriptEtag: string;
   try {
     scriptEtag = parseVersionAgainstInput(
@@ -867,6 +906,16 @@ export const activatePreparedStagingWorker = async (
     throw new WorkerReleaseError("ambiguous");
   }
   const deploymentId = result.id;
+  await checkpointMutationResponse(dependencies, {
+    accountId,
+    artifactManifestSha256: input.prepared.manifestSha256,
+    baselineDeploymentId: input.expectedBaselineDeploymentId,
+    deploymentId,
+    migrationPolicy: input.migrationPolicy,
+    phase: "activation-response-received",
+    versionId: input.upload.versionId,
+    workerName,
+  });
   let scriptEtag: string;
   try {
     const deployment = parseLatestDeployment(

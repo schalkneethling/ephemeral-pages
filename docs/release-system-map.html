@@ -465,7 +465,7 @@
         storage make coordination necessary.
       </p>
       <div class="snapshot">
-        Checkpoint · 11 September 2026 · Completed staging artifact rehearsal
+        Documentation checkpoint · 11 September 2026 · Rehearsal evidence: 10 September 2026
       </div>
       <div class="notice">
         <strong>Current control gap.</strong> Netlify still publishes production automatically from
@@ -595,7 +595,7 @@
           "live",
           "Dedicated app, Worker and storage",
           "The staging pair was provisioned and verified on 10 September. Bootstrap and secret provisioning mutate staging, guarded by pending checkpoints, locks and inspection-based recovery. Shared bootstrap safety helpers were subsequently centralized in coordinator commit 477b4b9; the cited procedure remains the behavioral reference.",
-          [["docs/staging-bootstrap.md"], ["docs/staging-bootstrap.md"]],
+          [["docs/staging-bootstrap.md"]],
         ],
         smoke: [
           "Staging behavior smoke",
@@ -642,18 +642,14 @@
           "built",
           "Pages, tickets, capture and cleanup",
           "Functions validate uploads, enforce the collaboration gate, mint role-specific tickets and request Worker captures using the service credential. The API also supports read/delete and screenshot retrieval. Disabling the collaboration gate requires a Netlify redeploy and does not revoke existing sockets.",
-          [["netlify/functions/pages.ts"], ["netlify/functions/pages.ts"], ["docs/releases.md"]],
+          [["netlify/functions/pages.ts"], ["docs/releases.md"]],
         ],
         blobs: [
           "Netlify Blobs",
           "built",
           "HTML, metadata, quotas and PNGs",
           "A strongly consistent store holds page HTML/metadata, idempotency, rate limits and screenshots. Conditional writes enforce shared limits; compensation handles failed page and screenshot writes. Scheduled cleanup removes expired data. This storage is separate from Cloudflare room state.",
-          [
-            ["netlify/functions/storage.ts"],
-            ["netlify/functions/storage.ts"],
-            ["netlify/functions/cleanup.ts"],
-          ],
+          [["netlify/functions/storage.ts"], ["netlify/functions/cleanup.ts"]],
         ],
         worker: [
           "Worker admission",
@@ -672,11 +668,7 @@
           "built",
           "Authoritative revision and state",
           "One room per page persists shared state and revision. It enforces editor/viewer roles, ticket replay prevention, connection and mutation budgets. Deletion leaves a tombstone until expiry; expiry removes storage. Code rollback cannot undo these stored data or migrations.",
-          [
-            ["collaboration-worker/src/room.ts"],
-            ["collaboration-worker/src/room.ts"],
-            ["docs/releases.md"],
-          ],
+          [["collaboration-worker/src/room.ts"], ["docs/releases.md"]],
         ],
         capture: [
           "Frozen Browser Run capture",
@@ -708,7 +700,7 @@
           "live",
           "Stable origins; separate secrets & storage",
           "Staging has a dedicated unlinked Netlify project and staging Worker/DO namespace. It must not share production secrets/storage or depend on a historical PR preview origin. A shared staging Worker must not be overwritten by simultaneous candidates.",
-          [["docs/staging-bootstrap.md"], ["docs/staging-bootstrap.md"], ["docs/releases.md"]],
+          [["docs/staging-bootstrap.md"], ["docs/releases.md"]],
         ],
         evidence: [
           "Sanitized evidence boundary",
@@ -756,7 +748,7 @@
           "planned",
           "Bind approval to source and build",
           "Promotion PR carries exact candidate, successful rehearsal, production differences and recovery targets. Verify the resulting main source tree against the approved candidate and validate the exact commit. Serialize production releases. A changed commit/build invalidates approval.",
-          [["docs/releases.md"], ["docs/releases.md"]],
+          [["docs/releases.md"]],
         ],
         deploy: [
           "5 · Deploy compatible pair",
@@ -777,21 +769,21 @@
           "planned",
           "Report mixed state; operator decides",
           "Worker success with Netlify failure is a mixed deployment pair. Retain it only if compatibility was established; otherwise use the recorded recovery plan. Failed production verification halts completion. Recovery requires explicit operator action, restores a compatible pair and preserves secrets/storage compatibility.",
-          [["docs/releases.md"], ["docs/releases.md"]],
+          [["docs/releases.md"]],
         ],
         cutover: [
           "6 · Publishing cutover",
           "planned",
           "Replace automatic main publication",
           "Verify provider capabilities, packaging, authentication and account-plan constraints in staging before replacing automatic Netlify production publication. Controlled promotion becomes authoritative only after this bypass route is closed.",
-          [["docs/releases.md"], ["docs/releases.md"]],
+          [["docs/releases.md"]],
         ],
         complete: [
           "Verify → record → synchronize",
           "planned",
           "Only successful verification means shipped",
           "Confirm intended live IDs, headers and bounded product/API smoke. Persist the verified pair and evidence; move only shipped changelog entries out of Unreleased in a documentation follow-up, then synchronize stage. Partial deployment or failed smoke is not completion.",
-          [["docs/releases.md"], ["docs/releases.md"]],
+          [["docs/releases.md"]],
         ],
       };
       const V = [
