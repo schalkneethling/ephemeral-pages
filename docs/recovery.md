@@ -2,7 +2,7 @@
 
 Status: recovery implementation is reviewed and merged into protected `stage`. Protected calibrations A and B
 passed with matching lineage. Recovery preflight exposed workflow lookup and Netlify checkpoint-shape mismatches before
-provider mutation. Both are corrected and regression-tested; the live recovery drill remains. Production remains disabled in
+provider mutation. Both are corrected and regression-tested. The live drill restored Netlify A, then stopped at transition role verification. A full local mixed-pair smoke passed, but protected resume exposed a temporary-path-dependent inspection fingerprint. The portable resume correction still requires a successful protected run. Production remains disabled in
 `production-policy.json`. No production publishing setting has changed. The historical staging
 rehearsal is not evidence that this recovery implementation has passed a live drill.
 
@@ -72,7 +72,7 @@ intended final staging candidate and retain its newly observed IDs.
 These operations are implemented and locally tested. The registration-only bootstrap was merged
 through reviewed CI-only PR #50; the full implementations are now merged into protected `stage`.
 [Protected calibrations A and B](release-evidence/2026-09-11-staging/README.md) passed.
-The preflight lookup and checkpoint-shape corrections are complete; a fresh successful live drill is still required.
+The preflight lookup and checkpoint-shape corrections passed protected execution. Netlify restoration passed, while full recovery and the portable resume correction still require protected verification.
 See [the staging recovery workflow](../.github/workflows/release-staging-recovery.yml),
 [CLI](../scripts/release/staging-recovery-cli.ts),
 [source contract](../scripts/release/staging-recovery-source.ts), and
@@ -127,6 +127,14 @@ Each mutation is recorded before dispatch. Returned IDs are recorded before read
 writes are reconciled using exact IDs or the bound recovery marker, never blindly repeated. The
 recovery record retains the original target evidence, lineage and sanitized stage outcomes. Resume
 rejects reordered stages, changed plans, missing results and already-completed recoveries.
+
+Inspection fingerprints bind semantic targets, configuration and artifact hashes, excluding local
+checkout and extraction paths. New evidence records inspection version 2. For the existing staging
+checkpoint only, legacy evidence can be rebound after exact semantic comparison and fresh read-only
+inspection of the current mixed pair and retained targets. This is allowed only before any Worker
+restore checkpoint or result exists, and the replacement evidence is persisted before further
+mutation. Legacy production evidence and ambiguous legacy Worker writes remain blocked. The original
+archived record is retained for audit.
 
 Worker rollback creates a new deployment ID while restoring the target version. Completion records
 must retain that new ID; subsequent baselines must use the actually recovered pair. A successful

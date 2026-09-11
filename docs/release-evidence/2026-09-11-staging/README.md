@@ -151,3 +151,38 @@ GitHub artifact metadata. The combined recovery source schema and current config
 validation also pass. Seven focused cases fail with the previous checkpoint schema; the corrected
 suite passes and rejects missing, duplicate, or unexpected pending evidence while retaining response
 records. This read-only check performed no provider mutation and does not replace the live drill.
+
+## Interrupted live restore and portable resume correction
+
+[Run 34648240950](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34648240950)
+on reviewed candidate `061556107604f96bb39a084a7527fb398a1f42f9` passed complete A/B preflight,
+verified both recovery targets, and restored Netlify A. Readback confirmed Netlify A with Worker B.
+The transition smoke created one short-lived page, then blocked at editor/viewer role verification.
+No screenshot was requested and no Worker mutation began. See [the interrupted record](recovery-interrupted.json)
+and [the blocked smoke](recovery-transition-blocked.json).
+
+A separate local diagnostic on the same mixed pair observed successful ticket requests and the
+expected roles for the proxied editor, direct editor, and viewer. A full local smoke then passed
+viewer controls, synchronization, reload persistence, actual network-loss recovery, and PNG capture.
+These checks used two short-lived uploads and one screenshot. The original role failure was not
+reproduced; the local result did not substitute for protected workflow verification.
+
+[Explicit resume 34648899133](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34648899133)
+accepted the retained recovery artifact and preserved the completed Netlify result, then blocked in
+inspection before smoke or further mutation. See [the resume record](recovery-resume-blocked.json).
+The provider inspection fingerprint included absolute artifact and checkout paths, so moving the
+verified bundle into a new workflow workspace changed the expected fingerprint.
+
+The correction binds inspection to deployment identities, configuration, and artifact hashes rather
+than temporary paths. The existing checkpoint requires explicit read-only reinspection before its
+fingerprint can be updated, and only while no Worker restore has started. The prior archived evidence
+remains intact. A fresh protected resume must still demonstrate completion.
+
+Cloudflare restores a version through a new deployment ID. Completed-history verification must bind
+that new ID to the recorded result and observed pair while requiring the requested Netlify deployment
+and Worker version; it must not require the original target's Worker deployment ID.
+
+The corrected adapter passed read-only reinspection against the real retained resume record and
+current providers, producing version-2 evidence for Netlify A / Worker B. Local artifact verification,
+provider configuration, target retention and exact mixed-pair checks passed without mutation. This
+validates the portable evidence correction; only the next protected resume can complete the drill.

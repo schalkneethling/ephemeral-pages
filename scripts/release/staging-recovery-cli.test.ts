@@ -377,6 +377,88 @@ describe("staging recovery CLI", () => {
     expect(mocks.providerFactory).not.toHaveBeenCalled();
   });
 
+  it("accepts completed recovery evidence with its newly created Worker deployment", async () => {
+    const data = await fixture();
+    const extract = mocks.extract.getMockImplementation();
+    if (!extract) throw new Error("Missing extraction fixture.");
+    const completedRunId = 115;
+    const completedArtifact = {
+      artifactId: 650,
+      name: "release-staging-recovery" as const,
+      digest: `sha256:${"6".repeat(64)}` as const,
+      sizeInBytes: 6_000,
+      expiresAt: "2026-09-18T10:00:00.000Z",
+    };
+    const rollbackDeploymentId = "rollback-worker-deployment";
+    let completed = stagingRecoveryRecordSchema.parse({
+      schemaVersion: 1,
+      operation: "staging-recovery",
+      environment: "staging",
+      sourceRehearsalRunId: 110,
+      sourceRehearsalSha256: "1".repeat(64),
+      targetRehearsalRunId: 100,
+      targetRehearsalSha256: "2".repeat(64),
+      sourceSha256: "3".repeat(64),
+      configurationFingerprint: "4".repeat(64),
+      recoveryPlanSha256: "5".repeat(64),
+      recoveryRunIds: [completedRunId],
+      startingPair: data.startingPair,
+      targetPair: data.targetPair,
+      observedPair: {
+        ...data.targetPair,
+        workerDeploymentId: rollbackDeploymentId,
+      },
+      recoveredPair: {
+        ...data.targetPair,
+        workerDeploymentId: rollbackDeploymentId,
+      },
+      outcome: "passed",
+      stages: Object.fromEntries(recoverySteps.map((step) => [step, "passed"])),
+      results: {
+        netlify: { publishedDeployId: data.targetPair.netlifyDeployId },
+        worker: {
+          deploymentId: rollbackDeploymentId,
+          versionId: data.targetPair.workerVersionId,
+        },
+      },
+      journal: [],
+    });
+    mocks.history.mockResolvedValue({
+      mode: "fresh",
+      completed: {
+        run: { runId: completedRunId, workflowCommit: currentCommit },
+        artifact: completedArtifact,
+      },
+    });
+    mocks.extract.mockImplementation(async (bytes, directory, repositoryRoot) => {
+      if (String(directory).endsWith("completed-recovery")) {
+        await writeJson(join(String(directory), "run/staging-recovery.json"), completed);
+        return;
+      }
+      await extract(bytes, directory, repositoryRoot);
+    });
+
+    await expect(
+      runStagingRecoveryCli(["preflight", ...data.flags], data.repository),
+    ).resolves.toMatchObject({ outcome: "passed" });
+
+    for (const [index, variant] of ["missing", "mismatch"].entries()) {
+      completed = structuredClone(completed);
+      if (variant === "missing") delete completed.observedPair;
+      else {
+        completed.observedPair = {
+          ...completed.recoveredPair!,
+          workerDeploymentId: "different-rollback-deployment",
+        };
+      }
+      const workspace = join(dirname(data.workspace), `invalid-completed-${index}`);
+      const flags = [...data.flags.slice(0, -1), workspace];
+      await expect(runStagingRecoveryCli(["preflight", ...flags], data.repository)).rejects.toThrow(
+        "Completed staging recovery evidence differs.",
+      );
+    }
+  });
+
   it("revalidates altered A/B artifact metadata before provider construction", async () => {
     const data = await fixture();
     await runStagingRecoveryCli(["preflight", ...data.flags], data.repository);

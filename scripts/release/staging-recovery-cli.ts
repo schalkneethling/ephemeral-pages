@@ -342,8 +342,15 @@ const validateCompletedHistory = async (
     record.failure !== undefined ||
     record.recoveryRunIds.at(-1) !== history.run.runId ||
     recoverySteps.some((step) => record.stages[step] !== "passed") ||
+    !record.observedPair ||
     !record.recoveredPair ||
-    !same(record.recoveredPair, record.targetPair)
+    !same(record.observedPair, record.recoveredPair) ||
+    record.recoveredPair.netlifyDeployId !== record.targetPair.netlifyDeployId ||
+    record.recoveredPair.workerVersionId !== record.targetPair.workerVersionId ||
+    record.results.netlify?.publishedDeployId !== record.targetPair.netlifyDeployId ||
+    !record.results.worker ||
+    record.results.worker.versionId !== record.targetPair.workerVersionId ||
+    record.results.worker.deploymentId !== record.recoveredPair.workerDeploymentId
   ) {
     throw Error("Completed staging recovery evidence differs.");
   }

@@ -212,6 +212,34 @@ export async function runStagingRecovery(
       throw new Error("Unexpected live staging pair.");
   };
   try {
+    if (
+      input.previous?.targetEvidence &&
+      input.previous.targetEvidence.inspectionVersion === undefined
+    ) {
+      if (
+        !record.targetEvidence ||
+        record.stages["restore-netlify"] !== "passed" ||
+        !record.results.netlify ||
+        record.stages["restore-worker"] !== "pending" ||
+        record.results.worker ||
+        record.journal.some(({ step }) => step === "restore-worker")
+      ) {
+        throw new Error("Legacy staging recovery evidence cannot be migrated safely.");
+      }
+      active = "inspect";
+      await inspect();
+      record.targetEvidence = recoveryTargetEvidenceSchema.parse(
+        await dependencies.verifyTargets(),
+      );
+      if (
+        record.targetEvidence.inspectionVersion !== 2 ||
+        !samePair(record.targetEvidence.requested, targetPair) ||
+        !samePair(record.targetEvidence.expectedCurrent, startingPair)
+      ) {
+        throw new Error("Migrated staging recovery target evidence differs.");
+      }
+      await save();
+    }
     for (const step of ["restore-netlify", "restore-worker"] as const) {
       if (!["running", "blocked", "failed"].includes(record.stages[step])) continue;
       active = step;

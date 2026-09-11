@@ -264,6 +264,7 @@ describe("recovery provider adapters", () => {
     const evidence = await inspectRecoveryTargets(plan(), fixture.dependencies);
 
     expect(evidence).toMatchObject({
+      inspectionVersion: 2,
       netlifyVariablesVerified: true,
       workerMigrationTag: "v1",
       workerSecretBindingNames: ["TICKET_HMAC_SECRET", "ADMIN_TOKEN"],
@@ -431,6 +432,91 @@ describe("recovery provider adapters", () => {
         fixture.dependencies,
       ),
     ).resolves.toBe(evidence);
+  });
+
+  it("keeps verified evidence stable when only workspace paths change", async () => {
+    const original = plan();
+    const fixture = createFixture(original);
+    const evidence = await inspectRecoveryTargets(original, fixture.dependencies);
+    const relocated = structuredClone(original);
+    relocated.worker.artifactInput.artifactDirectory = "/different/run/artifacts";
+    relocated.worker.artifactInput.repositoryRoot = "/different/checkout";
+    relocated.worker.preparedArtifacts.artifactDirectory = "/different/run/artifacts";
+    const relocatedFixture = createFixture(relocated);
+
+    await expect(
+      verifyRecoveryTargets(
+        relocated,
+        evidence,
+        relocated.expectedCurrent,
+        relocatedFixture.dependencies,
+      ),
+    ).resolves.toBe(evidence);
+  });
+
+  it("rejects semantic plan changes after workspace relocation", async () => {
+    const original = plan();
+    const fixture = createFixture(original);
+    const evidence = await inspectRecoveryTargets(original, fixture.dependencies);
+    const changed = structuredClone(original);
+    changed.worker.artifactInput.artifactDirectory = "/different/run/artifacts";
+    changed.worker.artifactInput.repositoryRoot = "/different/checkout";
+    changed.worker.preparedArtifacts.artifactDirectory = "/different/run/artifacts";
+    changed.worker.artifactInput.sourceConfigSha256 = "4".repeat(64);
+
+    await expect(
+      verifyRecoveryTargets(
+        changed,
+        evidence,
+        changed.expectedCurrent,
+        createFixture(changed).dependencies,
+      ),
+    ).rejects.toMatchObject({ kind: "invalid-input" });
+  });
+
+  it("migrates legacy staging evidence only through fresh read-only verification", async () => {
+    const input = plan();
+    input.environment = "staging";
+    input.netlify.siteId = "staging-site";
+    input.worker.workerName = "staging-worker";
+    input.worker.artifactInput.environment = "staging";
+    input.worker.artifactInput.target.workerName = "staging-worker";
+    input.worker.artifactInput.target.wranglerEnvironment = "staging";
+    input.worker.preparedArtifacts.manifest = structuredClone(manifest);
+    input.worker.preparedArtifacts.manifest.target.environment = "staging";
+    input.worker.preparedArtifacts.manifest.target.workerName = "staging-worker";
+    input.worker.preparedArtifacts.manifest.target.wranglerEnvironment = "staging";
+    const fixture = createFixture(input);
+    fixture.dependencies.verifyArtifacts = vi.fn(
+      async () => input.worker.preparedArtifacts.manifest,
+    );
+    const evidence = await inspectRecoveryTargets(input, fixture.dependencies);
+    const legacy = { ...evidence, inspectionVersion: undefined, inspectionSha256: "f".repeat(64) };
+    fixture.events.length = 0;
+
+    const migrated = await verifyRecoveryTargets(
+      input,
+      legacy,
+      input.expectedCurrent,
+      fixture.dependencies,
+    );
+
+    expect(migrated.inspectionVersion).toBe(2);
+    expect(migrated.inspectionSha256).toBe(evidence.inspectionSha256);
+    expect(fixture.events).toContain("netlify:getSite");
+    expect(fixture.events.some((event) => event.startsWith("worker:GET:"))).toBe(true);
+    expect(fixture.events.some((event) => event.startsWith("worker:POST:"))).toBe(false);
+  });
+
+  it("rejects legacy production evidence", async () => {
+    const input = plan();
+    const fixture = createFixture(input);
+    const evidence = await inspectRecoveryTargets(input, fixture.dependencies);
+    const legacy = { ...evidence, inspectionVersion: undefined };
+
+    await expect(
+      verifyRecoveryTargets(input, legacy, input.expectedCurrent, fixture.dependencies),
+    ).rejects.toMatchObject({ kind: "invalid-input" });
   });
 
   it("accepts a complete recovery no-op when every requested ID is already current", async () => {

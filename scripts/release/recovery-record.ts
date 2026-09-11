@@ -16,6 +16,7 @@ export const recoverySteps = [
 export const recoveryStepSchema = z.enum(recoverySteps);
 export type RecoveryStep = z.infer<typeof recoveryStepSchema>;
 export const recoveryTargetEvidenceSchema = z.strictObject({
+  inspectionVersion: z.literal(2).optional(),
   inspectionSha256: digestSchema,
   requested: pairSchema,
   expectedCurrent: pairSchema,
