@@ -15,3 +15,21 @@ protected-environment verification, then start a fresh calibration on the review
 
 The operator accepted a one-time fail-forward production adoption. No legacy restore subsystem will
 be added. Production adoption, live staging recovery, and publication cutover remain unverified.
+
+## Second attempt
+
+[Run 34637502589](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34637502589)
+on corrected candidate `d69d85af6631053b910abd4be6f68c675e4b0876` passed GitHub verification and
+artifact preparation. See [the preparation record](preparation-34637502589.json) and
+[the rehearsal record](rehearsal-34637502589.json). Provider inspection blocked before any deployment
+stage or provider write checkpoint. The isolated inspection command environment omitted the provider
+tokens available to the parent workflow. The correction must forward only the intended provider's
+token to its own CLI; build environments and retained evidence remain credential-free.
+
+This attempt also does not count as rehearsal A or B. Start a fresh calibration only after the
+correction passes review, is merged into `stage`, and that exact staging commit passes protected CI.
+
+Read-only verification of the corrected inspection environment passed for both staging providers
+using the existing 1Password-backed tokens through Varlock. Expected non-secret variables, required
+secret names, and Netlify scope checks matched. No deployment was performed by that check; the
+protected workflow must still demonstrate successful deployment and smoke verification.

@@ -31,6 +31,45 @@ import {
   type UploadedStagingWorkerVersion,
 } from "./worker-release.ts";
 
+const NETLIFY_INSPECTION_EXECUTABLE = "./node_modules/.bin/netlify";
+const CLOUDFLARE_INSPECTION_EXECUTABLE = "./node_modules/.bin/wrangler";
+
+class RehearsalInspectionError extends Error {
+  readonly kind = "failed";
+
+  constructor() {
+    super("Provider inspection failed.");
+    this.name = "RehearsalInspectionError";
+  }
+}
+
+export function rehearsalInspectionEnvironment(
+  executable: string,
+  websocketUrl: string,
+  extra: Readonly<Record<string, string>> = {},
+): Record<string, string> {
+  const names = Object.keys(extra);
+  const netlify = executable === NETLIFY_INSPECTION_EXECUTABLE;
+  const cloudflare = executable === CLOUDFLARE_INSPECTION_EXECUTABLE;
+  if (
+    (!netlify && !cloudflare) ||
+    (netlify && names.length !== 0) ||
+    (cloudflare &&
+      (names.some((name) => name !== "CLOUDFLARE_ACCOUNT_ID") ||
+        typeof extra.CLOUDFLARE_ACCOUNT_ID !== "string" ||
+        extra.CLOUDFLARE_ACCOUNT_ID.length === 0))
+  ) {
+    throw new RehearsalInspectionError();
+  }
+  const credentialName = netlify ? "NETLIFY_AUTH_TOKEN" : "CLOUDFLARE_API_TOKEN";
+  const credential = process.env[credentialName];
+  return {
+    ...extra,
+    ...artifactBuildEnvironment(websocketUrl),
+    ...(credential ? { [credentialName]: credential } : {}),
+  };
+}
+
 // The parser intentionally has no production or configuration override.
 export function parseRehearsalArguments(args: readonly string[], cwd: string) {
   const { values } = parseArgs({
@@ -122,47 +161,50 @@ export async function runRehearsalCli(args: readonly string[], repositoryRoot: s
     const result = await runCommand(executable, argv, {
       cwd: repositoryRoot,
       inheritEnv: false,
-      env: {
-        ...artifactBuildEnvironment(
-          appTarget.expectedNonSecretVariables.COLLABORATION_WEBSOCKET_URL,
-        ),
-        ...extra,
-      },
+      env: rehearsalInspectionEnvironment(
+        executable,
+        appTarget.expectedNonSecretVariables.COLLABORATION_WEBSOCKET_URL,
+        extra,
+      ),
       timeoutMs: 60_000,
     });
-    if (result.exitCode !== 0) throw new Error("Provider inspection failed.");
+    if (result.exitCode !== 0) throw new RehearsalInspectionError();
     return result.stdout;
   };
   const inspect = async (): Promise<DeploymentPair> => {
-    const [app, workerState] = await Promise.all([
-      inspectNetlify(appTarget, run),
-      inspectCloudflare(
-        {
-          ...workerTarget,
-          wranglerConfigPath: resolve(repositoryRoot, workerTarget.wranglerConfigPath),
-        },
-        run,
-      ),
-    ]);
-    if (
-      !app.variableScopesMatch ||
-      Object.values(app.nonSecretVariables).some(
-        (value) => !value.present || !value.matchesExpected,
-      ) ||
-      Object.values(app.requiredSecrets).some((value) => !value) ||
-      Object.values(workerState.nonSecretVariables).some(
-        (value) => !value.present || !value.matchesExpected,
-      ) ||
-      Object.values(workerState.requiredSecrets).some((value) => !value) ||
-      workerState.traffic.length !== 1 ||
-      workerState.traffic[0].percentage !== 100
-    )
-      throw new Error("Live configuration verification failed.");
-    return {
-      netlifyDeployId: app.publishedDeployId,
-      workerDeploymentId: workerState.deploymentId,
-      workerVersionId: workerState.traffic[0].versionId,
-    };
+    try {
+      const [app, workerState] = await Promise.all([
+        inspectNetlify(appTarget, run),
+        inspectCloudflare(
+          {
+            ...workerTarget,
+            wranglerConfigPath: resolve(repositoryRoot, workerTarget.wranglerConfigPath),
+          },
+          run,
+        ),
+      ]);
+      if (
+        !app.variableScopesMatch ||
+        Object.values(app.nonSecretVariables).some(
+          (value) => !value.present || !value.matchesExpected,
+        ) ||
+        Object.values(app.requiredSecrets).some((value) => !value) ||
+        Object.values(workerState.nonSecretVariables).some(
+          (value) => !value.present || !value.matchesExpected,
+        ) ||
+        Object.values(workerState.requiredSecrets).some((value) => !value) ||
+        workerState.traffic.length !== 1 ||
+        workerState.traffic[0].percentage !== 100
+      )
+        throw new RehearsalInspectionError();
+      return {
+        netlifyDeployId: app.publishedDeployId,
+        workerDeploymentId: workerState.deploymentId,
+        workerVersionId: workerState.traffic[0].versionId,
+      };
+    } catch {
+      throw new RehearsalInspectionError();
+    }
   };
   let eventIndex = 0;
   const checkpoint = async (value: unknown) => {
