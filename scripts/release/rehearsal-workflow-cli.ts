@@ -6,6 +6,7 @@ import { assertExternalArtifactDirectory } from "./artifact-contract.ts";
 import { readReleaseJson } from "./files.ts";
 import {
   createGitHubReleaseApi,
+  GitHubReleaseError,
   verifyStagingInvocation,
   type GitHubRuntimeEnvironment,
 } from "./github-release.ts";
@@ -92,6 +93,10 @@ export async function runRehearsalWorkflow(argv: readonly string[], repositoryRo
   ]);
   return writeReleaseApproval(repositoryRoot, approvalDirectory, baselinePath);
 }
+
+export function rehearsalWorkflowFailureCode(error: unknown): string {
+  return error instanceof GitHubReleaseError ? `github-${error.kind}` : "rehearsal-blocked";
+}
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const result = await runRehearsalWorkflow(
@@ -99,8 +104,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       fileURLToPath(new URL("../..", import.meta.url)),
     );
     process.stdout.write(JSON.stringify(result) + "\n");
-  } catch {
-    process.stderr.write("Rehearsal approval blocked; inspect sanitized workflow reports.\n");
+  } catch (error) {
+    process.stderr.write(
+      `Staging rehearsal blocked (${rehearsalWorkflowFailureCode(error)}); inspect sanitized workflow reports.\n`,
+    );
     process.exitCode = 1;
   }
 }

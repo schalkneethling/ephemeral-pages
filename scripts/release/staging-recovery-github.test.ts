@@ -26,11 +26,12 @@ const run = (input: {
   path: string;
   status?: string;
   conclusion?: string | null;
+  runPath?: string;
 }) => ({
   id: input.id,
   run_attempt: 1,
   event: "workflow_dispatch",
-  path: `${input.path}@stage`,
+  path: input.runPath ?? `${input.path}@stage`,
   head_branch: "stage",
   head_sha: sha,
   status: input.status ?? "completed",
@@ -74,6 +75,7 @@ describe("staging recovery GitHub evidence", () => {
           path: STAGING_RECOVERY_WORKFLOW_PATH,
           status: "in_progress",
           conclusion: null,
+          runPath: STAGING_RECOVERY_WORKFLOW_PATH,
         });
       if (path.endsWith(`/actions/workflows/${STAGING_RECOVERY_WORKFLOW_PATH}`))
         return workflow(STAGING_RECOVERY_WORKFLOW_PATH, 12);
@@ -103,6 +105,42 @@ describe("staging recovery GitHub evidence", () => {
       }),
     ).rejects.toThrow();
   });
+
+  it.each([`${STAGING_RECOVERY_WORKFLOW_PATH}@main`, ".github/workflows/foreign.yml"])(
+    "rejects a foreign recovery workflow run path or ref (%s)",
+    async (runPath) => {
+      const client = api(({ path }) => {
+        if (path.endsWith("/actions/runs/101")) {
+          return run({
+            id: 101,
+            workflowId: 12,
+            path: STAGING_RECOVERY_WORKFLOW_PATH,
+            status: "in_progress",
+            conclusion: null,
+            runPath,
+          });
+        }
+        if (path.endsWith(`/actions/workflows/${STAGING_RECOVERY_WORKFLOW_PATH}`)) {
+          return workflow(STAGING_RECOVERY_WORKFLOW_PATH, 12);
+        }
+        if (path.endsWith("/branches/stage")) return { protected: true, commit: { sha } };
+        if (path.endsWith("/environments/staging")) {
+          return {
+            name: "staging",
+            deployment_branch_policy: {
+              protected_branches: false,
+              custom_branch_policies: true,
+            },
+          };
+        }
+        if (path.endsWith("/environments/staging/deployment-branch-policies")) {
+          return { total_count: 1, branch_policies: [{ id: 80, name: "stage" }] };
+        }
+        throw new Error(`unexpected ${path}`);
+      });
+      await expect(verifyStagingRecoveryInvocation(client, runtime())).rejects.toThrow();
+    },
+  );
 
   it("verifies a successful first-attempt diagnostics artifact without requiring current stage HEAD", async () => {
     const historicalSha = "c".repeat(40);

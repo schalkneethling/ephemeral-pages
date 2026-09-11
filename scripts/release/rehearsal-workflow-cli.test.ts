@@ -2,7 +2,12 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { parseRehearsalWorkflowArguments, runRehearsalWorkflow } from "./rehearsal-workflow-cli.ts";
+import { GitHubReleaseError } from "./github-release.ts";
+import {
+  parseRehearsalWorkflowArguments,
+  rehearsalWorkflowFailureCode,
+  runRehearsalWorkflow,
+} from "./rehearsal-workflow-cli.ts";
 const mocks = vi.hoisted(() => ({ prepare: vi.fn(), rehearse: vi.fn() }));
 vi.mock("./github-release.ts", async (original) => ({
   ...(await original<typeof import("./github-release.ts")>()),
@@ -77,4 +82,8 @@ it("blocks a missing attributable production baseline before building or consumi
   ).rejects.toThrow();
   expect(mocks.prepare).not.toHaveBeenCalled();
   expect(mocks.rehearse).not.toHaveBeenCalled();
+});
+it("reports only a bounded diagnostic code for GitHub evidence failures", () => {
+  expect(rehearsalWorkflowFailureCode(new GitHubReleaseError("source"))).toBe("github-source");
+  expect(rehearsalWorkflowFailureCode(new Error("secret-value"))).toBe("rehearsal-blocked");
 });
