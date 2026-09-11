@@ -153,7 +153,7 @@ const verifyRun = (
   if (
     run.repository.full_name !== GITHUB_RELEASE_REPOSITORY ||
     run.workflow_id !== workflow.id ||
-    run.path !== `${expectedPath}@stage` ||
+    (run.path !== expectedPath && run.path !== `${expectedPath}@stage`) ||
     run.event !== "workflow_dispatch" ||
     run.head_branch !== "stage" ||
     run.run_attempt !== 1 ||

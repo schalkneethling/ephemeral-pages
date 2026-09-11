@@ -89,8 +89,11 @@ other, but different bytes from the live module. Source attribution therefore re
 tag and trusted release artifact, so this comparison cannot populate `recovery-target.json` or
 authorize production cutover.
 
-An alternative, reviewed, one-time forward adoption operation is proposed; it is not implemented or
-authorized for execution by this document. After a protected staging recovery drill passes, it would:
+The operator accepted a one-time fail-forward adoption on 11 September, given the current product
+usage and the cost of a temporary legacy restore subsystem. No legacy restore path will be built.
+The minimal adoption operation remains to be implemented and verified; the accepted failure policy
+does not bypass staging, artifact, configuration, or source checks. After a protected staging
+recovery drill passes, it must:
 
 1. Require an absent baseline and an exact reviewed production candidate with retained staging evidence.
 2. Verify and seal its production Worker artifact, current configuration, `v1` migration compatibility,
@@ -103,7 +106,9 @@ authorized for execution by this document. After a protected staging recovery dr
 
 This establishes new provenance; it does not make the historical Worker a verified rollback target.
 The first activation is therefore a forward-only bootstrap if it fails after changing the Worker.
-An operator must approve that boundary and a concrete manual/forward-recovery plan before execution.
+The accepted boundary permits diagnosing and deploying a correction if this first activation fails.
+Keep the adoption limited to the Worker, preserve Netlify, and introduce no storage migration or
+secret rotation. Record the exact candidate and forward-recovery procedure before execution.
 Interrupted adoption must reconcile its recorded IDs and must never silently emit a successful baseline.
 A separate adoption record avoids representing this exceptional operation as an ordinary production
 release whose normal prerequisites passed.

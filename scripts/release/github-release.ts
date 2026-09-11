@@ -789,7 +789,7 @@ function verifyRunSource(
   if (
     run.repository.full_name !== GITHUB_RELEASE_REPOSITORY ||
     run.workflow_id !== workflow.id ||
-    run.path !== `${workflow.path}@${branch}` ||
+    !workflowRunPathMatches(run.path, workflow.path, branch) ||
     run.event !== "workflow_dispatch" ||
     run.head_branch !== branch ||
     (expectedSha !== undefined && run.head_sha !== expectedSha)
@@ -806,6 +806,20 @@ function verifyRunSource(
     createdAt: run.created_at,
     updatedAt: run.updated_at,
   };
+}
+
+// GitHub's workflow-run API currently returns both the documented
+// `<workflow path>@<branch>` representation and an unsuffixed workflow path.
+// Keep either representation exact; repository, workflow ID, branch, and SHA
+// are verified independently by each caller.
+function workflowRunPathMatches(
+  runPath: string,
+  expectedWorkflowPath: string,
+  expectedBranch: "main" | "stage",
+): boolean {
+  return (
+    runPath === expectedWorkflowPath || runPath === `${expectedWorkflowPath}@${expectedBranch}`
+  );
 }
 
 async function verifyInvocation<B extends "main" | "stage">(
@@ -951,7 +965,7 @@ export async function verifyCiValidation(
   if (
     run.repository.full_name !== GITHUB_RELEASE_REPOSITORY ||
     run.workflow_id !== workflow.id ||
-    run.path !== `${workflow.path}@main` ||
+    !workflowRunPathMatches(run.path, workflow.path, "main") ||
     run.event !== "push" ||
     run.head_branch !== "main" ||
     run.head_sha !== promotionCommit ||
@@ -1280,7 +1294,7 @@ export async function inspectPreviousProductionRun(
         (createdAt === lastCreatedAt && run.id >= lastRunId) ||
         run.repository.full_name !== GITHUB_RELEASE_REPOSITORY ||
         run.workflow_id !== workflow.id ||
-        run.path !== `${workflow.path}@main` ||
+        !workflowRunPathMatches(run.path, workflow.path, "main") ||
         run.event !== "workflow_dispatch" ||
         run.head_branch !== "main"
       ) {

@@ -55,6 +55,7 @@ const run = (input: {
   status?: string;
   conclusion?: string | null;
   createdAt?: string;
+  runPath?: string;
 }) => ({
   id: input.id,
   run_attempt: input.attempt ?? 1,
@@ -63,7 +64,7 @@ const run = (input: {
   conclusion: input.conclusion === undefined ? "success" : input.conclusion,
   head_branch: input.branch,
   head_sha: input.sha,
-  path: `${GITHUB_RELEASE_WORKFLOWS[input.workflow]}@${input.branch}`,
+  path: input.runPath ?? `${GITHUB_RELEASE_WORKFLOWS[input.workflow]}@${input.branch}`,
   workflow_id: input.workflowId,
   created_at: input.createdAt ?? "2026-09-11T10:00:00.000Z",
   updated_at: "2026-09-11T10:30:00.000Z",
@@ -405,6 +406,7 @@ describe("staging invocation trust", () => {
           sha: candidate,
           status: "in_progress",
           conclusion: null,
+          runPath: GITHUB_RELEASE_WORKFLOWS.rehearsal,
         });
       }
       if (path.endsWith("/actions/workflows/release-rehearsal.yml")) {
@@ -436,6 +438,38 @@ describe("staging invocation trust", () => {
       verifyStagingInvocation(stagingApi(2), stagingRuntime({ GITHUB_RUN_ATTEMPT: "2" })),
     ).rejects.toMatchObject({ kind: "runtime" });
   });
+
+  it.each([`${GITHUB_RELEASE_WORKFLOWS.production}@stage`, ".github/workflows/foreign.yml"])(
+    "rejects a foreign workflow run path or ref (%s)",
+    async (runPath) => {
+      const api = fakeApi(({ path }) => {
+        if (path.endsWith("/actions/runs/101")) {
+          return run({
+            id: 101,
+            workflow: "rehearsal",
+            workflowId: 11,
+            branch: "stage",
+            sha: candidate,
+            status: "in_progress",
+            conclusion: null,
+            runPath,
+          });
+        }
+        if (path.endsWith("/actions/workflows/release-rehearsal.yml")) {
+          return workflow("rehearsal", 11);
+        }
+        if (path.endsWith("/branches/stage")) return branch("stage", candidate);
+        if (path.endsWith("/environments/staging")) return deploymentEnvironment("staging");
+        if (path.endsWith("/environments/staging/deployment-branch-policies")) {
+          return deploymentBranchPolicies("stage");
+        }
+        throw new Error(`unexpected test request: ${path}`);
+      });
+      await expect(verifyStagingInvocation(api, stagingRuntime())).rejects.toMatchObject({
+        kind: "source",
+      });
+    },
+  );
 });
 
 describe("artifact archive download", () => {
