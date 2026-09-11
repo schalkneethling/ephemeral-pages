@@ -15,8 +15,7 @@ export const recoverySteps = [
 ] as const;
 export const recoveryStepSchema = z.enum(recoverySteps);
 export type RecoveryStep = z.infer<typeof recoveryStepSchema>;
-export const recoveryTargetEvidenceSchema = z.strictObject({
-  inspectionVersion: z.literal(2).optional(),
+const recoveryTargetEvidenceFields = {
   inspectionSha256: digestSchema,
   requested: pairSchema,
   expectedCurrent: pairSchema,
@@ -27,8 +26,19 @@ export const recoveryTargetEvidenceSchema = z.strictObject({
   workerScriptEtag: z.string().regex(/^[a-f0-9]{32,128}$/u),
   workerSecretBindingNames: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/u)).max(100),
   workerSecretValuesObservable: z.literal(false),
+};
+export const recoveryTargetEvidenceSchema = z.strictObject({
+  inspectionVersion: z.literal(2),
+  ...recoveryTargetEvidenceFields,
+});
+export const stagingRecoveryTargetEvidenceSchema = z.strictObject({
+  inspectionVersion: z.literal(2).optional(),
+  ...recoveryTargetEvidenceFields,
 });
 export type RecoveryTargetEvidenceRecord = z.infer<typeof recoveryTargetEvidenceSchema>;
+export type StagingRecoveryTargetEvidenceRecord = z.infer<
+  typeof stagingRecoveryTargetEvidenceSchema
+>;
 export const recoveryRecordSchema = z.strictObject({
   schemaVersion: z.literal(1),
   operation: z.literal("production-recovery"),

@@ -74,6 +74,7 @@ const fixture = () => {
     startingPair,
     targetPair: priorPair,
     targetEvidence: {
+      inspectionVersion: 2,
       inspectionSha256: "8".repeat(64),
       requested: priorPair,
       expectedCurrent: startingPair,
@@ -150,7 +151,27 @@ describe("completed recovery evidence", () => {
     expect(verifyCompletedRecoveryEvidence(evidence).recoveryRunIds).toEqual([99, 105]);
   });
 
+  it("rejects unversioned production target evidence at the record boundary", () => {
+    const evidence = fixture();
+    const raw = structuredClone(evidence.recovery) as unknown as {
+      targetEvidence: { inspectionVersion?: 2 };
+    };
+    delete raw.targetEvidence.inspectionVersion;
+    expect(() => recoveryRecordSchema.parse(raw)).toThrow();
+  });
+
+  it("rejects unversioned production target evidence passed directly", () => {
+    const evidence = fixture();
+    delete (evidence.recovery.targetEvidence as { inspectionVersion?: 2 }).inspectionVersion;
+    expect(() => verifyCompletedRecoveryEvidence(evidence)).toThrow(
+      "Recovery completion evidence differs.",
+    );
+  });
+
   it.each([
+    (value: ReturnType<typeof fixture>) => {
+      value.recovery.targetEvidence!.inspectionSha256 = "not-a-sha256-digest";
+    },
     (value: ReturnType<typeof fixture>) => {
       value.preflight.workflowCommit = "0".repeat(40);
     },

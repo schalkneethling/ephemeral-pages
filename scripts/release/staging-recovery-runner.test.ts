@@ -8,6 +8,7 @@ import type { PreparedRelease } from "./prepare.ts";
 import type { ReleaseConfig } from "./schema.ts";
 import {
   runStagingRecovery,
+  stagingRecoveryRecordSchema,
   type StagingRecoveryDependencies,
   type StagingRecoveryRunInput,
 } from "./staging-recovery-runner.ts";
@@ -327,6 +328,7 @@ it("migrates path-bound staging evidence before the first Worker write", async (
   const legacy = structuredClone(blocked);
   delete legacy.targetEvidence!.inspectionVersion;
   legacy.targetEvidence!.inspectionSha256 = "a".repeat(64);
+  expect(stagingRecoveryRecordSchema.safeParse(legacy).success).toBe(true);
   fixture_.calls.length = 0;
   fixture_.dependencies.verifyTransition = async () => {
     fixture_.calls.push("verify-transition");

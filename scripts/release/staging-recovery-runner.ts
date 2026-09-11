@@ -13,8 +13,8 @@ import {
 import {
   recoverySteps,
   recoveryStepSchema,
-  recoveryTargetEvidenceSchema,
-  type RecoveryTargetEvidenceRecord,
+  stagingRecoveryTargetEvidenceSchema,
+  type StagingRecoveryTargetEvidenceRecord,
   type RecoveryStep,
 } from "./recovery-record.ts";
 import type { DeploymentPair } from "./rehearsal.ts";
@@ -39,7 +39,7 @@ export const stagingRecoveryRecordSchema = z.strictObject({
   recoveryRunIds: z.array(z.number().int().positive()).min(1).max(100),
   startingPair: pairSchema,
   targetPair: pairSchema,
-  targetEvidence: recoveryTargetEvidenceSchema.optional(),
+  targetEvidence: stagingRecoveryTargetEvidenceSchema.optional(),
   observedPair: pairSchema.optional(),
   recoveredPair: pairSchema.optional(),
   outcome: stageOutcomeSchema,
@@ -77,7 +77,7 @@ export type StagingRecoveryDependencies = {
     checkpoint: StagingRecoveryCheckpoint,
   ): Promise<{ deploymentId: string; versionId: string }>;
   verifyPair(): Promise<boolean>;
-  verifyTargets(): Promise<RecoveryTargetEvidenceRecord>;
+  verifyTargets(): Promise<StagingRecoveryTargetEvidenceRecord>;
   verifyTransition(): Promise<boolean>;
 };
 
@@ -228,7 +228,7 @@ export async function runStagingRecovery(
       }
       active = "inspect";
       await inspect();
-      record.targetEvidence = recoveryTargetEvidenceSchema.parse(
+      record.targetEvidence = stagingRecoveryTargetEvidenceSchema.parse(
         await dependencies.verifyTargets(),
       );
       if (
@@ -253,7 +253,9 @@ export async function runStagingRecovery(
       await save();
     }
     active = "inspect";
-    record.targetEvidence = recoveryTargetEvidenceSchema.parse(await dependencies.verifyTargets());
+    record.targetEvidence = stagingRecoveryTargetEvidenceSchema.parse(
+      await dependencies.verifyTargets(),
+    );
     if (
       !samePair(record.targetEvidence.requested, targetPair) ||
       !samePair(record.targetEvidence.expectedCurrent, startingPair)
