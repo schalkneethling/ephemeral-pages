@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "operation": "rehearse",
+  "outcome": "blocked",
+  "source": {
+    "candidate": "d69d85af6631053b910abd4be6f68c675e4b0876",
+    "tree": "8624f498645f78bce297706284690d316e76ca71",
+    "environment": "staging",
+    "configurationFingerprint": "bf8a7210ec490ca2107f0ea8a4badfaa9616fb34c041c22ab585f932d6a90c05"
+  },
+  "preparationSha256": "b0d0e092c726fef4fac214407f7bab4277403d338e62d5d8419bd53017ccb3c2",
+  "stages": {
+    "inspect": "blocked"
+  },
+  "recovery": "none",
+  "failure": {
+    "stage": "inspect",
+    "kind": "unknown"
+  }
+}
