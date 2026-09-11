@@ -1,0 +1,11 @@
+[{{ $lastFinding := (sub (len .) 1) }}
+{{- range $index, $finding := . }}{{ with $finding }}
+  {
+    "RuleID": {{ quote .RuleID }},
+    "File": {{ quote .File }},
+    "StartLine": {{ .StartLine }},
+    "Commit": {{ quote .Commit }},
+    "Fingerprint": {{ quote .Fingerprint }}
+  }{{ if ne $index $lastFinding }},{{ end }}
+{{- end }}{{ end }}
+]

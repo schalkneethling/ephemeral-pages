@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, stage]
 
 permissions:
   contents: read
@@ -29,6 +29,9 @@ jobs:
 
       - name: Check application
         run: bunx vp check
+
+      - name: Check release tooling
+        run: bun run release:check
 
       - name: Test application
         run: bunx vp test

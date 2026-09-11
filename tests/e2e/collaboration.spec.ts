@@ -62,6 +62,59 @@ test("synchronizes the Kanban fixture between two editors and a viewer", async (
   await context.close();
 });
 
+test("recovers a browser WebSocket loss with a fresh ticket and synchronized mutation", async ({
+  browser,
+}) => {
+  const pageId = "reconnect-room";
+  const capability = `v1.${"d".repeat(43)}`;
+  const fixture = injectCollaborationBootstrap(
+    await readFile("tests/fixtures/collaborative-kanban.html", "utf8"),
+  );
+  const context = await browser.newContext();
+  const room = createMockRoom();
+  let editorTicketCount = 0;
+  const editorSockets: WebSocketRoute[] = [];
+  await routeCollaborativePage(context, pageId, capability, fixture, room, {
+    ticketFor(role) {
+      if (role !== "edit") return "viewer-ticket";
+      editorTicketCount += 1;
+      return `editor-ticket-${editorTicketCount}`;
+    },
+    onSocket(socket, role) {
+      if (role === "edit") editorSockets.push(socket);
+    },
+  });
+
+  const editor = await context.newPage();
+  const viewer = await context.newPage();
+  await editor.goto(`/p/${pageId}#edit=${capability}`);
+  await viewer.goto(`/p/${pageId}`);
+  await expect(editor.locator("#collaboration-status")).toHaveText(
+    "Collaboration connected — editing",
+  );
+  await expect(viewer.locator("#collaboration-status")).toHaveText(
+    "Collaboration connected — view only",
+  );
+  await expect.poll(() => editorSockets).toHaveLength(1);
+
+  await editorSockets[0]!.close({ code: 1012, reason: "Service restart" });
+  await expect(editor.locator("#collaboration-status")).toHaveText(
+    "Collaboration disconnected — reconnecting…",
+  );
+  await expect.poll(() => editorTicketCount).toBe(2);
+  await expect.poll(() => editorSockets).toHaveLength(2);
+  await expect(editor.locator("#collaboration-status")).toHaveText(
+    "Collaboration connected — editing",
+  );
+
+  const title = "Recovered after socket loss";
+  const editorFrame = editor.frameLocator("#page-iframe");
+  await editorFrame.locator("#card-title").fill(title);
+  await editorFrame.getByRole("button", { name: "Add card" }).click();
+  await expect(viewer.frameLocator("#page-iframe").getByText(title)).toBeVisible();
+  await context.close();
+});
+
 type MockRoom = {
   connect(socket: WebSocketRoute, role: CollaborationRole): void;
   connectionCount(): number;
@@ -127,6 +180,10 @@ async function routeCollaborativePage(
   capability: string,
   fixture: string,
   room: MockRoom,
+  options: {
+    ticketFor?: (role: CollaborationRole) => string;
+    onSocket?: (socket: WebSocketRoute, role: CollaborationRole) => void;
+  } = {},
 ) {
   await context.route(`**/api/pages/${pageId}`, (route) =>
     route.fulfill({
@@ -150,14 +207,17 @@ async function routeCollaborativePage(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        ticket: role === "edit" ? "editor-ticket" : "viewer-ticket",
+        ticket: options.ticketFor?.(role) ?? (role === "edit" ? "editor-ticket" : "viewer-ticket"),
         websocketUrl: `ws://127.0.0.1:5173/__collaboration/${pageId}`,
         role,
       }),
     });
   });
   await context.routeWebSocket(`ws://127.0.0.1:5173/__collaboration/${pageId}`, (socket) => {
-    const role = socket.protocols().includes("editor-ticket") ? "edit" : "view";
+    const role = socket.protocols().some((protocol) => protocol.startsWith("editor-ticket"))
+      ? "edit"
+      : "view";
+    options.onSocket?.(socket, role);
     room.connect(socket, role);
   });
 }

@@ -25,11 +25,21 @@
     "governance:security": "node scripts/configure-github-security.mjs",
     "knip": "knip",
     "preview": "vp preview",
+    "release:check": "tsc -p scripts/release/tsconfig.json --noEmit",
+    "release:plan": "bun scripts/release/cli.ts plan",
+    "release:status": "bun scripts/release/cli.ts status",
     "smoke:production": "node scripts/production-smoke.mjs",
     "test": "vp test",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
-    "prepare": "vp config"
+    "prepare": "vp config",
+    "release:smoke": "bun scripts/release/smoke-cli.ts",
+    "release:secrets:check": "varlock run --inject vars --skip-cache --path scripts/release/local/staging/.env.schema -- bun scripts/release/secret-preflight.ts",
+    "release:secrets:provision": "varlock run --inject vars --skip-cache --path scripts/release/local/staging/.env.schema -- bun scripts/release/local-secrets-cli.ts",
+    "release:worker:bootstrap": "varlock run --inject vars --skip-cache --path scripts/release/local/staging/.env.schema -- bun scripts/release/worker-bootstrap-cli.ts",
+    "security:secrets": "node scripts/ci/gitleaks.mjs",
+    "release:prepare": "bun scripts/release/cli.ts prepare",
+    "release:rehearse": "bun scripts/release/cli.ts rehearse"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2",
@@ -44,17 +54,21 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@netlify/zip-it-and-ship-it": "15.5.1",
     "@playwright/test": "^1.57.0",
-    "@varlock/1password-plugin": "^2.0.0",
+    "@types/node": "25.7.0",
+    "@varlock/1password-plugin": "2.0.4",
     "knip": "^6.27.0",
+    "netlify-cli": "27.5.0",
     "stylelint": "^17.11.1",
     "stylelint-order": "^8.1.1",
     "typescript": "~7.0.2",
-    "varlock": "^1.2.0",
+    "varlock": "1.18.0",
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vite-plus": "latest",
     "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
-    "wrangler": "^4.125.0"
+    "wrangler": "4.125.0",
+    "yauzl": "3.4.0"
   },
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",

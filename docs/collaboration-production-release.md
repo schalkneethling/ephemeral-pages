@@ -39,20 +39,44 @@ Netlify's secret designation.
 ## Release sequence and status
 
 1. Production Worker configuration and initial health check: complete.
-2. Netlify production secrets: saved, user-confirmed on 2026-09-09. The production gate remains unset.
+2. Netlify production secrets: saved, user-confirmed on 2026-09-09. The production gate was unset at this checkpoint.
 3. Matching Worker secrets: saved, user-confirmed and secret names verified on 2026-09-09.
    The production version containing both secrets is `4b747f21-d3a0-4566-8026-8dae1ea13109`.
    Enter or rotate them interactively with
    `bunx wrangler secret put TICKET_HMAC_SECRET --config collaboration-worker/wrangler.jsonc --env production`
    and the same command with `ADMIN_TOKEN` for the service token.
-4. Remaining Netlify production values: saved, user-confirmed on 2026-09-09. Gate remains unset.
+4. Remaining Netlify production values: saved, user-confirmed on 2026-09-09. The gate was still unset at this checkpoint.
 5. Preview rollback drill: complete. Restored version `872b6a39-e8b9-4560-af53-f28906ab6f68`,
    verified health, then restored `9cd69e53-93b1-4604-9989-1c870e0bbe3f` and verified health again.
    This exercised version rollback without reverting Durable Object storage or migrations.
-6. Merge PR #33 and verify the production deployment with the gate disabled: pending.
-7. Enable production collaboration, redeploy, and verify upload, editing, viewing, reconnect,
-   and screenshot capture: pending.
-8. Run the production API smoke workflow and record results: pending.
+6. PR #33 merged as `39b7a6a69b6b61400325326473665490538f84c1`.
+   Production returned the app-shell CSP with the production Worker WSS origin. Before enablement,
+   the ticket endpoint returned HTTP 503 with `Collaboration is disabled`, as expected.
+7. Production enablement (`COLLABORATION_ENABLED=true`) and redeployment: user-confirmed on 2026-09-09. The live browser smoke
+   passed at 20:44 UTC: collaboration upload returned 201; two independent editor sessions
+   synchronized card creation and movement; the viewer synchronized changes with editing controls
+   disabled; an editor reconnected after reload with state preserved. A separate network-loss
+   recovery scenario was not exercised in this production smoke.
+   Browser Run captured revision 3, and the downloaded PNG was visually checked against the board.
+   Test page `f959b50b-41dc-4b72-8fb8-9cc383a6aa06` expires at 2026-09-09T21:44:02.121Z.
+8. [Production API smoke workflow](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34402828230):
+   passed on 2026-09-09. Verified plain and compressed uploads, idempotent replay across encodings,
+   conflicting replay rejection, and successful-request and exhausted-quota headers using GitHub OIDC.
+
+The verified production Worker rollback target is `4b747f21-d3a0-4566-8026-8dae1ea13109`,
+which includes both production secrets. Do not roll back to the initial version without secrets.
+
+Netlify deployment identity was verified through its API on 2026-09-10: published deploy
+`6aa1c499a64d39a10fb86df2`, source commit `39b7a6a69b6b61400325326473665490538f84c1`,
+published at 2026-09-09T20:42:46.198Z. Together with the Worker version above, this identifies the
+deployment pair used by the 20:44 UTC production smoke. This historical log predates the release
+runner and does not contain its proposed artifact hashes or configuration fingerprints.
+
+There was no previous verified production collaboration pair: this was its initial release.
+The preview rehearsal did not record an exact candidate-to-promotion source-tree comparison.
+Those omissions cannot be retroactively treated as passing the new release contract. The pair
+above is a verified live baseline for subsequent releases, not a complete runner-generated record
+or evidence that a pre-collaboration rollback was rehearsed.
 
 To disable new collaboration uploads and tickets, set the production `COLLABORATION_ENABLED`
 value to `false` and redeploy Netlify. Existing sockets are not revoked by this flag. Worker rollback
