@@ -8,8 +8,8 @@ are provisioned in branch-restricted GitHub environments. Read-only provider ins
 the staging workflows are registered on the default branch. Protected calibration A passed after
 correcting workflow metadata, isolated inspection credentials, and the old staging app's runtime
 OIDC configuration. Both transition and final-pair browser smokes passed; see
-[the checkpoint](release-evidence/2026-09-11-staging/README.md). Calibration B and the live recovery
-drill, publishing cutover, the attributable baseline, and the first production release remain gates.
+[the checkpoint](release-evidence/2026-09-11-staging/README.md). Calibration B also passed with A as its prior pair. The first recovery attempt blocked at GitHub
+workflow lookup before provider mutation. The live recovery drill, publishing cutover, the attributable baseline, and the first production release remain gates.
 Production publishing settings have not been changed by this increment.
 
 This design applies the principles in
