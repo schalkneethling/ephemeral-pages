@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "operation": "collaboration-smoke",
+  "outcome": "blocked",
+  "environment": "staging",
+  "configuration": {
+    "source": "default",
+    "fingerprint": "4d70b61cc7e1297eb5e7fb869c8d0f3a7fcf94d3063840428cc2e0f063dd2ec2"
+  },
+  "checks": [
+    {
+      "id": "upload.request",
+      "outcome": "blocked",
+      "summary": "The collaborative upload returned HTTP 500."
+    }
+  ],
+  "usage": {
+    "uploads": 1,
+    "captureRequested": true,
+    "captureRequests": 0
+  }
+}

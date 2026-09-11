@@ -5,12 +5,12 @@ and the production provider/runner implementation are present. The first full [s
 passed, including both transition and final-pair browser smokes. Manual production orchestration and resumption are implemented;
 live verification remains pending. Recovery and the toolbar improvements are merged into protected `stage`, and deployment credentials
 are provisioned in branch-restricted GitHub environments. Read-only provider inspection passed, and
-the staging workflows are registered on the default branch. The first protected calibration attempt
-stopped at GitHub source validation before deployment. The corrected attempt prepared both artifacts
-then blocked at provider inspection because its subprocess environment omitted credentials; see
-[the checkpoint](release-evidence/2026-09-11-staging/README.md). Live deployment authorization, recovery drills,
-publishing cutover, the attributable baseline, and the first production release remain gates. Production publishing
-settings have not been changed by this increment.
+the staging workflows are registered on the default branch. Protected calibration A passed after
+correcting workflow metadata, isolated inspection credentials, and the old staging app's runtime
+OIDC configuration. Both transition and final-pair browser smokes passed; see
+[the checkpoint](release-evidence/2026-09-11-staging/README.md). Calibration B and the live recovery
+drill, publishing cutover, the attributable baseline, and the first production release remain gates.
+Production publishing settings have not been changed by this increment.
 
 This design applies the principles in
 [The release process is part of the product](https://schalkneethling.com/posts/the-release-process-is-part-of-the-product/)
