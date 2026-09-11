@@ -465,7 +465,7 @@
         storage make coordination necessary.
       </p>
       <div class="snapshot">
-        Documentation checkpoint · 11 September 2026 · Rehearsal evidence: 10 September 2026
+        Documentation checkpoint · 11 September 2026 · Protected rehearsal A: 11 September 2026
       </div>
       <div class="notice">
         <strong>Current control gap.</strong> Netlify still publishes production automatically from
@@ -790,7 +790,7 @@
           "6 · Explicit recovery",
           "built",
           "Restore a verified pair; reconcile interruptions",
-          "Manual recovery shares production serialization. It verifies retained target evidence, restores Netlify, tests the transition, restores the Worker and tests the final pair. Resume reconciles uncertain writes before retry. A separate protected staging workflow uses real A/B rehearsal evidence, and calibration cannot issue production approval. The implementation and toolbar improvements are merged into stage. The corrected protected calibration prepared both artifacts, then blocked before deployment because inspection subprocesses lacked credentials. Live recovery drills and an attributable initial production baseline remain outstanding; the operator accepted one-time fail-forward adoption without a legacy restore subsystem.",
+          "Manual recovery shares production serialization. It verifies retained target evidence, restores Netlify, tests the transition, restores the Worker and tests the final pair. Resume reconciles uncertain writes before retry. A separate protected staging workflow uses real A/B rehearsal evidence, and calibration cannot issue production approval. The implementation and toolbar improvements are merged into stage. Protected calibration A passed after correcting metadata, credential forwarding and the old app runtime environment. Both transition and final-pair browser smokes passed. A second distinct calibration and the live B-to-A recovery drill remain. Live recovery drills and an attributable initial production baseline remain outstanding; the operator accepted one-time fail-forward adoption without a legacy restore subsystem.",
           [
             ["scripts/release/recovery-runner.ts"],
             ["scripts/release/recovery-cli.ts"],

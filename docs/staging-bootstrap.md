@@ -206,6 +206,13 @@ Netlify CLI `env:set --secret` puts a value in a command argument, and `env:impo
 values secret. Use the wrapper for this provisioning step. Never put resolved values in Git,
 release evidence, logs, or a hand-authored input file.
 
+Netlify Functions retain the environment values from deployment time. Updating site configuration
+alone does not refresh an existing deployment; create a new deployment before relying on the changed
+values. See [Netlify's function environment documentation](https://docs.netlify.com/build/functions/environment-variables/#overrides-and-limitations).
+When adding authentication required by the transition smoke, first verify the old app's runtime can
+use that configuration. A same-artifact staging refresh may establish that baseline; it does not count
+as a successful candidate rehearsal. Preserve its provider IDs and artifact hashes separately.
+
 After both wrappers complete, inspect the providers, deploy the staging candidate, and run the
 complete collaboration smoke. Only then replace the null staging targets with the verified project
 ID, Worker target, expected non-secret configuration, and required secret names.

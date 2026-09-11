@@ -1,6 +1,7 @@
 # Release recovery and cutover
 
-Status: recovery implementation is under validation and review. Production remains disabled in
+Status: recovery implementation is reviewed and merged into protected `stage`. Protected calibration A
+passed; a distinct calibration B and the live recovery drill remain. Production remains disabled in
 `production-policy.json`. No production publishing setting has changed. The historical staging
 rehearsal is not evidence that this recovery implementation has passed a live drill.
 
@@ -68,8 +69,8 @@ writes before retrying. After the drill, use the normal forward rehearsal path t
 intended final staging candidate and retain its newly observed IDs.
 
 These operations are implemented and locally tested. The registration-only bootstrap was merged
-through reviewed CI-only PR #50; the full implementations must reach protected `stage` before
-dispatch. A successful live drill is still required.
+through reviewed CI-only PR #50; the full implementations are now merged into protected `stage`.
+[Protected calibration A](release-evidence/2026-09-11-staging/README.md) passed. A distinct B and a successful live drill are still required.
 See [the staging recovery workflow](../.github/workflows/release-staging-recovery.yml),
 [CLI](../scripts/release/staging-recovery-cli.ts),
 [source contract](../scripts/release/staging-recovery-source.ts), and
