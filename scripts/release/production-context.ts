@@ -1,3 +1,4 @@
+import { completedRecoveryVerifier } from "./recovery-completion.ts";
 import { resolve } from "node:path";
 import { z } from "zod/v4";
 import { artifactHash } from "./artifact-contract.ts";
@@ -73,7 +74,11 @@ export async function verifyProductionContext(
       candidate,
       maximumAgeMs: policy.maximumEvidenceAgeHours * 3_600_000,
     }),
-    inspectPreviousProductionRun(api, { current, resumeRunId: args.resumeRunId }),
+    inspectPreviousProductionRun(api, {
+      current,
+      resumeRunId: args.resumeRunId,
+      verifyCompletedRecovery: completedRecoveryVerifier(repositoryRoot, token),
+    }),
   ]);
   return { api, current, promotion, ci, rehearsal, prior, configuration };
 }

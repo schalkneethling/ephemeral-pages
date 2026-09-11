@@ -12,6 +12,7 @@ import {
   extractVerifiedGitHubArtifact,
   GITHUB_RELEASE_ACTIVATION_STEP_NAME,
   GITHUB_RELEASE_PRODUCTION_JOB_NAME,
+  GITHUB_RELEASE_RECOVERY_STEP_NAME,
   GITHUB_RELEASE_REPOSITORY,
   GITHUB_RELEASE_WORKFLOWS,
   GitHubReleaseError,
@@ -19,6 +20,7 @@ import {
   verifyCiValidation,
   verifyProductionArtifact,
   verifyProductionInvocation,
+  verifyRecoveryTargetArtifact,
   verifyPromotionEvidence,
   verifyRehearsalEvidence,
   verifyResumeSource,
@@ -74,6 +76,19 @@ const branch = (name: "main" | "stage", sha: string, protectedBranch = true) => 
   commit: { sha },
 });
 
+const deploymentEnvironment = (name: "production" | "staging") => ({
+  name,
+  deployment_branch_policy: {
+    protected_branches: false,
+    custom_branch_policies: true,
+  },
+});
+
+const deploymentBranchPolicies = (name: "main" | "stage") => ({
+  total_count: 1,
+  branch_policies: [{ id: name === "main" ? 801 : 802, name }],
+});
+
 const artifact = (input: {
   id?: number;
   name: "release-rehearsal" | "release-production";
@@ -106,6 +121,8 @@ const productionJob = (
     conclusion?: string | null;
     headSha?: string;
     name?: string;
+    recoveryConclusion?: string | null;
+    recoveryName?: string;
   } = {},
 ) => ({
   id: 701,
@@ -119,6 +136,12 @@ const productionJob = (
       status: "completed",
       conclusion: options.activationConclusion ?? "skipped",
       number: 8,
+    },
+    {
+      name: options.recoveryName ?? GITHUB_RELEASE_RECOVERY_STEP_NAME,
+      status: "completed",
+      conclusion: options.recoveryConclusion ?? "skipped",
+      number: 9,
     },
   ],
 });
@@ -210,6 +233,7 @@ const productionInvocation: VerifiedProductionInvocation = {
   headSha: promotion,
   createdAt: "2026-09-11T11:00:00.000Z",
   updatedAt: "2026-09-11T11:01:00.000Z",
+  environment: { name: "production", branch: "main", policyId: 801 },
 };
 
 describe("GitHub release API", () => {
@@ -271,7 +295,14 @@ describe("GitHub release API", () => {
 
 describe("production invocation trust", () => {
   const invocationApi = (
-    options: { protected?: boolean; headSha?: string; attempt?: number } = {},
+    options: {
+      protected?: boolean;
+      headSha?: string;
+      attempt?: number;
+      environmentName?: string;
+      environmentPolicy?: { protected_branches: boolean; custom_branch_policies: boolean };
+      environmentBranches?: readonly string[];
+    } = {},
   ) =>
     fakeApi(({ path }) => {
       if (path.endsWith("/actions/runs/101")) {
@@ -292,6 +323,22 @@ describe("production invocation trust", () => {
       if (path.endsWith("/branches/main")) {
         return branch("main", promotion, options.protected ?? true);
       }
+      if (path.endsWith("/environments/production")) {
+        return {
+          ...deploymentEnvironment("production"),
+          name: options.environmentName ?? "production",
+          deployment_branch_policy:
+            options.environmentPolicy ??
+            deploymentEnvironment("production").deployment_branch_policy,
+        };
+      }
+      if (path.endsWith("/environments/production/deployment-branch-policies")) {
+        const names = options.environmentBranches ?? ["main"];
+        return {
+          total_count: names.length,
+          branch_policies: names.map((name, index) => ({ id: 801 + index, name })),
+        };
+      }
       throw new Error(`unexpected test request: ${path}`);
     });
 
@@ -305,6 +352,7 @@ describe("production invocation trust", () => {
       headSha: promotion,
       createdAt: "2026-09-11T10:00:00.000Z",
       updatedAt: "2026-09-11T10:30:00.000Z",
+      environment: { name: "production", branch: "main", policyId: 801 },
     });
   });
 
@@ -316,6 +364,22 @@ describe("production invocation trust", () => {
   ] as const)("fails closed for forged or stale invocation evidence", async (env, api, kind) => {
     await expect(verifyProductionInvocation(api, env)).rejects.toMatchObject({ kind });
   });
+
+  it.each([
+    invocationApi({ environmentName: "staging" }),
+    invocationApi({ environmentBranches: ["main", "release/*"] }),
+    invocationApi({ environmentBranches: ["stage"] }),
+    invocationApi({
+      environmentPolicy: { protected_branches: true, custom_branch_policies: false },
+    }),
+  ])(
+    "requires the production environment's sole custom deployment branch to be main",
+    async (api) => {
+      await expect(verifyProductionInvocation(api, runtime())).rejects.toMatchObject({
+        kind: "source",
+      });
+    },
+  );
 });
 
 describe("staging invocation trust", () => {
@@ -347,6 +411,12 @@ describe("staging invocation trust", () => {
         return workflow("rehearsal", 11);
       }
       if (path.endsWith("/branches/stage")) return branch("stage", candidate);
+      if (path.endsWith("/environments/staging")) {
+        return deploymentEnvironment("staging");
+      }
+      if (path.endsWith("/environments/staging/deployment-branch-policies")) {
+        return deploymentBranchPolicies("stage");
+      }
       throw new Error(`unexpected test request: ${path}`);
     });
 
@@ -795,6 +865,7 @@ describe("production resumption", () => {
     job = productionJob(
       conclusion === "success" ? { conclusion: "success", activationConclusion: "success" } : {},
     ),
+    artifactOptions: { expired?: boolean } = {},
   ) =>
     fakeApi(({ path }) => {
       if (path.endsWith("/actions/workflows/release-production.yml")) {
@@ -820,6 +891,21 @@ describe("production resumption", () => {
       }
       if (path.endsWith("/actions/runs/99/attempts/1/jobs")) {
         return { total_count: 1, jobs: [job] };
+      }
+      if (path.endsWith("/actions/runs/99")) return previousRun(conclusion);
+      if (path.endsWith("/actions/runs/99/artifacts")) {
+        return {
+          total_count: 1,
+          artifacts: [
+            artifact({
+              name: "release-production",
+              runId: 99,
+              branch: "main",
+              sha: promotion,
+              expired: artifactOptions.expired,
+            }),
+          ],
+        };
       }
       throw new Error(`unexpected test request: ${path}`);
     });
@@ -847,6 +933,42 @@ describe("production resumption", () => {
     ).rejects.toMatchObject({ kind: "resume" });
   });
 
+  it("verifies a successful release artifact as a bounded recovery target", async () => {
+    await expect(
+      verifyRecoveryTargetArtifact(historyApi("success"), {
+        runId: 99,
+        promotionCommit: promotion,
+        now,
+      }),
+    ).resolves.toMatchObject({
+      run: { runId: 99, headSha: promotion },
+      artifact: { artifactId: 91, digest },
+      jobId: 701,
+      activationStepNumber: 8,
+    });
+
+    await expect(
+      verifyRecoveryTargetArtifact(historyApi("success", undefined, { expired: true }), {
+        runId: 99,
+        promotionCommit: promotion,
+        now,
+      }),
+    ).rejects.toMatchObject({ kind: "resume" });
+    await expect(
+      verifyRecoveryTargetArtifact(
+        historyApi(
+          "success",
+          productionJob({
+            conclusion: "success",
+            activationConclusion: "skipped",
+            recoveryConclusion: "success",
+          }),
+        ),
+        { runId: 99, promotionCommit: promotion, now },
+      ),
+    ).rejects.toMatchObject({ kind: "resume" });
+  });
+
   it.each([
     { ...productionJob({ conclusion: "skipped" }), steps: [] },
     productionJob({ conclusion: "success", activationConclusion: "skipped" }),
@@ -854,6 +976,149 @@ describe("production resumption", () => {
     await expect(
       inspectPreviousProductionRun(historyApi("success", job), {
         current: productionInvocation,
+      }),
+    ).rejects.toMatchObject({ kind: "resume" });
+  });
+
+  it("clears a completed recovery only after its exact retained record is verified", async () => {
+    const api = historyApi(
+      "success",
+      productionJob({
+        conclusion: "success",
+        activationConclusion: "skipped",
+        recoveryConclusion: "success",
+      }),
+    );
+    await expect(
+      inspectPreviousProductionRun(api, { current: productionInvocation, now }),
+    ).rejects.toMatchObject({ kind: "resume" });
+
+    const observed: Array<{ runId: number; artifactId: number }> = [];
+    await expect(
+      inspectPreviousProductionRun(api, {
+        current: productionInvocation,
+        now,
+        verifyCompletedRecovery: async ({ run, artifact: retained }) => {
+          observed.push({ runId: run.runId, artifactId: retained.artifactId });
+          return {
+            outcome: "passed",
+            sourceProductionRunId: 95,
+            recoveryRunIds: [99],
+          };
+        },
+      }),
+    ).resolves.toMatchObject({
+      previous: { runId: 99 },
+      previousOperation: "recovery",
+      requiredOperation: "none",
+      completedRecovery: {
+        outcome: "passed",
+        sourceProductionRunId: 95,
+        recoveryRunIds: [99],
+      },
+    });
+    expect(observed).toEqual([{ runId: 99, artifactId: 91 }]);
+  });
+
+  it("clears a verified recovery when only the outer job completion failed", async () => {
+    const api = historyApi(
+      "failure",
+      productionJob({
+        conclusion: "failure",
+        activationConclusion: "skipped",
+        recoveryConclusion: "success",
+      }),
+    );
+    await expect(
+      inspectPreviousProductionRun(api, { current: productionInvocation, now }),
+    ).rejects.toMatchObject({ kind: "resume" });
+    await expect(
+      inspectPreviousProductionRun(api, {
+        current: productionInvocation,
+        now,
+        verifyCompletedRecovery: async () => ({
+          outcome: "passed",
+          sourceProductionRunId: 95,
+          recoveryRunIds: [99],
+        }),
+      }),
+    ).resolves.toMatchObject({
+      previous: { runId: 99 },
+      previousOperation: "recovery",
+      requiredOperation: "none",
+    });
+
+    await expect(
+      inspectPreviousProductionRun(
+        historyApi(
+          "failure",
+          productionJob({
+            conclusion: "failure",
+            activationConclusion: "skipped",
+            recoveryConclusion: "success",
+          }),
+          { expired: true },
+        ),
+        {
+          current: productionInvocation,
+          now,
+          verifyCompletedRecovery: async () => ({
+            outcome: "passed",
+            sourceProductionRunId: 95,
+            recoveryRunIds: [99],
+          }),
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "resume" });
+  });
+
+  it("uses verified completion evidence when recovery succeeded before the outer job failed", async () => {
+    const api = historyApi(
+      "failure",
+      productionJob({
+        conclusion: "failure",
+        activationConclusion: "skipped",
+        recoveryConclusion: "success",
+      }),
+    );
+    await expect(
+      inspectPreviousProductionRun(api, { current: productionInvocation, now }),
+    ).rejects.toMatchObject({ kind: "resume" });
+    await expect(
+      inspectPreviousProductionRun(api, {
+        current: productionInvocation,
+        now,
+        verifyCompletedRecovery: async () => ({
+          outcome: "passed",
+          sourceProductionRunId: 95,
+          recoveryRunIds: [99],
+        }),
+      }),
+    ).resolves.toMatchObject({
+      previousOperation: "recovery",
+      requiredOperation: "none",
+      completedRecovery: { sourceProductionRunId: 95, recoveryRunIds: [99] },
+    });
+  });
+
+  it.each([
+    { outcome: "passed" as const, sourceProductionRunId: 95, recoveryRunIds: [98] },
+    { outcome: "passed" as const, sourceProductionRunId: 95, recoveryRunIds: [99, 99] },
+    { outcome: "passed" as const, sourceProductionRunId: 99, recoveryRunIds: [99] },
+  ])("rejects malformed completed recovery lineage", async (completedRecovery) => {
+    const api = historyApi(
+      "success",
+      productionJob({
+        conclusion: "success",
+        activationConclusion: "skipped",
+        recoveryConclusion: "success",
+      }),
+    );
+    await expect(
+      inspectPreviousProductionRun(api, {
+        current: productionInvocation,
+        now,
+        verifyCompletedRecovery: async () => completedRecovery,
       }),
     ).rejects.toMatchObject({ kind: "resume" });
   });

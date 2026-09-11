@@ -16,6 +16,7 @@ export const GITHUB_RELEASE_WORKFLOWS = {
 } as const;
 export const GITHUB_RELEASE_PRODUCTION_JOB_NAME = "Production release";
 export const GITHUB_RELEASE_ACTIVATION_STEP_NAME = "Activate approved release";
+export const GITHUB_RELEASE_RECOVERY_STEP_NAME = "Restore verified prior pair";
 
 const GITHUB_API_ORIGIN = "https://api.github.com";
 const GITHUB_API_VERSION = "2026-03-10";
@@ -36,6 +37,11 @@ const timestampSchema = z
   .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u)
   .refine((value) => Number.isFinite(Date.parse(value)));
 const workflowPathSchema = z.string().regex(/^\.github\/workflows\/[A-Za-z0-9_.-]+\.ya?ml$/u);
+const completedRecoverySchema = z.object({
+  outcome: z.literal("passed"),
+  sourceProductionRunId: positiveIntegerSchema,
+  recoveryRunIds: z.array(positiveIntegerSchema).min(1).max(MAX_LIST_ITEMS),
+});
 
 const repositorySchema = z.object({ full_name: z.string() });
 const workflowRunSchema = z.object({
@@ -61,6 +67,24 @@ const branchSchema = z.object({
   name: z.string(),
   protected: z.boolean(),
   commit: z.object({ sha: fullCommitSchema }),
+});
+const environmentSchema = z.object({
+  name: z.string(),
+  deployment_branch_policy: z.object({
+    protected_branches: z.boolean(),
+    custom_branch_policies: z.boolean(),
+  }),
+});
+const deploymentBranchPoliciesSchema = z.object({
+  total_count: z.number().int().nonnegative().safe(),
+  branch_policies: z
+    .array(
+      z.object({
+        id: positiveIntegerSchema,
+        name: z.string(),
+      }),
+    )
+    .max(MAX_LIST_ITEMS),
 });
 const pullRequestSchema = z.object({
   number: positiveIntegerSchema,
@@ -191,12 +215,30 @@ export type VerifiedWorkflowRun = {
   updatedAt: string;
 };
 
-export type VerifiedProductionInvocation = VerifiedWorkflowRun & {
+export type VerifiedDeploymentEnvironment = {
+  name: "production" | "staging";
+  branch: "main" | "stage";
+  policyId: number;
+};
+
+export type VerifiedProductionRun = VerifiedWorkflowRun & {
   branch: "main";
+};
+
+export type VerifiedProductionInvocation = VerifiedProductionRun & {
+  environment: VerifiedDeploymentEnvironment & { name: "production"; branch: "main" };
 };
 
 export type VerifiedStagingInvocation = VerifiedWorkflowRun & {
   branch: "stage";
+  environment: VerifiedDeploymentEnvironment & { name: "staging"; branch: "stage" };
+};
+
+type VerifiedInvocationForBranch<B extends "main" | "stage"> = VerifiedWorkflowRun & {
+  branch: B;
+  environment: B extends "main"
+    ? VerifiedDeploymentEnvironment & { name: "production"; branch: "main" }
+    : VerifiedDeploymentEnvironment & { name: "staging"; branch: "stage" };
 };
 
 export type VerifiedPromotion = {
@@ -230,20 +272,42 @@ export type VerifiedProductionArtifact = Omit<VerifiedRehearsalArtifact, "name">
   name: "release-production";
 };
 
+export type VerifiedRecoveryTargetArtifact = {
+  run: VerifiedProductionRun;
+  artifact: VerifiedProductionArtifact;
+  jobId: number;
+  activationStepNumber: number;
+};
+
 export type VerifiedRehearsalEvidence = {
   run: VerifiedWorkflowRun & { branch: "stage" };
   artifact: VerifiedRehearsalArtifact;
 };
 
 export type PreviousProductionRun = {
-  previous: VerifiedProductionInvocation | null;
+  previous: VerifiedProductionRun | null;
+  previousOperation: "release" | "recovery" | null;
   requiresResume: boolean;
+  requiredOperation: "none" | "resume-production" | "recover-production" | "resume-recovery";
+  artifact?: VerifiedProductionArtifact;
+  completedRecovery?: VerifiedCompletedRecovery;
   skippedActivations: ReadonlyArray<{
     runId: number;
     jobId: number;
     stepNumber: number;
   }>;
 };
+
+export type VerifiedCompletedRecovery = {
+  outcome: "passed";
+  sourceProductionRunId: number;
+  recoveryRunIds: readonly number[];
+};
+
+export type VerifyCompletedRecovery = (input: {
+  run: VerifiedProductionRun;
+  artifact: VerifiedProductionArtifact;
+}) => Promise<VerifiedCompletedRecovery>;
 
 export type VerifiedResumeSource = {
   currentRunId: number;
@@ -679,6 +743,43 @@ async function requireProtectedBranch(api: GitHubReleaseApi, branch: "main" | "s
   return result;
 }
 
+export async function verifyDeploymentEnvironment(
+  api: GitHubReleaseApi,
+  input: { name: "production" | "staging"; branch: "main" | "stage" },
+): Promise<VerifiedDeploymentEnvironment> {
+  if (
+    (input.name === "production" && input.branch !== "main") ||
+    (input.name === "staging" && input.branch !== "stage")
+  ) {
+    throw new GitHubReleaseError("configuration");
+  }
+  const environmentPath = repositoryPath(`environments/${encodeURIComponent(input.name)}`);
+  const [environment, policies] = await Promise.all([
+    api.get({ path: environmentPath }).then((value) => parseResponse(environmentSchema, value)),
+    api
+      .get({
+        path: `${environmentPath}/deployment-branch-policies`,
+        query: { page: "1", per_page: String(MAX_LIST_ITEMS) },
+      })
+      .then((value) => parseResponse(deploymentBranchPoliciesSchema, value)),
+  ]);
+  if (
+    environment.name !== input.name ||
+    environment.deployment_branch_policy.protected_branches ||
+    !environment.deployment_branch_policy.custom_branch_policies ||
+    policies.total_count !== policies.branch_policies.length ||
+    policies.branch_policies.length !== 1 ||
+    policies.branch_policies[0].name !== input.branch
+  ) {
+    throw new GitHubReleaseError("source");
+  }
+  return {
+    name: input.name,
+    branch: input.branch,
+    policyId: policies.branch_policies[0].id,
+  };
+}
+
 function verifyRunSource(
   run: z.infer<typeof workflowRunSchema>,
   workflow: z.infer<typeof workflowSchema>,
@@ -712,7 +813,7 @@ async function verifyInvocation<B extends "main" | "stage">(
   runtime: GitHubRuntimeEnvironment,
   branchName: B,
   expectedWorkflowPath: string,
-): Promise<VerifiedWorkflowRun & { branch: B }> {
+): Promise<VerifiedInvocationForBranch<B>> {
   const runId = parsePositiveInteger(runtime.GITHUB_RUN_ID);
   const runAttempt = parsePositiveInteger(runtime.GITHUB_RUN_ATTEMPT);
   if (
@@ -730,10 +831,14 @@ async function verifyInvocation<B extends "main" | "stage">(
   ) {
     throw new GitHubReleaseError("runtime");
   }
-  const [run, workflow, branch] = await Promise.all([
+  const [run, workflow, branch, environment] = await Promise.all([
     readWorkflowRun(api, runId),
     readActiveWorkflow(api, expectedWorkflowPath),
     requireProtectedBranch(api, branchName),
+    verifyDeploymentEnvironment(api, {
+      name: branchName === "main" ? "production" : "staging",
+      branch: branchName,
+    }),
   ]);
   const verified = verifyRunSource(run, workflow, branchName, runtime.GITHUB_SHA);
   if (
@@ -744,7 +849,7 @@ async function verifyInvocation<B extends "main" | "stage">(
   ) {
     throw new GitHubReleaseError("runtime");
   }
-  return { ...verified, branch: branchName };
+  return { ...verified, branch: branchName, environment } as VerifiedInvocationForBranch<B>;
 }
 
 export async function verifyProductionInvocation(
@@ -1028,16 +1133,106 @@ export async function verifyProductionArtifact(
   };
 }
 
+export async function verifyRecoveryTargetArtifact(
+  api: GitHubReleaseApi,
+  input: {
+    runId: number;
+    promotionCommit: string;
+    now?: Date;
+  },
+): Promise<VerifiedRecoveryTargetArtifact> {
+  if (
+    !positiveIntegerSchema.safeParse(input.runId).success ||
+    !fullCommitSchema.safeParse(input.promotionCommit).success ||
+    (input.now !== undefined && !Number.isFinite(input.now.getTime()))
+  ) {
+    throw new GitHubReleaseError("configuration");
+  }
+  const [run, workflow] = await Promise.all([
+    readWorkflowRun(api, input.runId),
+    readActiveWorkflow(api, GITHUB_RELEASE_WORKFLOWS.production),
+  ]);
+  const verifiedRun = verifyRunSource(
+    run,
+    workflow,
+    "main",
+    input.promotionCommit,
+  ) as VerifiedProductionRun;
+  if (run.run_attempt !== 1 || run.status !== "completed" || run.conclusion !== "success") {
+    throw new GitHubReleaseError("resume");
+  }
+  const [jobs, artifact] = await Promise.all([
+    api
+      .get({
+        path: repositoryPath(`actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`),
+        query: { page: "1", per_page: String(MAX_LIST_ITEMS) },
+      })
+      .then((value) => parseResponse(jobsSchema, value)),
+    verifyProductionArtifact(api, {
+      runId: run.id,
+      promotionCommit: input.promotionCommit,
+      now: input.now,
+    }),
+  ]);
+  if (jobs.total_count !== 1 || jobs.jobs.length !== 1) {
+    throw new GitHubReleaseError("resume");
+  }
+  const [job] = jobs.jobs;
+  const activationSteps = job.steps.filter(
+    (step) => step.name === GITHUB_RELEASE_ACTIVATION_STEP_NAME,
+  );
+  const recoverySteps = job.steps.filter((step) => step.name === GITHUB_RELEASE_RECOVERY_STEP_NAME);
+  if (
+    job.name !== GITHUB_RELEASE_PRODUCTION_JOB_NAME ||
+    job.head_sha !== verifiedRun.headSha ||
+    job.status !== "completed" ||
+    job.conclusion !== "success" ||
+    activationSteps.length !== 1 ||
+    activationSteps[0].status !== "completed" ||
+    activationSteps[0].conclusion !== "success" ||
+    recoverySteps.length !== 1 ||
+    recoverySteps[0].status !== "completed" ||
+    recoverySteps[0].conclusion !== "skipped"
+  ) {
+    throw new GitHubReleaseError("resume");
+  }
+  return {
+    run: verifiedRun,
+    artifact,
+    jobId: job.id,
+    activationStepNumber: activationSteps[0].number,
+  };
+}
+
 export async function inspectPreviousProductionRun(
   api: GitHubReleaseApi,
   input: {
     current: VerifiedProductionInvocation;
     resumeRunId?: number;
+    recovery?: {
+      sourceProductionRunId: number;
+      resumeRecoveryRunId?: number;
+    };
+    verifyCompletedRecovery?: VerifyCompletedRecovery;
+    now?: Date;
   },
 ): Promise<PreviousProductionRun> {
   if (
-    input.resumeRunId !== undefined &&
-    !positiveIntegerSchema.safeParse(input.resumeRunId).success
+    (input.resumeRunId !== undefined &&
+      !positiveIntegerSchema.safeParse(input.resumeRunId).success) ||
+    (input.recovery !== undefined &&
+      (!positiveIntegerSchema.safeParse(input.recovery.sourceProductionRunId).success ||
+        (input.recovery.resumeRecoveryRunId !== undefined &&
+          !positiveIntegerSchema.safeParse(input.recovery.resumeRecoveryRunId).success))) ||
+    (input.resumeRunId !== undefined && input.recovery !== undefined) ||
+    (input.resumeRunId !== undefined && input.resumeRunId >= input.current.runId) ||
+    (input.recovery !== undefined && input.recovery.sourceProductionRunId >= input.current.runId) ||
+    (input.recovery?.resumeRecoveryRunId !== undefined &&
+      (input.recovery.resumeRecoveryRunId >= input.current.runId ||
+        input.recovery.resumeRecoveryRunId <= input.recovery.sourceProductionRunId)) ||
+    (input.recovery !== undefined &&
+      input.recovery.sourceProductionRunId === input.recovery.resumeRecoveryRunId) ||
+    (input.now !== undefined && !Number.isFinite(input.now.getTime()))
   ) {
     throw new GitHubReleaseError("configuration");
   }
@@ -1103,13 +1298,11 @@ export async function inspectPreviousProductionRun(
       if (run.id === input.current.runId || run.run_attempt !== 1) {
         throw new GitHubReleaseError("resume");
       }
-      const previous = verifyRunSource(run, workflow, "main") as VerifiedProductionInvocation;
+      const previous = verifyRunSource(run, workflow, "main") as VerifiedProductionRun;
       let productionJob: z.infer<typeof jobsSchema>["jobs"][number] | undefined;
       let activationStep: z.infer<typeof jobsSchema>["jobs"][number]["steps"][number] | undefined;
-      if (
-        run.status === "completed" &&
-        (run.conclusion === "success" || run.conclusion === "failure")
-      ) {
+      let recoveryStep: z.infer<typeof jobsSchema>["jobs"][number]["steps"][number] | undefined;
+      if (run.status === "completed" && run.conclusion !== null) {
         const jobs = parseResponse(
           jobsSchema,
           await api.get({
@@ -1122,28 +1315,131 @@ export async function inspectPreviousProductionRun(
           const activationSteps = job.steps.filter(
             (step) => step.name === GITHUB_RELEASE_ACTIVATION_STEP_NAME,
           );
+          const recoverySteps = job.steps.filter(
+            (step) => step.name === GITHUB_RELEASE_RECOVERY_STEP_NAME,
+          );
           if (
             job.name === GITHUB_RELEASE_PRODUCTION_JOB_NAME &&
             job.head_sha === previous.headSha &&
             job.status === "completed" &&
             activationSteps.length === 1 &&
-            activationSteps[0].status === "completed"
+            activationSteps[0].status === "completed" &&
+            recoverySteps.length === 1 &&
+            recoverySteps[0].status === "completed"
           ) {
             productionJob = job;
             [activationStep] = activationSteps;
+            [recoveryStep] = recoverySteps;
           }
         }
       }
-      if (run.status === "completed" && run.conclusion === "success") {
-        if (productionJob?.conclusion !== "success" || activationStep?.conclusion !== "success") {
+      const completedSuccessfulRelease =
+        run.status === "completed" &&
+        run.conclusion === "success" &&
+        productionJob?.conclusion === "success" &&
+        activationStep?.conclusion === "success" &&
+        recoveryStep?.conclusion === "skipped";
+      const completedRecoveryStep =
+        run.status === "completed" &&
+        run.conclusion !== null &&
+        productionJob !== undefined &&
+        productionJob.conclusion !== null &&
+        ((run.conclusion === "success" && productionJob.conclusion === "success") ||
+          (run.conclusion !== "success" && productionJob.conclusion !== "success")) &&
+        activationStep?.conclusion === "skipped" &&
+        recoveryStep?.conclusion === "success";
+
+      if (completedSuccessfulRelease) {
+        if (input.resumeRunId !== undefined || input.recovery?.resumeRecoveryRunId !== undefined) {
           throw new GitHubReleaseError("resume");
         }
-        if (input.resumeRunId !== undefined) throw new GitHubReleaseError("resume");
-        return { previous, requiresResume: false, skippedActivations };
+        if (input.recovery !== undefined) {
+          if (input.recovery.sourceProductionRunId !== previous.runId) {
+            throw new GitHubReleaseError("resume");
+          }
+          const artifact = await verifyProductionArtifact(api, {
+            runId: previous.runId,
+            promotionCommit: previous.headSha,
+            now: input.now,
+          });
+          return {
+            previous,
+            previousOperation: "release",
+            requiresResume: false,
+            requiredOperation: "recover-production",
+            artifact,
+            skippedActivations,
+          };
+        }
+        return {
+          previous,
+          previousOperation: "release",
+          requiresResume: false,
+          requiredOperation: "none",
+          skippedActivations,
+        };
+      }
+
+      if (completedRecoveryStep) {
+        if (
+          input.resumeRunId !== undefined ||
+          input.recovery !== undefined ||
+          input.verifyCompletedRecovery === undefined
+        ) {
+          throw new GitHubReleaseError("resume");
+        }
+        const artifact = await verifyProductionArtifact(api, {
+          runId: previous.runId,
+          promotionCommit: previous.headSha,
+          now: input.now,
+        });
+        let completedRecoveryResult: VerifiedCompletedRecovery;
+        try {
+          completedRecoveryResult = await input.verifyCompletedRecovery({
+            run: previous,
+            artifact,
+          });
+        } catch {
+          throw new GitHubReleaseError("resume");
+        }
+        const parsedCompletedRecovery = completedRecoverySchema.safeParse(completedRecoveryResult);
+        if (!parsedCompletedRecovery.success) throw new GitHubReleaseError("resume");
+        const completedRecovery = parsedCompletedRecovery.data;
+        const uniqueRecoveryRunIds = new Set(completedRecovery.recoveryRunIds);
+        if (
+          completedRecovery.sourceProductionRunId === previous.runId ||
+          uniqueRecoveryRunIds.size !== completedRecovery.recoveryRunIds.length ||
+          completedRecovery.recoveryRunIds.at(-1) !== previous.runId ||
+          completedRecovery.recoveryRunIds.includes(completedRecovery.sourceProductionRunId) ||
+          completedRecovery.recoveryRunIds.some(
+            (runId, index, runIds) =>
+              runId <= completedRecovery.sourceProductionRunId ||
+              (index > 0 && runId <= runIds[index - 1]),
+          )
+        ) {
+          throw new GitHubReleaseError("resume");
+        }
+        return {
+          previous,
+          previousOperation: "recovery",
+          requiresResume: false,
+          requiredOperation: "none",
+          completedRecovery,
+          skippedActivations,
+        };
       }
 
       let skippedActivation: { runId: number; jobId: number; stepNumber: number } | undefined;
-      if (productionJob?.conclusion === "failure" && activationStep?.conclusion === "skipped") {
+      if (
+        run.status === "completed" &&
+        run.conclusion !== null &&
+        run.conclusion !== "success" &&
+        productionJob !== undefined &&
+        productionJob.conclusion !== null &&
+        productionJob.conclusion !== "success" &&
+        activationStep?.conclusion === "skipped" &&
+        recoveryStep?.conclusion === "skipped"
+      ) {
         skippedActivation = {
           runId: previous.runId,
           jobId: productionJob.id,
@@ -1157,13 +1453,88 @@ export async function inspectPreviousProductionRun(
         }
         continue;
       }
-      if (input.resumeRunId !== previous.runId) throw new GitHubReleaseError("resume");
-      return { previous, requiresResume: true, skippedActivations };
+
+      const unresolvedRelease =
+        run.status === "completed" &&
+        run.conclusion !== null &&
+        run.conclusion !== "success" &&
+        productionJob !== undefined &&
+        productionJob.conclusion !== null &&
+        productionJob.conclusion !== "success" &&
+        recoveryStep?.conclusion === "skipped" &&
+        activationStep?.conclusion !== "skipped";
+      const unresolvedRecovery =
+        run.status === "completed" &&
+        run.conclusion !== null &&
+        run.conclusion !== "success" &&
+        productionJob !== undefined &&
+        productionJob.conclusion !== null &&
+        productionJob.conclusion !== "success" &&
+        activationStep?.conclusion === "skipped" &&
+        recoveryStep?.conclusion !== "skipped";
+      if (unresolvedRelease) {
+        if (input.recovery !== undefined) {
+          if (
+            input.recovery.sourceProductionRunId !== previous.runId ||
+            input.recovery.resumeRecoveryRunId !== undefined
+          ) {
+            throw new GitHubReleaseError("resume");
+          }
+          const artifact = await verifyProductionArtifact(api, {
+            runId: previous.runId,
+            promotionCommit: previous.headSha,
+            now: input.now,
+          });
+          return {
+            previous,
+            previousOperation: "release",
+            requiresResume: false,
+            requiredOperation: "recover-production",
+            artifact,
+            skippedActivations,
+          };
+        }
+        if (input.resumeRunId !== previous.runId) throw new GitHubReleaseError("resume");
+        return {
+          previous,
+          previousOperation: "release",
+          requiresResume: true,
+          requiredOperation: "resume-production",
+          skippedActivations,
+        };
+      }
+      if (unresolvedRecovery) {
+        if (input.recovery === undefined || input.recovery.resumeRecoveryRunId !== previous.runId) {
+          throw new GitHubReleaseError("resume");
+        }
+        const artifact = await verifyProductionArtifact(api, {
+          runId: previous.runId,
+          promotionCommit: previous.headSha,
+          now: input.now,
+        });
+        return {
+          previous,
+          previousOperation: "recovery",
+          requiresResume: false,
+          requiredOperation: "resume-recovery",
+          artifact,
+          skippedActivations,
+        };
+      }
+      throw new GitHubReleaseError("resume");
     }
 
     if (seen >= expectedTotal) {
-      if (!foundCurrent || input.resumeRunId !== undefined) throw new GitHubReleaseError("resume");
-      return { previous: null, requiresResume: false, skippedActivations };
+      if (!foundCurrent || input.resumeRunId !== undefined || input.recovery !== undefined) {
+        throw new GitHubReleaseError("resume");
+      }
+      return {
+        previous: null,
+        previousOperation: null,
+        requiresResume: false,
+        requiredOperation: "none",
+        skippedActivations,
+      };
     }
   }
   throw new GitHubReleaseError("resume");

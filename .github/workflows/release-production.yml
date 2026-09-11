@@ -4,26 +4,35 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Start a fresh promotion or resume an unresolved production run
+        description: Promote, resume an unresolved release, or recover its verified prior pair
         required: true
         type: choice
         options:
           - promote
           - resume
+          - recover
       promotion_pr:
         description: Merged stage-to-main promotion pull request number
-        required: true
+        required: false
         type: string
       rehearsal_run_id:
         description: Successful protected-stage rehearsal workflow run ID
-        required: true
+        required: false
         type: string
       approval_sha256:
         description: SHA-256 of the reviewed rehearsal approval JSON
-        required: true
+        required: false
         type: string
       resume_run_id:
         description: Latest unresolved production run ID; required only for resume
+        required: false
+        type: string
+      recovery_source_run_id:
+        description: Exact successful or failed production run whose verified prior pair is restored
+        required: false
+        type: string
+      resume_recovery_run_id:
+        description: Latest interrupted recovery run ID; empty for a fresh recovery
         required: false
         type: string
 
@@ -71,35 +80,65 @@ jobs:
           PROMOTION_PR: ${{ inputs.promotion_pr }}
           REHEARSAL_RUN_ID: ${{ inputs.rehearsal_run_id }}
           RELEASE_OPERATION: ${{ inputs.operation }}
+          RECOVERY_SOURCE_RUN_ID: ${{ inputs.recovery_source_run_id }}
+          RESUME_RECOVERY_RUN_ID: ${{ inputs.resume_recovery_run_id }}
           RESUME_RUN_ID: ${{ inputs.resume_run_id }}
         shell: bash
         run: |
           set -euo pipefail
-          release_args=(
-            "$RELEASE_OPERATION"
-            --promotion-pr "$PROMOTION_PR"
-            --rehearsal-run-id "$REHEARSAL_RUN_ID"
-            --approval-sha256 "$APPROVAL_SHA256"
-            --workspace "$RELEASE_WORKSPACE"
-          )
           case "$RELEASE_OPERATION" in
             promote)
               test -z "$RESUME_RUN_ID"
+              test -z "$RECOVERY_SOURCE_RUN_ID"
+              test -z "$RESUME_RECOVERY_RUN_ID"
+              release_args=(
+                promote
+                --promotion-pr "$PROMOTION_PR"
+                --rehearsal-run-id "$REHEARSAL_RUN_ID"
+                --approval-sha256 "$APPROVAL_SHA256"
+                --workspace "$RELEASE_WORKSPACE"
+              )
+              bun scripts/release/production-cli.ts preflight "${release_args[@]}"
               ;;
             resume)
               test -n "$RESUME_RUN_ID"
-              release_args+=(--resume-run-id "$RESUME_RUN_ID")
+              test -z "$RECOVERY_SOURCE_RUN_ID"
+              test -z "$RESUME_RECOVERY_RUN_ID"
+              release_args=(
+                resume
+                --promotion-pr "$PROMOTION_PR"
+                --rehearsal-run-id "$REHEARSAL_RUN_ID"
+                --approval-sha256 "$APPROVAL_SHA256"
+                --workspace "$RELEASE_WORKSPACE"
+                --resume-run-id "$RESUME_RUN_ID"
+              )
+              bun scripts/release/production-cli.ts preflight "${release_args[@]}"
+              ;;
+            recover)
+              test -z "$PROMOTION_PR"
+              test -z "$REHEARSAL_RUN_ID"
+              test -z "$APPROVAL_SHA256"
+              test -z "$RESUME_RUN_ID"
+              test -n "$RECOVERY_SOURCE_RUN_ID"
+              recovery_args=(
+                --recovery-source-run-id "$RECOVERY_SOURCE_RUN_ID"
+                --workspace "$RELEASE_WORKSPACE"
+              )
+              if test -n "$RESUME_RECOVERY_RUN_ID"; then
+                recovery_args+=(--resume-recovery-run-id "$RESUME_RECOVERY_RUN_ID")
+              fi
+              bun scripts/release/recovery-cli.ts preflight "${recovery_args[@]}"
               ;;
             *)
               exit 1
               ;;
           esac
-          bun scripts/release/production-cli.ts preflight "${release_args[@]}"
 
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
 
       - name: Activate approved release
+        if: ${{ inputs.operation != 'recover' }}
         env:
           APPROVAL_SHA256: ${{ inputs.approval_sha256 }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -108,6 +147,8 @@ jobs:
           PROMOTION_PR: ${{ inputs.promotion_pr }}
           REHEARSAL_RUN_ID: ${{ inputs.rehearsal_run_id }}
           RELEASE_OPERATION: ${{ inputs.operation }}
+          RECOVERY_SOURCE_RUN_ID: ${{ inputs.recovery_source_run_id }}
+          RESUME_RECOVERY_RUN_ID: ${{ inputs.resume_recovery_run_id }}
           RESUME_RUN_ID: ${{ inputs.resume_run_id }}
         shell: bash
         run: |
@@ -122,9 +163,13 @@ jobs:
           case "$RELEASE_OPERATION" in
             promote)
               test -z "$RESUME_RUN_ID"
+              test -z "$RECOVERY_SOURCE_RUN_ID"
+              test -z "$RESUME_RECOVERY_RUN_ID"
               ;;
             resume)
               test -n "$RESUME_RUN_ID"
+              test -z "$RECOVERY_SOURCE_RUN_ID"
+              test -z "$RESUME_RECOVERY_RUN_ID"
               release_args+=(--resume-run-id "$RESUME_RUN_ID")
               ;;
             *)
@@ -132,6 +177,26 @@ jobs:
               ;;
           esac
           bun scripts/release/production-cli.ts execute "${release_args[@]}"
+
+      - name: Restore verified prior pair
+        if: ${{ inputs.operation == 'recover' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          RECOVERY_SOURCE_RUN_ID: ${{ inputs.recovery_source_run_id }}
+          RESUME_RECOVERY_RUN_ID: ${{ inputs.resume_recovery_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          recovery_args=(
+            --recovery-source-run-id "$RECOVERY_SOURCE_RUN_ID"
+            --workspace "$RELEASE_WORKSPACE"
+          )
+          if test -n "$RESUME_RECOVERY_RUN_ID"; then
+            recovery_args+=(--resume-recovery-run-id "$RESUME_RECOVERY_RUN_ID")
+          fi
+          bun scripts/release/recovery-cli.ts execute "${recovery_args[@]}"
 
       - name: Retain production evidence
         if: ${{ always() }}

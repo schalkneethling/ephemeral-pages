@@ -10,7 +10,7 @@ The implementation references for this checkpoint are the [production CLI](../sc
 [provider adapters](../scripts/release/production-providers.ts), and [production runner](../scripts/release/production-runner.ts).
 The entry points are [Production release](../.github/workflows/release-production.yml) and
 [Staging release rehearsal](../.github/workflows/release-rehearsal.yml). Both are manual workflows;
-production and future recovery share the `release-production` concurrency group with active runs
+production and recovery share the `release-production` concurrency group with active runs
 never cancelled by a later dispatch.
 
 ## Trust and approval
@@ -25,7 +25,8 @@ from `main` and the `staging` environment to deployments from `stage`. Store sep
 `NETLIFY_AUTH_TOKEN` and `CLOUDFLARE_API_TOKEN` values in those environments. Do not use repository-wide
 deployment secrets: a workflow edited on another branch must not be able to retrieve them. Job-level
 ref checks provide an additional guard; native environment restrictions establish the credential
-boundary. This environment setup remains part of the rollout gates.
+boundary. These restrictions and deployment secret names have been provisioned. Provider authorization,
+the missing staging OIDC audience, and live workflow verification remain rollout gates.
 
 Set Netlify `GITHUB_OIDC_AUDIENCE` to the exact site origin in each environment, with function scope.
 The workflow smoke uses GitHub OIDC for upload identity; the checked-in environment configuration
@@ -94,14 +95,15 @@ still blocks. A transient execute-phase remote verification failure is retained 
 stage before provider adapters are initialized.
 
 Production verification failure reports the observed pair and stops. It does not automatically
-roll back. Recovery remains a separate implementation and operator action; a historical target ID
+roll back. Recovery is a separate operator action implemented in the same serialized workflow; a historical target ID
 alone does not establish that restoration is possible or compatible with current storage/secrets.
 
 ## Remaining rollout gates
 
+See [recovery and cutover](recovery.md) for implementation details and the current setup checkpoint.
 Finish PR review, then rehearse the integrated candidate and
-prove Layer 6 recovery drills on staging. Establish the attributable production baseline and scoped
-workflow credentials. Verify Netlify controlled publishing and restoration, disable its independent
+prove Layer 6 recovery drills on staging. Establish the attributable production baseline and verify
+provider authorization using the provisioned environment credentials. Verify Netlify controlled publishing and restoration, disable its independent
 automatic production publication, and confirm that Git-triggered builds cannot publish. Keep
 independent Cloudflare Git deployment disabled. Only then enable the reviewed production policy and
 perform the first coordinated production release.
@@ -117,3 +119,7 @@ Retain intermediate sanitized records and bundles as workflow artifacts for seve
 verification, commit a sanitized completion record through a documentation follow-up PR and move
 only verified shipped changelog entries out of `Unreleased`. Artifact expiration blocks later
 resumption; repository completion records do not preserve provider rollback targets indefinitely.
+
+Recovery uses the same workflow with `operation` set to `recover`, `recovery_source_run_id`, and an
+optional `resume_recovery_run_id`. Leave promotion inputs empty. Its credentialed mutation step is
+**Restore verified prior pair**; see [the recovery guide](recovery.md) for evidence and resume rules.

@@ -69,7 +69,11 @@ it("requires promotion, exact CI, recent rehearsal and unresolved-run checks", a
   );
   expect(mocks.prior).toHaveBeenCalledWith(
     {},
-    { current: { headSha: "b".repeat(40), runId: 101 }, resumeRunId: undefined },
+    {
+      current: { headSha: "b".repeat(40), runId: 101 },
+      resumeRunId: undefined,
+      verifyCompletedRecovery: expect.any(Function),
+    },
   );
 });
 it("does not bypass an unresolved prior run", async () => {

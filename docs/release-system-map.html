@@ -530,8 +530,8 @@
         * “Live verified” refers to dated evidence in the repository, not a real-time monitor.
         Staging preparation and the full coordinated rehearsal passed for the recorded candidate.
         Production promotion/resume provider and runner code is implemented but live-unverified;
-        recovery drills and publishing cutover remain unimplemented. Layer numbers describe the
-        implementation plan, not command syntax.
+        recovery implementation is under validation; live drills and publishing cutover remain
+        outstanding. Layer numbers describe the implementation plan, not command syntax.
       </p>
       <p>
         Portable source links are relative to the intended
@@ -685,9 +685,13 @@
         secrets: [
           "1Password → Varlock",
           "built",
-          "Four staging references only",
-          "Varlock resolves STAGE_COLLABORATION_CAPABILITY_CURRENT_SECRET, STAGE_COLLABORATION_TICKET_SECRET, STAGE_COLLABORATION_SERVICE_TOKEN and STAGE_RATE_LIMIT_SECRET from op://dev/ephemeral-pages/. Desktop unlock may be needed. Caching is disabled; no resolved values belong in arguments, reports, checkpoints or Git.",
-          [["docs/staging-bootstrap.md"], ["package.json"]],
+          "Separate runtime and deployment credentials",
+          "Separate schemas resolve staging runtime secrets and four staging/production provider tokens from the same 1Password item. Provider tokens are installed in branch-restricted GitHub environments. Account-wide provider permissions do not isolate individual Workers or sites. Desktop authorization may be needed; values are never cached or recorded in evidence.",
+          [
+            ["docs/staging-bootstrap.md"],
+            ["scripts/release/local/deployment/.env.schema"],
+            ["docs/recovery.md"],
+          ],
         ],
         sharing: [
           "Cross-platform secret relationship",
@@ -714,7 +718,7 @@
           "Checkpoint → mutation → observation",
           "built",
           "Retain IDs; ambiguity blocks retries",
-          "Bootstrap and rehearsal persist checkpoints before mutation. Rehearsal records activation results separately from readback, so an inspection failure cannot erase a returned deployment ID. A repository-wide local guard blocks a fresh run after possible mutation; completed read-only failures permit another attempt. Generalized resume and distributed production serialization remain future work.",
+          "Bootstrap and rehearsal persist checkpoints before mutation. Rehearsal records activation results separately from readback, so an inspection failure cannot erase a returned deployment ID. A repository-wide local guard blocks a fresh run after possible mutation; completed read-only failures permit another attempt. Production resume and serialized recovery are implemented; live workflow validation remains outstanding.",
           [
             ["scripts/release/rehearsal.ts"],
             ["scripts/release/rehearsal-guard.ts"],
@@ -784,10 +788,20 @@
         ],
         recover: [
           "6 · Explicit recovery",
-          "planned",
-          "Report mixed state; operator decides",
-          "Worker success with Netlify failure is a mixed deployment pair. Retain it only if compatibility was established; otherwise use the recorded recovery plan. Failed production verification halts completion. Recovery requires explicit operator action, restores a compatible pair and preserves secrets/storage compatibility.",
-          [["docs/releases.md"]],
+          "built",
+          "Restore a verified pair; reconcile interruptions",
+          "Manual recovery shares production serialization. It verifies retained target evidence, restores Netlify, tests the transition, restores the Worker and tests the final pair. Resume reconciles uncertain writes before retry. The implementation is under review; live recovery drills and adoption of an attributable initial production baseline remain outstanding.",
+          [
+            ["scripts/release/recovery-runner.ts"],
+            ["scripts/release/recovery-cli.ts"],
+            ["scripts/release/recovery-completion.ts"],
+            ["scripts/release/recovery-target.ts"],
+            ["scripts/release/recovery-providers.ts"],
+            [".github/workflows/release-production.yml"],
+            ["scripts/release/recovery-provider-adapters.ts"],
+            ["scripts/release/recovery-github.ts"],
+            ["docs/recovery.md"],
+          ],
         ],
         cutover: [
           "6 · Publishing cutover",
@@ -918,7 +932,7 @@
           name: "Coordinated release",
           title: "Staging verified. Production controls next.",
           intro:
-            "Layer 4 passed a complete staging rehearsal. Layer 5 provider and runner code is implemented; live workflow verification remains pending. Layer 6 recovery and publishing cutover remain planned.",
+            "Layer 4 passed a complete staging rehearsal. Layer 5 provider and runner code is implemented; live workflow verification remains pending. Layer 6 recovery is implemented and under validation; live drills and publishing cutover remain outstanding.",
           lanes: [
             [
               "Layer 4 / Preparation",

@@ -3,8 +3,9 @@
 Status: Native branch protections, read-only planning, local artifact preparation, staging rehearsal,
 and the production provider/runner implementation are present. The first full [staging calibration](release-evidence/2026-09-10-staging/README.md)
 passed, including both transition and final-pair browser smokes. Manual production orchestration and resumption are implemented;
-live verification remains pending; recovery drills, publishing cutover, the attributable baseline,
-scoped workflow credentials, and the first production release are still gates. Production publishing
+live verification remains pending. Recovery is implemented under review, and deployment credentials
+are provisioned in branch-restricted GitHub environments. Provider authorization, recovery drills,
+publishing cutover, the attributable baseline, and the first production release remain gates. Production publishing
 settings have not been changed by this increment.
 
 This design applies the principles in
@@ -409,7 +410,7 @@ The runner currently exposes planning and status under [Read-only tooling](#read
 and preparation and staging rehearsal under [artifact preparation](#prepare-artifacts-and-rehearse-on-staging).
 Production promotion and resumption use the manual workflows and tested interfaces described in
 [production orchestration](production-orchestration.md). The checked-in production gate stays off
-until rollout prerequisites pass. Explicit recovery remains the next implementation layer.
+until rollout prerequisites pass. Explicit recovery is implemented in the final layer and remains under validation; live drills and publishing cutover are outstanding. See [recovery and cutover](recovery.md).
 
 Before production promotion can be authoritative, replace the current automatic production publish
 on merge with a controlled publish path. Otherwise a merge can bypass the release checks. Provider
