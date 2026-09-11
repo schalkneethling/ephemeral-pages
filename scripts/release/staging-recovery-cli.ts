@@ -83,6 +83,7 @@ const heldNetlifySchema = z.strictObject({
 });
 const netlifyPublishCheckpointSchema = z.strictObject({
   operation: z.literal("restoreSiteDeploy"),
+  phase: z.literal("pending-mutation"),
   deployId: providerIdSchema,
   artifactSha256: digestSchema,
 });
@@ -247,7 +248,7 @@ const readProviderEvidence = async (reportsDirectory: string) => {
   };
 };
 
-const readStagingReleaseEvidence = async (
+export const readStagingReleaseEvidence = async (
   directory: string,
   workflow: { runId: number; workflowCommit: string; artifact: VerifiedStagingArtifact },
   configuration: ReleaseConfig,
