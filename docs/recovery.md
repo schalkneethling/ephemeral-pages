@@ -1,10 +1,11 @@
 # Release recovery and cutover
 
-Status: recovery implementation is reviewed and merged into protected `stage`. Protected calibrations A and B
-passed with matching lineage. Recovery preflight exposed workflow lookup and Netlify checkpoint-shape mismatches before
-provider mutation. Both are corrected and regression-tested. The live drill restored Netlify A, then stopped at transition role verification. A full local mixed-pair smoke passed, but protected resume exposed a temporary-path-dependent inspection fingerprint. The portable resume correction still requires a successful protected run. Production remains disabled in
-`production-policy.json`. No production publishing setting has changed. The historical staging
-rehearsal is not evidence that this recovery implementation has passed a live drill.
+Status: protected staging calibrations A/B and explicit B-to-A recovery passed. The recovery
+resumed from its retained checkpoint, preserved the completed Netlify restore, and passed both
+transition and final-pair browser smokes. A subsequent forward calibration passed and left staging
+on the latest exercised candidate. See [the verified checkpoint](release-evidence/2026-09-11-staging-recovery-34652303609/README.md).
+Production remains disabled in `production-policy.json`. Production publishing cutover, the
+attributable initial baseline, and the first coordinated production release remain outstanding.
 
 ## Recovery operation
 
@@ -72,7 +73,9 @@ intended final staging candidate and retain its newly observed IDs.
 These operations are implemented and locally tested. The registration-only bootstrap was merged
 through reviewed CI-only PR #50; the full implementations are now merged into protected `stage`.
 [Protected calibrations A and B](release-evidence/2026-09-11-staging/README.md) passed.
-The preflight lookup and checkpoint-shape corrections passed protected execution. Netlify restoration passed, while full recovery and the portable resume correction still require protected verification.
+The [protected recovery and resume drill](release-evidence/2026-09-11-staging-recovery-34652303609/README.md) also passed.
+It verified the retained Netlify restore, portable inspection evidence, restored Worker version,
+and both live browser smokes. Production recovery remains unverified.
 See [the staging recovery workflow](../.github/workflows/release-staging-recovery.yml),
 [CLI](../scripts/release/staging-recovery-cli.ts),
 [source contract](../scripts/release/staging-recovery-source.ts), and
@@ -95,8 +98,8 @@ authorize production cutover.
 The operator accepted a one-time fail-forward adoption on 11 September, given the current product
 usage and the cost of a temporary legacy restore subsystem. No legacy restore path will be built.
 The minimal adoption operation remains to be implemented and verified; the accepted failure policy
-does not bypass staging, artifact, configuration, or source checks. After a protected staging
-recovery drill passes, it must:
+does not bypass staging, artifact, configuration, or source checks. The protected staging
+recovery drill has passed. The adoption operation must:
 
 1. Require an absent baseline and an exact reviewed production candidate with retained staging evidence.
 2. Verify and seal its production Worker artifact, current configuration, `v1` migration compatibility,

@@ -465,12 +465,14 @@
         storage make coordination necessary.
       </p>
       <div class="snapshot">
-        Documentation checkpoint · 11 September 2026 · Protected rehearsals A/B: 11 September 2026
+        Documentation checkpoint · 11 September 2026 UTC · Staging recovery, resume and forward
+        deployment verified
       </div>
       <div class="notice">
         <strong>Current control gap.</strong> Netlify still publishes production automatically from
-        main. Cloudflare Git deployment is not enabled. Read-only provider inspection passed on 11
-        September; production cutover and live recovery verification remain outstanding.
+        main. Cloudflare Git deployment is not enabled. Protected staging calibration, recovery and
+        resume passed. Production cutover and the attributable initial production baseline remain
+        outstanding.
       </div>
     </header>
     <main id="explorer">
@@ -530,8 +532,9 @@
         * “Live verified” refers to dated evidence in the repository, not a real-time monitor.
         Staging preparation and the full coordinated rehearsal passed for the recorded candidate.
         Production promotion/resume provider and runner code is implemented but live-unverified;
-        recovery implementation is under validation; live drills and publishing cutover remain
-        outstanding. Layer numbers describe the implementation plan, not command syntax.
+        staging recovery and resume passed their protected drill. Production recovery and publishing
+        cutover remain unverified. Layer numbers describe the implementation plan, not command
+        syntax.
       </p>
       <p>
         Portable source links are relative to the intended
@@ -604,9 +607,13 @@
           "Transition and final pair verified",
           "The exact-candidate rehearsal passed both old-app/new-Worker and final-pair smokes: upload, roles, two-editor synchronization, reload persistence, actual network-loss recovery and PNG download. Total usage was two short-lived pages and two captures. This is dated staging evidence, not production approval.",
           [
-            ["docs/release-evidence/2026-09-10-staging/README.md"],
-            ["docs/release-evidence/2026-09-10-staging/transition-smoke.json"],
-            ["docs/release-evidence/2026-09-10-staging/pair-smoke.json"],
+            ["docs/release-evidence/2026-09-11-staging-recovery-34652303609/README.md"],
+            [
+              "docs/release-evidence/2026-09-11-staging-recovery-34652303609/forward-transition-smoke.json",
+            ],
+            [
+              "docs/release-evidence/2026-09-11-staging-recovery-34652303609/forward-pair-smoke.json",
+            ],
             ["scripts/release/smoke.ts"],
           ],
         ],
@@ -729,10 +736,12 @@
           "4 · Prepare & retain",
           "live",
           "Private candidate checkout; exact bytes",
-          "Staging and production preparation passed for candidate e0508d5. Both use private detached checkouts, sanitized Git environments and frozen installs. Inventories bind generated CSP, static assets, ten Netlify function ZIPs and deployment configuration, and the Worker bundle. Production preparation was local only. Netlify may acknowledge functions by name only; local hashes and live smoke do not imply independent retrieval of inactive provider bytes.",
+          "Protected staging preparation passed for candidate 293f5ed. Production preparation was demonstrated locally for the earlier candidate e0508d5. Both use private detached checkouts, sanitized Git environments and frozen installs. Inventories bind generated CSP, static assets, ten Netlify function ZIPs and deployment configuration, and the Worker bundle. Production preparation was local only. Netlify may acknowledge functions by name only; local hashes and live smoke do not imply independent retrieval of inactive provider bytes.",
           [
             ["scripts/release/prepare.ts"],
-            ["docs/release-evidence/2026-09-10-staging/staging-preparation.json"],
+            [
+              "docs/release-evidence/2026-09-11-staging-recovery-34652303609/forward-preparation.json",
+            ],
             ["docs/release-evidence/2026-09-10-staging/production-preparation.json"],
             ["docs/releases.md"],
           ],
@@ -741,11 +750,13 @@
           "4 · Rehearse exact candidate",
           "live",
           "Held upload → Worker → app → smoke",
-          "The complete staging rehearsal passed for e0508d5. Netlify held the previous app while the candidate uploaded; the Worker activated first, followed by transition smoke, exact-pair reinspection, publication of the same Netlify deployment and final smoke. Final Netlify deployment: 6aa327145fc723d7169c4879. Worker version: 72189329-0b90-49fb-84ed-eed1c022ff76. Recovery drills and production cutover remain outstanding; a changed candidate requires fresh rehearsal.",
+          "Protected calibrations A and B passed with identical configuration and distinct reviewed commits and provider IDs. Netlify held the previous app while the Worker activated, followed by transition smoke, publication of the held Netlify deployment and final smoke. Explicit B-to-A recovery and resume also passed, followed by a forward calibration of 293f5ed with the recovered pair as its prior pair. Final staging Netlify deployment: 6aa47c40f0b74e3ac28b75ea. Worker version: c12bb05c-bf4e-408f-b96f-e4b65d13a07a. Calibration never issues production approval; a changed candidate requires fresh rehearsal.",
           [
             ["scripts/release/rehearsal-cli.ts"],
-            ["docs/release-evidence/2026-09-10-staging/rehearsal.json"],
-            ["docs/release-evidence/2026-09-10-staging/README.md"],
+            [
+              "docs/release-evidence/2026-09-11-staging-recovery-34652303609/forward-rehearsal.json",
+            ],
+            ["docs/release-evidence/2026-09-11-staging-recovery-34652303609/README.md"],
           ],
         ],
         approve: [
@@ -788,9 +799,9 @@
         ],
         recover: [
           "6 · Explicit recovery",
-          "built",
+          "live",
           "Restore a verified pair; reconcile interruptions",
-          "Manual recovery shares production serialization. It verifies retained target evidence, restores Netlify, tests the transition, restores the Worker and tests the final pair. Resume reconciles uncertain writes before retry. A separate protected staging workflow uses real A/B rehearsal evidence, and calibration cannot issue production approval. The implementation and toolbar improvements are merged into stage. Protected calibration A passed after correcting metadata, credential forwarding and the old app runtime environment. Both transition and final-pair browser smokes passed. The second distinct calibration B passed with matching lineage. The first B-to-A recovery attempt blocked at GitHub workflow lookup before provider mutation. The API path is corrected and regression-tested. A second preflight-only attempt downloaded both archives, then exposed a legacy Netlify checkpoint-shape expectation. That reader now accepts the adapter’s strict pending-mutation record and is regression-tested. A subsequent live drill restored Netlify A, then blocked at transition role verification; a full local mixed-pair smoke passed. Protected resume exposed an inspection fingerprint tied to temporary paths. The portable correction requires strict read-only reinspection before any further mutation and still needs protected verification. Full recovery completion, production cutover and an attributable initial production baseline remain outstanding; the operator accepted one-time fail-forward adoption without a legacy restore subsystem.",
+          "Protected staging B-to-A recovery and resume passed on 11 September UTC. The first live attempt restored Netlify A and stopped at role verification. A later full local smoke passed. Resume exposed a temporary-path-dependent inspection fingerprint; the reviewed correction reverified the retained evidence read-only and persisted portable version-2 evidence before further mutation. The successful resume retained the completed Netlify step, passed transition smoke, restored Worker version A under a new deployment ID, and passed final-pair smoke. Both smokes included ticket authorization, synchronization, reload, network-loss recovery and screenshot download. Production recovery remains live-unverified. Publishing cutover and an attributable initial production baseline remain outstanding; the operator accepted one-time fail-forward adoption without a legacy restore subsystem.",
           [
             ["scripts/release/recovery-runner.ts"],
             ["scripts/release/recovery-cli.ts"],
@@ -805,6 +816,7 @@
             ["scripts/release/recovery-provider-adapters.ts"],
             ["scripts/release/recovery-github.ts"],
             ["docs/recovery.md"],
+            ["docs/release-evidence/2026-09-11-staging-recovery-34652303609/README.md"],
           ],
         ],
         cutover: [
@@ -936,7 +948,7 @@
           name: "Coordinated release",
           title: "Staging verified. Production controls next.",
           intro:
-            "Layer 4 passed a complete staging rehearsal. Layer 5 provider and runner code is implemented; live workflow verification remains pending. Layer 6 recovery is implemented and under validation; live drills and publishing cutover remain outstanding.",
+            "Layer 4 passed a complete staging rehearsal. Layer 5 provider and runner code is implemented; live workflow verification remains pending. Protected staging recovery and resume passed. Production recovery, the initial baseline and publishing cutover remain outstanding.",
           lanes: [
             [
               "Layer 4 / Preparation",
@@ -1123,7 +1135,7 @@
           "sharing",
         ],
         [
-          "Inspect the completed checkpoint. Private artifact preparation and coordinated staging activation passed; production controls and recovery drills remain.",
+          "Inspect the completed checkpoint. Private artifact preparation, coordinated staging activation, explicit recovery and resume passed; production controls remain.",
           3,
           "prepare",
         ],
