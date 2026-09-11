@@ -186,6 +186,10 @@ quota response and records a validated retry delay when available. Failure does 
 The manually dispatched production API smoke workflow supplies the production origin explicitly
 and runs trusted `main` code with GitHub OIDC.
 
+Reports contain fixed check outcomes and request counts, never page links, page contents, or raw
+errors. A blocked result exits nonzero. Missing either opt-in or an invalid origin causes no network
+requests.
+
 ## Production orchestration checkpoint
 
 The production implementation is split between GitHub provenance/artifact verification, a provider
@@ -212,10 +216,6 @@ verification stops with evidence and requires an explicit recovery action.
 See [production orchestration](production-orchestration.md) for the reusable operator model and its
 remaining rollout gates. The 10 September staging rehearsal remains historical calibration; it is
 not approval for this 11 September documentation checkpoint or for a production release.
-
-Reports contain fixed check outcomes and request counts, never page links, page contents, or raw
-errors. A blocked result exits nonzero. Missing either opt-in or an invalid origin causes no network
-requests.
 
 ## Independent of any work set
 

@@ -254,8 +254,8 @@ export async function runProductionRelease(
         record.stages[step] = "passed";
         await save();
       }
-    if (input.previous) await dependencies.verifyRetained(record);
     active = "inspect";
+    if (input.previous) await dependencies.verifyRetained(record);
     record.stages.inspect = "running";
     await save();
     await inspect();

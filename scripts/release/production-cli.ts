@@ -46,7 +46,7 @@ export async function runProductionCli(argv: readonly string[], repositoryRoot: 
         expectedDigest: artifact.digest,
         expectedSizeInBytes: artifact.sizeInBytes,
       });
-      await extractVerifiedGitHubArtifact(bytes, directory);
+      await extractVerifiedGitHubArtifact(bytes, directory, repositoryRoot);
     };
     await download(context.rehearsal.artifact, resolve(args.workspace, "approval"));
     if (args.resumeRunId !== undefined) {

@@ -32,7 +32,8 @@ export function bindProductionProviderAuthorization(
             target.siteId === app.siteId &&
             target.workerName === undefined &&
             artifactSha256 === prepared.artifacts.netlify.sha256
-          : target.accountId === worker.accountId &&
+          : provider === "cloudflare" &&
+            target.accountId === worker.accountId &&
             target.workerName === worker.workerName &&
             target.siteId === undefined &&
             artifactSha256 === prepared.artifacts.worker.sha256;

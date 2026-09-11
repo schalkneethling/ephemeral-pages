@@ -543,6 +543,7 @@ const verifyEntryKind = (entry: Entry, directory: boolean): void => {
 export async function extractVerifiedGitHubArtifact(
   archive: Uint8Array,
   destination: string,
+  repositoryRoot: string,
 ): Promise<void> {
   const target = resolve(destination);
   let created = false;
@@ -554,7 +555,7 @@ export async function extractVerifiedGitHubArtifact(
     ) {
       throw new GitHubReleaseError("configuration");
     }
-    await assertExternalArtifactDirectory(process.cwd(), target);
+    await assertExternalArtifactDirectory(repositoryRoot, target);
     const buffer = Buffer.from(archive.buffer, archive.byteOffset, archive.byteLength);
     const zipfile = await yauzl.fromBufferPromise(buffer, {
       strictFileNames: true,

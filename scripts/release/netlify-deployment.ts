@@ -500,6 +500,7 @@ const listCandidateDeploys = async (
 ): Promise<string> => {
   const title = `release-${input.candidate}-${input.preparation.artifacts.netlify.sha256}`;
   const matching: unknown[] = [];
+  // Bound the entire discovery operation, including pagination, to 30 seconds.
   const signal = AbortSignal.timeout(30_000);
   for (let page = 1; page <= 100; page += 1) {
     let value: unknown;

@@ -458,6 +458,7 @@ describe("verified artifact extraction", () => {
           { name: "bundles/worker.js", contents: new TextEncoder().encode("export default {};\n") },
         ]),
         destination,
+        process.cwd(),
       );
       expect(readFileSync(join(destination, "reports/rehearsal.json"), "utf8")).toBe(
         '{"ok":true}\n',
@@ -477,7 +478,11 @@ describe("verified artifact extraction", () => {
       const parent = mkdtempSync(join(tmpdir(), "github-artifact-test-"));
       const destination = join(parent, "extracted");
       try {
-        const extraction = extractVerifiedGitHubArtifact(storedZip([{ name }]), destination);
+        const extraction = extractVerifiedGitHubArtifact(
+          storedZip([{ name }]),
+          destination,
+          process.cwd(),
+        );
         await expect(extraction).rejects.toThrow("GitHub release artifact verification failed.");
         await expect(extraction).rejects.not.toThrow(name);
         expect(existsSync(destination)).toBe(false);
@@ -499,7 +504,7 @@ describe("verified artifact extraction", () => {
     const destination = join(parent, "extracted");
     try {
       await expect(
-        extractVerifiedGitHubArtifact(storedZip(entries), destination),
+        extractVerifiedGitHubArtifact(storedZip(entries), destination, process.cwd()),
       ).rejects.toMatchObject({ kind: "artifact" });
       expect(existsSync(destination)).toBe(false);
     } finally {
@@ -512,7 +517,7 @@ describe("verified artifact extraction", () => {
     try {
       const tooMany = Array.from({ length: 513 }, (_, index) => ({ name: `item-${index}` }));
       await expect(
-        extractVerifiedGitHubArtifact(storedZip(tooMany), join(parent, "count")),
+        extractVerifiedGitHubArtifact(storedZip(tooMany), join(parent, "count"), process.cwd()),
       ).rejects.toMatchObject({ kind: "artifact" });
       await expect(
         extractVerifiedGitHubArtifact(
@@ -524,6 +529,7 @@ describe("verified artifact extraction", () => {
             },
           ]),
           join(parent, "bytes"),
+          process.cwd(),
         ),
       ).rejects.toMatchObject({ kind: "artifact" });
       expect(existsSync(join(parent, "count"))).toBe(false);
@@ -536,15 +542,17 @@ describe("verified artifact extraction", () => {
   it("rejects an existing or repository-contained destination", async () => {
     const parent = mkdtempSync(join(tmpdir(), "github-artifact-test-"));
     const existing = join(parent, "existing");
-    const repositoryDestination = join(process.cwd(), ".artifact-extraction-must-not-exist");
+    const repositoryDestination = join(parent, ".artifact-extraction-must-not-exist");
     try {
       mkdirSync(existing);
       const archive = storedZip([{ name: "file" }]);
-      await expect(extractVerifiedGitHubArtifact(archive, existing)).rejects.toMatchObject({
+      await expect(
+        extractVerifiedGitHubArtifact(archive, existing, process.cwd()),
+      ).rejects.toMatchObject({
         kind: "artifact",
       });
       await expect(
-        extractVerifiedGitHubArtifact(archive, repositoryDestination),
+        extractVerifiedGitHubArtifact(archive, repositoryDestination, parent),
       ).rejects.toMatchObject({ kind: "artifact" });
       expect(existsSync(repositoryDestination)).toBe(false);
     } finally {

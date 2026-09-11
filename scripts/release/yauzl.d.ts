@@ -20,7 +20,7 @@ declare module "yauzl" {
   const yauzl: {
     fromBufferPromise(
       buffer: Buffer,
-      options: { strictFileNames: boolean; validateEntrySizes: boolean },
+      options: { decodeStrings?: boolean; strictFileNames?: boolean; validateEntrySizes?: boolean },
     ): Promise<ZipFile>;
   };
 

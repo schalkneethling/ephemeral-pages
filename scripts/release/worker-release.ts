@@ -1132,17 +1132,22 @@ export const reconcileWorkerRelease = async (
         ? await discoverVersionId(input, dependencies)
         : reconciliation.versionId;
     if (!SAFE_ID.test(versionId)) throw new WorkerReleaseError("verification");
-    const scriptEtag = parseVersionAgainstInput(
-      await readProvider(
-        dependencies,
-        workerPath(accountId, workerName, `/versions/${encodeURIComponent(versionId)}`),
-        "verification",
-      ),
-      versionId,
-      manifest,
-      input,
-      input.prepared.manifestSha256,
-    );
+    let scriptEtag: string;
+    try {
+      scriptEtag = parseVersionAgainstInput(
+        await readProvider(
+          dependencies,
+          workerPath(accountId, workerName, `/versions/${encodeURIComponent(versionId)}`),
+          "verification",
+        ),
+        versionId,
+        manifest,
+        input,
+        input.prepared.manifestSha256,
+      );
+    } catch {
+      throw new WorkerReleaseError("verification");
+    }
     return {
       accountId,
       artifactManifestSha256: input.prepared.manifestSha256,
@@ -1155,26 +1160,29 @@ export const reconcileWorkerRelease = async (
     };
   }
   validateReconciledUpload(input, reconciliation.upload);
-  parseCurrentServicePolicy(
-    await readProvider(dependencies, servicePath(accountId, workerName), "verification"),
-    manifest,
-  );
-  const scriptEtag = parseVersionAgainstInput(
-    await readProvider(
-      dependencies,
-      workerPath(
-        accountId,
-        workerName,
-        `/versions/${encodeURIComponent(reconciliation.upload.versionId)}`,
+  let scriptEtag: string;
+  try {
+    parseCurrentServicePolicy(
+      await readProvider(dependencies, servicePath(accountId, workerName), "verification"),
+      manifest,
+    );
+    scriptEtag = parseVersionAgainstInput(
+      await readProvider(
+        dependencies,
+        workerPath(
+          accountId,
+          workerName,
+          `/versions/${encodeURIComponent(reconciliation.upload.versionId)}`,
+        ),
+        "verification",
       ),
-      "verification",
-    ),
-    reconciliation.upload.versionId,
-    manifest,
-    input,
-    input.prepared.manifestSha256,
-  );
-  if (scriptEtag !== reconciliation.upload.scriptEtag) {
+      reconciliation.upload.versionId,
+      manifest,
+      input,
+      input.prepared.manifestSha256,
+    );
+    if (scriptEtag !== reconciliation.upload.scriptEtag) throw new Error();
+  } catch {
     throw new WorkerReleaseError("verification");
   }
   const deploymentId = findActivatedDeployment(

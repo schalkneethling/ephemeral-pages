@@ -823,6 +823,27 @@ describe("production Worker operations", () => {
     expect(transport.requests.every(({ method }) => method === "GET")).toBe(true);
   });
 
+  it("classifies an uploaded-version metadata mismatch as verification", async () => {
+    const { input, manifest } = await createProductionFixture();
+    const transport = new ScriptedTransport([
+      service,
+      deployments("baseline-deployment", "baseline-version"),
+      version(input, "baseline-version"),
+      version(input, "returned-version", "f".repeat(64)),
+    ]);
+    await expect(
+      reconcileWorkerRelease(
+        input,
+        { phase: "version-upload-response-received", versionId: "returned-version" },
+        {
+          checkpoint: async () => undefined,
+          transport,
+          verifyArtifacts: async () => manifest,
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "verification" });
+  });
+
   it("reconciles activation only when the exact uploaded version is currently active", async () => {
     const { input, manifest } = await createProductionFixture();
     const upload = {
@@ -856,6 +877,32 @@ describe("production Worker operations", () => {
       versionId: "recovered-version",
     });
     expect(transport.requests.every(({ method }) => method === "GET")).toBe(true);
+  });
+
+  it("classifies an activation service-policy mismatch as verification", async () => {
+    const { input, manifest } = await createProductionFixture();
+    const upload = {
+      accountId: "account-id",
+      artifactManifestSha256: input.prepared.manifestSha256,
+      baselineDeploymentId: input.expectedBaselineDeploymentId,
+      migrationPolicy: input.migrationPolicy,
+      scriptEtag: digest("recovered-version"),
+      status: "uploaded" as const,
+      versionId: "recovered-version",
+      workerName: "production-worker",
+    };
+    const transport = new ScriptedTransport([{ default_environment: { script: {} } }]);
+    await expect(
+      reconcileWorkerRelease(
+        input,
+        { phase: "activation-pending", upload },
+        {
+          checkpoint: async () => undefined,
+          transport,
+          verifyArtifacts: async () => manifest,
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "verification" });
   });
 
   it("binds activation reconciliation to the returned deployment ID", async () => {

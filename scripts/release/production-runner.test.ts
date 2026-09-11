@@ -214,6 +214,26 @@ it("reconciles a returned activation ID without dispatching the activation again
   expect(f.calls.filter((call) => call === "activate")).toHaveLength(1);
   expect(f.calls).toContain("reconcile:activate-worker");
 });
+it("attributes retained verification failure to inspection after reconciliation", async () => {
+  const f = await fixture();
+  const activate = f.deps.activateWorker.bind(f.deps);
+  f.deps.activateWorker = async (...args) => {
+    await activate(...args);
+    throw Object.assign(Error(), { kind: "ambiguous" });
+  };
+  const previous = await runProductionRelease(f.input, f.deps);
+  f.deps.verifyRetained = async () => {
+    throw Error("Live artifact differs");
+  };
+  const resumed = await runProductionRelease(
+    { ...f.input, previous, currentRunId: 2, reportDirectory: join(f.root, "resume") },
+    f.deps,
+  );
+  expect(resumed.stages["activate-worker"]).toBe("passed");
+  expect(resumed.stages.inspect).toBe("failed");
+  expect(resumed.failure?.stage).toBe("inspect");
+  expect(f.calls.filter((call) => call === "activate")).toHaveLength(1);
+});
 it("blocks ambiguous reconciliation rather than uploading a duplicate", async () => {
   const f = await fixture();
   f.deps.uploadWorker = async () => {
