@@ -616,3 +616,43 @@ it("rejects a retained Netlify ID when the exact artifact marker belongs to anot
   ).rejects.toMatchObject({ kind: "verification" });
   expect(calls).toEqual([]);
 });
+
+it.each([false, true])(
+  "bounds discovery separately from each request (exhausted: %s)",
+  async (exhausted) => {
+    const { artifacts, client } = await fixture(productionInput, true);
+    const title = `release-${productionInput.candidate}-${artifacts.inventorySha256}`;
+    let elapsed = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => elapsed);
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    const signals: AbortSignal[] = [];
+    const budgets: number[] = [];
+    try {
+      const result = reconcileNetlifyDeployment(
+        productionInput,
+        { phase: "candidate-create-pending" },
+        {
+          checkpoint: async () => undefined,
+          client: async (operation, parameters, signal) => {
+            if (operation === "listSiteDeploys") {
+              signals.push(signal);
+              budgets.push(timeout.mock.calls.at(-1)![0]);
+              elapsed += parameters.page === 5 && !exhausted ? 1_000 : 29_000;
+              if (parameters.page === 5 && !exhausted) return [{ id: "candidate", title }];
+              return Array.from({ length: 100 }, (_, index) => ({ id: `other-${index}` }));
+            }
+            const value = await client(operation, parameters, signal);
+            return operation === "getSiteDeploy" ? { ...(value as object), state: "ready" } : value;
+          },
+        },
+      );
+      if (exhausted) await expect(result).rejects.toMatchObject({ kind: "verification" });
+      else await expect(result).resolves.toMatchObject({ candidateDeployId: "candidate" });
+      expect(budgets).toEqual([30_000, 30_000, 30_000, 30_000, 4_000]);
+      expect(new Set(signals).size).toBe(5);
+    } finally {
+      clock.mockRestore();
+      timeout.mockRestore();
+    }
+  },
+);

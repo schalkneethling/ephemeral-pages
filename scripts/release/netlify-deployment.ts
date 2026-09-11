@@ -500,9 +500,12 @@ const listCandidateDeploys = async (
 ): Promise<string> => {
   const title = `release-${input.candidate}-${input.preparation.artifacts.netlify.sha256}`;
   const matching: unknown[] = [];
-  // Bound the entire discovery operation, including pagination, to 30 seconds.
-  const signal = AbortSignal.timeout(30_000);
+  // Each request gets up to 30 seconds within a two-minute discovery budget.
+  const deadline = performance.now() + 120_000;
   for (let page = 1; page <= 100; page += 1) {
+    const remaining = Math.floor(deadline - performance.now());
+    if (remaining <= 0) throw new NetlifyDeploymentError("verification");
+    const signal = AbortSignal.timeout(Math.min(30_000, remaining));
     let value: unknown;
     try {
       value = await dependencies.client(
@@ -513,7 +516,8 @@ const listCandidateDeploys = async (
     } catch {
       throw new NetlifyDeploymentError("verification");
     }
-    if (!Array.isArray(value)) throw new NetlifyDeploymentError("verification");
+    if (performance.now() >= deadline || !Array.isArray(value))
+      throw new NetlifyDeploymentError("verification");
     matching.push(
       ...value.filter(
         (entry) =>
