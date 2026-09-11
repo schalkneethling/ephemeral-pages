@@ -130,3 +130,24 @@ Read-only validation of the corrected verifier accepted the real diagnostics met
 and B, including their successful run identities, artifact digests, sizes, and expiry. Four regression
 cases failed against the previous endpoint construction and passed with the correction. This validates
 the lookup fix; only a fresh protected recovery run can verify the complete restore operation.
+
+## Recovery checkpoint compatibility correction
+
+[Run 34646374702](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34646374702)
+on reviewed candidate `44e04d300bb424cf1459c9ef562b205c3675befe` passed the corrected GitHub
+lookups and downloaded both A/B diagnostic archives. It then blocked while reading the provider
+evidence. The recovery reader expected a legacy Netlify publish checkpoint without a `phase` field;
+the actual deployment adapter emits `phase: "pending-mutation"` before publication and a separate
+response checkpoint afterward. The strict legacy schema therefore found no matching pending publish.
+
+The credentialed restore step was skipped again, leaving B live. The failed run retained both sealed
+A/B directories in its `release-staging-recovery` artifact, but no completed recovery preflight or
+provider-write record. Align the reader with the adapter's emitted checkpoint and retain strict
+uniqueness and deployment/hash binding. Validate the complete real A/B evidence through the corrected
+reader before a fresh protected recovery attempt; this preflight-only failure does not require resume.
+
+The corrected strict reader now accepts both complete retained A/B directories with their real
+GitHub artifact metadata. The combined recovery source schema and current configuration-lineage
+validation also pass. Seven focused cases fail with the previous checkpoint schema; the corrected
+suite passes and rejects missing, duplicate, or unexpected pending evidence while retaining response
+records. This read-only check performed no provider mutation and does not replace the live drill.

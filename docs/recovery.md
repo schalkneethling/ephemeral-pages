@@ -1,8 +1,8 @@
 # Release recovery and cutover
 
 Status: recovery implementation is reviewed and merged into protected `stage`. Protected calibrations A and B
-passed with matching lineage. The first recovery attempt blocked at GitHub workflow lookup before
-provider mutation; the live recovery drill remains. Production remains disabled in
+passed with matching lineage. Recovery preflight exposed workflow lookup and Netlify checkpoint-shape mismatches before
+provider mutation. Both are corrected and regression-tested; the live recovery drill remains. Production remains disabled in
 `production-policy.json`. No production publishing setting has changed. The historical staging
 rehearsal is not evidence that this recovery implementation has passed a live drill.
 
@@ -72,7 +72,7 @@ intended final staging candidate and retain its newly observed IDs.
 These operations are implemented and locally tested. The registration-only bootstrap was merged
 through reviewed CI-only PR #50; the full implementations are now merged into protected `stage`.
 [Protected calibrations A and B](release-evidence/2026-09-11-staging/README.md) passed.
-The first recovery attempt blocked in preflight; a successful live drill is still required.
+The preflight lookup and checkpoint-shape corrections are complete; a fresh successful live drill is still required.
 See [the staging recovery workflow](../.github/workflows/release-staging-recovery.yml),
 [CLI](../scripts/release/staging-recovery-cli.ts),
 [source contract](../scripts/release/staging-recovery-source.ts), and

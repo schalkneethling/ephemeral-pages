@@ -5,11 +5,13 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { artifactConfigurationFingerprint, artifactHash } from "./artifact-contract.ts";
+import type { NetlifyDeploymentCheckpoint } from "./netlify-deployment.ts";
 import { preparedReleaseSchema } from "./prepare.ts";
 import { successfulRehearsalSchema } from "./production-approval.ts";
 import { releaseConfigSchema } from "./schema.ts";
 import {
   parseStagingRecoveryArguments,
+  readStagingReleaseEvidence,
   runStagingRecoveryCli,
   stagingRecoveryPreflightSchema,
 } from "./staging-recovery-cli.ts";
@@ -197,6 +199,19 @@ async function fixture() {
       versionId: pair.workerVersionId,
       workerName: configuration.environments.staging.cloudflare!.workerName,
     };
+    const publishPending = {
+      operation: "restoreSiteDeploy",
+      phase: "pending-mutation",
+      deployId: pair.netlifyDeployId,
+      artifactSha256: value.prepared.artifacts.netlify.sha256,
+    } satisfies NetlifyDeploymentCheckpoint;
+    const publishResponse = {
+      operation: "restoreSiteDeploy",
+      phase: "mutation-response-received",
+      deployId: pair.netlifyDeployId,
+      artifactSha256: value.prepared.artifacts.netlify.sha256,
+      publishedDeployId: pair.netlifyDeployId,
+    } satisfies NetlifyDeploymentCheckpoint;
     await Promise.all([
       writeJson(join(directory, "reports/provider-001.json"), held),
       writeJson(join(directory, "reports/provider-002.json"), uploaded),
@@ -206,12 +221,9 @@ async function fixture() {
         status: "activated",
         baselineDeploymentId: undefined,
       }),
-      writeJson(join(directory, "reports/provider-004.json"), {
-        operation: "restoreSiteDeploy",
-        deployId: pair.netlifyDeployId,
-        artifactSha256: value.prepared.artifacts.netlify.sha256,
-      }),
-      writeJson(join(directory, "reports/provider-005.json"), {
+      writeJson(join(directory, "reports/provider-004.json"), publishPending),
+      writeJson(join(directory, "reports/provider-005.json"), publishResponse),
+      writeJson(join(directory, "reports/provider-006.json"), {
         publishedDeployId: pair.netlifyDeployId,
       }),
     ]);
@@ -322,6 +334,38 @@ describe("staging recovery CLI", () => {
     });
     expect(mocks.providerFactory).not.toHaveBeenCalled();
   });
+
+  it.each(["missing", "duplicate", "unknown"] as const)(
+    "rejects %s pending Netlify restore evidence while retaining the response record",
+    async (variant) => {
+      const data = await fixture();
+      await runStagingRecoveryCli(["preflight", ...data.flags], data.repository);
+      const sourceDirectory = join(data.workspace, "source-release");
+      const pendingPath = join(sourceDirectory, "reports/provider-004.json");
+      const pending = JSON.parse(await readFile(pendingPath, "utf8"));
+      expect(
+        JSON.parse(await readFile(join(sourceDirectory, "reports/provider-005.json"), "utf8")),
+      ).toMatchObject({ operation: "restoreSiteDeploy", phase: "mutation-response-received" });
+      if (variant === "missing") await rm(pendingPath);
+      else if (variant === "duplicate") {
+        await writeJson(join(sourceDirectory, "reports/provider-007.json"), pending);
+      } else {
+        await writeJson(pendingPath, { ...pending, unexpected: true });
+      }
+
+      await expect(
+        readStagingReleaseEvidence(
+          sourceDirectory,
+          {
+            runId: 110,
+            workflowCommit: sourceCommit,
+            artifact: data.sourceArtifact,
+          },
+          data.configuration,
+        ),
+      ).rejects.toThrow("Staging provider evidence differs.");
+    },
+  );
 
   it("blocks provider construction until execute re-verifies the protected GitHub context", async () => {
     const data = await fixture();
