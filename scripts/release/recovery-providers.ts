@@ -34,6 +34,11 @@ import {
   createWranglerAccessTokenResolver,
   type WorkerReleaseTransport,
 } from "./worker-release.ts";
+import {
+  stagingRecoveryRecordSchema,
+  type StagingRecoveryDependencies,
+  type StagingRecoveryRecord,
+} from "./staging-recovery-runner.ts";
 
 export type RecoveryProviderFactoryInput = {
   configuration: ReleaseConfig;
@@ -41,6 +46,14 @@ export type RecoveryProviderFactoryInput = {
   previous?: RecoveryRecord;
   repositoryRoot: string;
   smokeOutputDirectory: string;
+};
+
+export type StagingRecoveryProviderFactoryInput = Omit<
+  RecoveryProviderFactoryInput,
+  "plan" | "previous"
+> & {
+  plan: RecoveryProviderPlan & { environment: "staging" };
+  previous?: StagingRecoveryRecord;
 };
 
 export type RecoveryProviderFactoryOverrides = {
@@ -66,6 +79,15 @@ export type RecoveryProviderFactoryOverrides = {
 };
 
 export type RecoveryProviderFactoryDependencies = RecoveryDependencies;
+export type StagingRecoveryProviderFactoryDependencies = StagingRecoveryDependencies;
+
+type ProviderRecoveryRecord = RecoveryRecord | StagingRecoveryRecord;
+type ProviderDependenciesFor<Record extends ProviderRecoveryRecord> = Omit<
+  RecoveryDependencies,
+  "reconcile"
+> & {
+  reconcile(step: "restore-netlify" | "restore-worker", record: Record): Promise<Record["results"]>;
+};
 
 const SAFE_REPORT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
 const SYSTEM_ENVIRONMENT_KEYS = [
@@ -222,7 +244,7 @@ const translateCheckpoint = (
   };
 };
 
-const latestWorkerResponseId = (record: RecoveryRecord): string | undefined =>
+const latestWorkerResponseId = (record: ProviderRecoveryRecord): string | undefined =>
   record.journal
     .filter(
       ({ step, value }) =>
@@ -232,21 +254,22 @@ const latestWorkerResponseId = (record: RecoveryRecord): string | undefined =>
     )
     .at(-1)?.value.deploymentId;
 
-const mutationStartedWithoutEvidence = (record: RecoveryRecord): boolean =>
+const mutationStartedWithoutEvidence = (record: ProviderRecoveryRecord): boolean =>
   !record.targetEvidence &&
   (record.stages["restore-netlify"] !== "pending" ||
     record.stages["restore-worker"] !== "pending" ||
     record.journal.some(({ step }) => step === "restore-netlify" || step === "restore-worker"));
 
-export async function createRecoveryProviderDependencies(
-  rawInput: RecoveryProviderFactoryInput,
+async function createProviderDependencies<Record extends ProviderRecoveryRecord>(
+  rawInput: Omit<RecoveryProviderFactoryInput, "previous"> & { previous?: Record },
+  parseRecord: (value: unknown) => Record,
   overrides: RecoveryProviderFactoryOverrides = {},
-): Promise<RecoveryProviderFactoryDependencies> {
+): Promise<ProviderDependenciesFor<Record>> {
   const repositoryRoot = resolve(rawInput.repositoryRoot);
   const smokeOutputDirectory = resolve(rawInput.smokeOutputDirectory);
   const configuration = releaseConfigSchema.parse(rawInput.configuration);
   const plan = rawInput.plan;
-  const previous = rawInput.previous ? recoveryRecordSchema.parse(rawInput.previous) : undefined;
+  const previous = rawInput.previous ? parseRecord(rawInput.previous) : undefined;
   const target = configuration.environments[plan.environment];
   const production = configuration.environments.production;
   if (!target.netlify || !target.cloudflare || !production.netlify || !production.cloudflare)
@@ -390,7 +413,7 @@ export async function createRecoveryProviderDependencies(
   return {
     inspect,
     reconcile: async (step, rawRecord) => {
-      const record = recoveryRecordSchema.parse(rawRecord);
+      const record = parseRecord(rawRecord);
       if (!record.targetEvidence) throw new Error("Recovery target evidence is missing.");
       evidence = record.targetEvidence;
       const dependencies = await adapterDependencies();
@@ -457,4 +480,30 @@ export async function createRecoveryProviderDependencies(
     },
     verifyTransition: () => writeSmoke("transition"),
   };
+}
+
+export async function createRecoveryProviderDependencies(
+  rawInput: RecoveryProviderFactoryInput,
+  overrides: RecoveryProviderFactoryOverrides = {},
+): Promise<RecoveryProviderFactoryDependencies> {
+  if (rawInput.plan.environment !== "production")
+    throw new Error("Recovery provider input is invalid.");
+  return createProviderDependencies(
+    rawInput,
+    (value) => recoveryRecordSchema.parse(value),
+    overrides,
+  );
+}
+
+export async function createStagingRecoveryProviderDependencies(
+  rawInput: StagingRecoveryProviderFactoryInput,
+  overrides: RecoveryProviderFactoryOverrides = {},
+): Promise<StagingRecoveryProviderFactoryDependencies> {
+  if (rawInput.plan.environment !== "staging")
+    throw new Error("Staging recovery provider input is invalid.");
+  return createProviderDependencies(
+    rawInput,
+    (value) => stagingRecoveryRecordSchema.parse(value),
+    overrides,
+  );
 }

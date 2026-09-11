@@ -34,7 +34,7 @@ export type RecoveryDependencies = {
   verifyPair(): Promise<boolean>;
 };
 export type RecoveryRunInput = {
-  environment: "staging" | "production";
+  environment: "production";
   repositoryRoot: string;
   reportDirectory: string;
   source: ProductionRecord;

@@ -39,6 +39,40 @@ no retained runner artifact proving the original Worker source, bundle digest an
 A verified baseline adoption procedure is required before the first coordinated release; an old
 version ID or a manually invented digest does not satisfy this prerequisite.
 
+## Protected staging calibration and recovery
+
+The **Staging release rehearsal** workflow accepts `mode` values `approval` and `calibration`.
+Calibration prepares and rehearses an exact protected `stage` commit and retains
+`release-rehearsal-diagnostics`; it never creates a production approval or requires a fabricated
+production baseline. The normal approval mode retains its production-baseline requirements.
+See [the rehearsal workflow](../.github/workflows/release-rehearsal.yml) and
+[its parser](../scripts/release/rehearsal-workflow-cli.ts).
+
+To exercise real restoration, obtain two successful protected staging calibrations, A then B, from
+distinct reviewed commits with the same deployment configuration. B's recorded prior pair must be
+A's observed pair, and both services must have distinct deployment/version IDs. Retain both runs'
+complete diagnostics artifacts, including prepared bundles and provider checkpoints.
+
+Dispatch **Staging recovery** from `stage` with `source_rehearsal_run_id` set to B and
+`target_rehearsal_run_id` set to A. For an interrupted recovery, retain those IDs and add
+`resume_recovery_run_id` for the latest interrupted recovery. The workflow shares the
+`release-rehearsal` concurrency group with calibration. Its preflight verifies protected runs and
+artifact digests without provider tokens; execution repeats those checks and records its state before
+provider operations. Staging source and record schemas are separate from production records, and
+production targets are explicitly rejected.
+
+The runner restores Netlify, verifies the transition, restores the Worker, then verifies the final
+pair using real collaboration and screenshot smoke. It retains `release-staging-recovery` evidence
+for seven days. Resume reuses sealed A/B evidence in that retained artifact and reconciles uncertain
+writes before retrying. After the drill, use the normal forward rehearsal path to establish the
+intended final staging candidate and retain its newly observed IDs.
+
+These operations are implemented and locally tested; a successful live drill is still required.
+See [the staging recovery workflow](../.github/workflows/release-staging-recovery.yml),
+[CLI](../scripts/release/staging-recovery-cli.ts),
+[source contract](../scripts/release/staging-recovery-source.ts), and
+[runner](../scripts/release/staging-recovery-runner.ts).
+
 ## Initial production baseline adoption
 
 The initial Worker launch has no retained artifact proving its source. Ordinary release approval
@@ -123,18 +157,21 @@ workflow code provide additional controls, not narrower provider token permissio
 
 At this checkpoint, all four provider references resolved successfully through Varlock without
 exposing their values. Both GitHub environments contain the corresponding deployment secret names,
-installed after verifying their branch restrictions. This confirms credential provisioning, not
-provider authorization. A subsequent read-only check confirmed staging's required
-`GITHUB_OIDC_AUDIENCE` is still absent. An earlier update returned HTTP 403, and the retry with the new
-token timed out during 1Password authorization before reaching Netlify. Setting it to the staging
-origin remains a provisioning prerequisite.
+installed after verifying their branch restrictions. Staging `GITHUB_OIDC_AUDIENCE` was subsequently
+created with the exact staging origin and read back successfully. The Free-plan request uses all
+scopes, matching the installed Netlify CLI default; a selected-scope request was rejected with HTTP 403. The release check requires the Functions scope to be included and accepts this all-scopes value.
+
+Read-only staging and production inspection with the new deployment tokens passed both platforms' non-secret
+configuration, required secret-name and scope checks. This proves read access and configuration
+presence, not successful deployment or cross-platform secret equality. Live calibration and recovery
+smoke remain required before production cutover.
 
 ## Cutover gates
 
 Complete these gates in order and retain dated sanitized evidence:
 
-1. Finish recovery review and automated checks. Install and verify environment credentials and the
-   staging OIDC audience. Establish attributable production source and retained recovery artifacts.
+1. Finish recovery review and automated checks. Verify deployment authorization using the provisioned
+   credentials and staging OIDC configuration. Establish attributable production source and retained recovery artifacts.
 2. Rehearse the integrated candidate on staging. Exercise a partial deployment, explicit restoration,
    interrupted restoration, Netlify function configuration after restore, Worker secret/migration
    limits, missing provider targets, and final collaboration/screenshot verification.

@@ -31,7 +31,7 @@ export type RecoveryTargetEvidenceRecord = z.infer<typeof recoveryTargetEvidence
 export const recoveryRecordSchema = z.strictObject({
   schemaVersion: z.literal(1),
   operation: z.literal("production-recovery"),
-  environment: z.enum(["staging", "production"]),
+  environment: z.literal("production"),
   sourceProductionRunId: z.number().int().positive(),
   sourceProductionRecordSha256: digestSchema,
   recoveryPlanSha256: digestSchema,

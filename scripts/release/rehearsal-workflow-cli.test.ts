@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { parseRehearsalWorkflowArguments, runRehearsalWorkflow } from "./rehearsal-workflow-cli.ts";
 const mocks = vi.hoisted(() => ({ prepare: vi.fn(), rehearse: vi.fn() }));
 vi.mock("./github-release.ts", async (original) => ({
@@ -15,6 +15,10 @@ vi.mock("./prepare.ts", async (original) => ({
 }));
 vi.mock("./rehearsal-cli.ts", () => ({ runRehearsalCli: mocks.rehearse }));
 const roots: string[] = [];
+beforeEach(() => {
+  mocks.prepare.mockReset();
+  mocks.rehearse.mockReset();
+});
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -24,7 +28,7 @@ it("requires explicit quota authorization and an external workspace argument", (
       ["--workspace", "new", "--confirm-external-smoke", "--capture"],
       "/tmp",
     ),
-  ).toEqual({ workspace: "/tmp/new" });
+  ).toEqual({ workspace: "/tmp/new", calibrationOnly: false });
   expect(() => parseRehearsalWorkflowArguments(["--workspace", "new"], "/tmp")).toThrow();
   expect(() =>
     parseRehearsalWorkflowArguments(
@@ -32,6 +36,33 @@ it("requires explicit quota authorization and an external workspace argument", (
       "/tmp",
     ),
   ).toThrow();
+});
+it("runs a calibration without reading or issuing a production approval", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rehearsal-calibration-"));
+  roots.push(root);
+  const repo = join(root, "repo");
+  await mkdir(repo);
+  mocks.prepare.mockResolvedValue({ source: { candidate: "a".repeat(40) } });
+  mocks.rehearse.mockResolvedValue({ outcome: "passed" });
+
+  await expect(
+    runRehearsalWorkflow(
+      [
+        "--workspace",
+        join(root, "release"),
+        "--confirm-external-smoke",
+        "--capture",
+        "--calibration-only",
+      ],
+      repo,
+    ),
+  ).resolves.toEqual({
+    schemaVersion: 1,
+    operation: "staging-calibration",
+    outcome: "passed",
+  });
+  expect(mocks.prepare).toHaveBeenCalledOnce();
+  expect(mocks.rehearse).toHaveBeenCalledOnce();
 });
 it("blocks a missing attributable production baseline before building or consuming quotas", async () => {
   const root = await mkdtemp(join(tmpdir(), "rehearsal-workflow-"));

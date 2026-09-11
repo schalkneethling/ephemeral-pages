@@ -24,6 +24,7 @@ export function parseRehearsalWorkflowArguments(args: readonly string[], cwd: st
       workspace: { type: "string" },
       "confirm-external-smoke": { type: "boolean" },
       capture: { type: "boolean" },
+      "calibration-only": { type: "boolean" },
     },
   });
   const names = tokens.filter((token) => token.kind === "option").map((token) => token.name);
@@ -34,25 +35,30 @@ export function parseRehearsalWorkflowArguments(args: readonly string[], cwd: st
     names.length !== new Set(names).size
   )
     throw new Error("Explicit rehearsal and screenshot confirmation is required.");
-  return { workspace: resolve(cwd, values.workspace) };
+  return {
+    workspace: resolve(cwd, values.workspace),
+    calibrationOnly: values["calibration-only"] === true,
+  };
 }
 export async function runRehearsalWorkflow(argv: readonly string[], repositoryRoot: string) {
-  const { workspace } = parseRehearsalWorkflowArguments(argv, process.cwd());
+  const { calibrationOnly, workspace } = parseRehearsalWorkflowArguments(argv, process.cwd());
   await assertExternalArtifactDirectory(repositoryRoot, workspace);
   const api = createGitHubReleaseApi({ token: process.env.GITHUB_TOKEN ?? "" });
   const invocation = await verifyStagingInvocation(api, process.env as GitHubRuntimeEnvironment);
-  // This reviewed baseline is intentionally not synthesized from whichever
-  // commit happens to be checked out. Missing provenance blocks before quotas.
   const baselinePath = resolve(repositoryRoot, "docs/release-evidence/production-baseline.json");
-  const baseline = await readReleaseJson(baselinePath, releaseBaselineSchema);
-  if (
-    baseline.environment !== "production" ||
-    !baseline.providers.netlify?.sourceCommit ||
-    !baseline.providers.cloudflare?.sourceCommit ||
-    baseline.providers.cloudflare.traffic.length !== 1 ||
-    baseline.providers.cloudflare.traffic[0].percentage !== 100
-  )
-    throw new Error("A known-source production baseline is required.");
+  if (!calibrationOnly) {
+    // This reviewed baseline is intentionally not synthesized from whichever
+    // commit happens to be checked out. Missing provenance blocks before quotas.
+    const baseline = await readReleaseJson(baselinePath, releaseBaselineSchema);
+    if (
+      baseline.environment !== "production" ||
+      !baseline.providers.netlify?.sourceCommit ||
+      !baseline.providers.cloudflare?.sourceCommit ||
+      baseline.providers.cloudflare.traffic.length !== 1 ||
+      baseline.providers.cloudflare.traffic[0].percentage !== 100
+    )
+      throw new Error("A known-source production baseline is required.");
+  }
   await mkdir(workspace, { mode: 0o700 });
   const artifacts = resolve(workspace, "artifacts"),
     reports = resolve(workspace, "reports"),
@@ -69,6 +75,9 @@ export async function runRehearsalWorkflow(argv: readonly string[], repositoryRo
   );
   if (rehearsal.outcome !== "passed") throw new Error("Rehearsal did not pass.");
   await verifyStagingInvocation(api, process.env as GitHubRuntimeEnvironment);
+  if (calibrationOnly) {
+    return { schemaVersion: 1, operation: "staging-calibration", outcome: "passed" } as const;
+  }
   await mkdir(approvalDirectory, { mode: 0o700 });
   await Promise.all([
     writeFile(

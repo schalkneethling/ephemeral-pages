@@ -26,7 +26,8 @@ from `main` and the `staging` environment to deployments from `stage`. Store sep
 deployment secrets: a workflow edited on another branch must not be able to retrieve them. Job-level
 ref checks provide an additional guard; native environment restrictions establish the credential
 boundary. These restrictions and deployment secret names have been provisioned. Provider authorization,
-the missing staging OIDC audience, and live workflow verification remain rollout gates.
+deployment authorization and live workflow verification remain rollout gates. Staging OIDC configuration
+has been provisioned and passed read-only verification.
 
 Set Netlify `GITHUB_OIDC_AUDIENCE` to the exact site origin in each environment, with function scope.
 The workflow smoke uses GitHub OIDC for upload identity; the checked-in environment configuration
@@ -108,7 +109,7 @@ automatic production publication, and confirm that Git-triggered builds cannot p
 independent Cloudflare Git deployment disabled. Only then enable the reviewed production policy and
 perform the first coordinated production release.
 
-Dispatch `Staging release rehearsal` from `stage`. Its successful `release-rehearsal` artifact contains
+Dispatch `Staging release rehearsal` from `stage` in `approval` mode. Its successful `release-rehearsal` artifact contains
 only the approval bundle; `release-rehearsal-diagnostics` retains prepared artifacts and reports even
 on failure. Dispatch `Production release` from `main` with `operation`, `promotion_pr`,
 `rehearsal_run_id`, `approval_sha256`, and `resume_run_id` only when resuming. Keep the workflow job
@@ -123,3 +124,7 @@ resumption; repository completion records do not preserve provider rollback targ
 Recovery uses the same workflow with `operation` set to `recover`, `recovery_source_run_id`, and an
 optional `resume_recovery_run_id`. Leave promotion inputs empty. Its credentialed mutation step is
 **Restore verified prior pair**; see [the recovery guide](recovery.md) for evidence and resume rules.
+
+Before the initial production baseline exists, use rehearsal `calibration` mode and the separate
+**Staging recovery** workflow to prove restoration with retained A/B staging evidence. Calibration
+does not issue a production approval. See [the staging drill procedure](recovery.md#protected-staging-calibration-and-recovery).
