@@ -43,7 +43,7 @@ const ROTATED_KEYS: CapabilityKeys = {
   previous: { ...KEYS.current, validUntil: "2026-08-24T08:00:00.000Z" },
 };
 const TICKET: TicketConfiguration = {
-  secret: "ticket-signing-secret-at-least-32-bytes-long",
+  secret: "test-ticket-".repeat(4),
   audience: "ephemeral-collaboration",
   websocketUrl: "wss://collaboration.example.com",
 };

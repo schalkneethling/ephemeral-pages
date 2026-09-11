@@ -30,6 +30,9 @@ jobs:
       - name: Check application
         run: bunx vp check
 
+      - name: Check release tooling
+        run: bun run release:check
+
       - name: Test application
         run: bunx vp test
 

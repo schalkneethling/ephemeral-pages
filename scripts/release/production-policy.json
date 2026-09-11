@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "productionEnabled": false,
+  "repository": "schalkneethling/ephemeral-pages",
+  "productionWorkflow": ".github/workflows/release-production.yml",
+  "rehearsalWorkflow": ".github/workflows/release-rehearsal.yml",
+  "maximumEvidenceAgeHours": 168
+}
