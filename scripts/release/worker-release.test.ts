@@ -15,6 +15,7 @@ import {
   activatePreparedProductionWorker,
   createCloudflareWorkerFetchTransport,
   createWranglerAccessTokenResolver,
+  inspectPreparedProductionWorkerBaseline,
   reconcileWorkerRelease,
   uploadPreparedStagingWorker,
   uploadPreparedProductionWorker,
@@ -660,6 +661,67 @@ describe("activatePreparedStagingWorker", () => {
 });
 
 describe("production Worker operations", () => {
+  it("inspects the exact prepared production baseline without mutating or exposing secret values", async () => {
+    const { input, manifest } = await createProductionFixture();
+    const authorize = vi.fn(
+      (
+        _provider: "cloudflare" | "netlify",
+        _target: { accountId: string; siteId?: string; workerName?: string },
+        _sha256: string,
+      ) => undefined,
+    );
+    input.authorization = { assertArtifact: (...args) => authorize(...args) };
+    const transport = new ScriptedTransport([
+      service,
+      deployments("baseline-deployment", "baseline-version"),
+      version(input, "baseline-version"),
+    ]);
+
+    await expect(
+      inspectPreparedProductionWorkerBaseline(input, {
+        checkpoint: async () => {
+          throw new Error("inspection must not checkpoint");
+        },
+        transport,
+        verifyArtifacts: async () => manifest,
+      }),
+    ).resolves.toEqual({
+      accountId: "account-id",
+      deploymentId: "baseline-deployment",
+      migrationTag: "v1",
+      requiredSecretBindingNames: ["ADMIN_TOKEN", "TICKET_HMAC_SECRET"],
+      secretValuesObservable: false,
+      versionId: "baseline-version",
+      workerName: "production-worker",
+    });
+    expect(transport.requests.every(({ method }) => method === "GET")).toBe(true);
+    expect(authorize).toHaveBeenCalledWith(
+      "cloudflare",
+      { accountId: "account-id", workerName: "production-worker" },
+      input.prepared.manifestSha256,
+    );
+  });
+
+  it("blocks baseline inspection before mutation when the current migration policy differs", async () => {
+    const { input, manifest } = await createProductionFixture();
+    const transport = new ScriptedTransport([
+      {
+        default_environment: {
+          script: { migration_tag: "v2", observability: manifest.policy.observability },
+        },
+      },
+    ]);
+
+    await expect(
+      inspectPreparedProductionWorkerBaseline(input, {
+        checkpoint: async () => undefined,
+        transport,
+        verifyArtifacts: async () => manifest,
+      }),
+    ).rejects.toMatchObject({ kind: "preflight" });
+    expect(transport.requests.every(({ method }) => method === "GET")).toBe(true);
+  });
+
   it("authorizes the exact production artifact before upload and activation reads", async () => {
     const { input, manifest } = await createProductionFixture();
     const authorization = vi.fn(

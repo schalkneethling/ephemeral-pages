@@ -759,6 +759,18 @@
             ["docs/release-evidence/2026-09-11-staging-recovery-34652303609/README.md"],
           ],
         ],
+        adopt: [
+          "One-time Worker adoption",
+          "built",
+          "Preserve Netlify; establish Worker provenance",
+          "The separate default-off adoption operation uses protected main, exact staged source evidence and the production concurrency group. It verifies the locked, Git-attributed Netlify deployment and preserves it while activating a sealed Worker artifact with no migration or secret rotation. A passed collaboration/screenshot smoke and distinct adoption record can establish the first reviewed baseline. The operator accepted fail-forward recovery for the historical Worker; no legacy restore target is invented. Live adoption remains outstanding.",
+          [
+            ["scripts/release/production-adoption-record.ts"],
+            ["scripts/release/production-adoption-runner.ts"],
+            ["scripts/release/recovery-target.ts"],
+            ["docs/production-orchestration.md"],
+          ],
+        ],
         approve: [
           "5 · Approve & promote",
           "built",
@@ -955,6 +967,7 @@
               ["prepare", "rehearse"],
               ["inspect retained artifact, then rehearse"],
             ],
+            ["Initial baseline only", ["adopt"], []],
             [
               "Layer 5 / Execution",
               ["approve", "deploy", "resume"],
@@ -982,7 +995,7 @@
             [
               "Bottleneck: authority",
               ["approve", "cutover"],
-              "One production release at a time, shared promotion/recovery serialization, and controlled publication are required. Netlify’s automatic main path has not yet been disabled.",
+              "One production release at a time, shared adoption/promotion/recovery serialization, and controlled publication are required. Netlify’s automatic main path has not yet been disabled.",
             ],
           ],
         },

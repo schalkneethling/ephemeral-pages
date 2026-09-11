@@ -1,4 +1,5 @@
 import { completedRecoveryVerifier } from "./recovery-completion.ts";
+import { completedAdoptionVerifier } from "./production-adoption-completion.ts";
 import { resolve } from "node:path";
 import { z } from "zod/v4";
 import { artifactHash } from "./artifact-contract.ts";
@@ -78,6 +79,7 @@ export async function verifyProductionContext(
       current,
       resumeRunId: args.resumeRunId,
       verifyCompletedRecovery: completedRecoveryVerifier(repositoryRoot, token),
+      verifyCompletedAdoption: completedAdoptionVerifier(repositoryRoot, token),
     }),
   ]);
   return { api, current, promotion, ci, rehearsal, prior, configuration };
@@ -96,7 +98,13 @@ export async function verifyLocalProductionEvidence(
   );
   if (
     bundle.approval.candidate !== context.promotion.candidate ||
-    bundle.approval.tree !== context.promotion.promotionTree
+    bundle.approval.tree !== context.promotion.promotionTree ||
+    (context.prior.previousOperation === "adoption" &&
+      (!context.prior.completedAdoption ||
+        bundle.approval.configurationFingerprint !==
+          context.prior.completedAdoption.configurationSha256 ||
+        JSON.stringify(bundle.approval.baseline) !==
+          JSON.stringify(context.prior.completedAdoption.proposedBaseline)))
   )
     throw new Error("Approved candidate differs from promotion.");
   const previous =
