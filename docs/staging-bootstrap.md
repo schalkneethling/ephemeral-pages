@@ -18,7 +18,7 @@ release configuration.
 
 ## Create the Netlify project
 
-Use `scripts/release/staging-bootstrap.json`, or create a JSON input file containing exactly the six non-secret variables.
+Use `scripts/release/staging-bootstrap.json`, or create a JSON input file containing exactly the seven non-secret variables.
 The parser rejects extra keys, including secret variable names. The proposed input is:
 
 ```json
@@ -32,7 +32,8 @@ The parser rejects extra keys, including secret variable names. The proposed inp
     "COLLABORATION_WEBSOCKET_URL": "wss://ephemeral-pages-collaboration-staging.volume4-schalk.workers.dev",
     "COLLABORATION_TICKET_AUDIENCE": "ephemeral-pages-collaboration-staging",
     "COLLABORATION_CAPABILITY_CURRENT_VERSION": "v1",
-    "COLLABORATION_ENABLED": "true"
+    "COLLABORATION_ENABLED": "true",
+    "GITHUB_OIDC_AUDIENCE": "https://ephemeral-pages-staging.netlify.app"
   }
 }
 ```
@@ -76,6 +77,7 @@ it to `post-processing`. The helper then creates only these non-secret values in
 | `COLLABORATION_TICKET_AUDIENCE`            | `ephemeral-pages-collaboration-staging`                                    | Functions         |
 | `COLLABORATION_CAPABILITY_CURRENT_VERSION` | `v1`                                                                       | Functions         |
 | `COLLABORATION_ENABLED`                    | `true`; deploy the app only after Worker and secrets are ready             | Functions         |
+| `GITHUB_OIDC_AUDIENCE`                     | Same exact origin as `PUBLIC_BASE_URL`                                     | Functions         |
 
 Some Netlify account plans expose only All scopes. The helper therefore requests All scopes for
 these non-secret variables. The policy above records required minimum scopes, so the additional
@@ -107,7 +109,7 @@ bun scripts/release/bootstrap-cli.ts \
   --recover-variables
 ```
 
-Recovery advances only after `getSite` or `getEnvVars` proves the exact expected state. If all six
+Recovery advances only after `getSite` or `getEnvVars` proves the exact expected state. If all seven
 variable keys are absent, recovery returns to `site-created`; partial configuration remains blocked. An
 inaccessible provider remains blocked. Never delete or recreate a partial target as an automatic
 recovery step. A stale lock also blocks execution and requires operator inspection before removal.

@@ -8,6 +8,7 @@
     "COLLABORATION_WEBSOCKET_URL": "wss://ephemeral-pages-collaboration-staging.volume4-schalk.workers.dev",
     "COLLABORATION_TICKET_AUDIENCE": "ephemeral-pages-collaboration-staging",
     "COLLABORATION_CAPABILITY_CURRENT_VERSION": "v1",
-    "COLLABORATION_ENABLED": "true"
+    "COLLABORATION_ENABLED": "true",
+    "GITHUB_OIDC_AUDIENCE": "https://ephemeral-pages-staging.netlify.app"
   }
 }

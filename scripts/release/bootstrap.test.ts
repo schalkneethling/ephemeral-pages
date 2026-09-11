@@ -36,6 +36,7 @@ const input: NetlifyStagingBootstrapInput = {
     COLLABORATION_TICKET_AUDIENCE: "ephemeral-pages-collaboration-staging",
     COLLABORATION_CAPABILITY_CURRENT_VERSION: "v1",
     COLLABORATION_ENABLED: "true",
+    GITHUB_OIDC_AUDIENCE: "https://ephemeral-pages-staging.netlify.app",
   },
 };
 
@@ -433,3 +434,18 @@ describe("staging bootstrap CLI primitives", () => {
     }
   });
 });
+
+it.each([undefined, "https://different.example"])(
+  "blocks missing or mismatched staging OIDC audience before provider calls",
+  async (audience) => {
+    const state = harness();
+    const candidate = structuredClone(input);
+    if (audience === undefined)
+      Reflect.deleteProperty(candidate.nonSecretVariables, "GITHUB_OIDC_AUDIENCE");
+    else Reflect.set(candidate.nonSecretVariables, "GITHUB_OIDC_AUDIENCE", audience);
+    await expect(bootstrapNetlifyStaging(candidate, state.dependencies)).rejects.toThrow(
+      "Staging bootstrap input is invalid.",
+    );
+    expect(state.calls).toEqual([]);
+  },
+);

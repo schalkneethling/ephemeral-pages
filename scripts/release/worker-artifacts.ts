@@ -5,6 +5,7 @@ import { chmod, lstat, mkdir, open, readdir, rename, rm, writeFile } from "node:
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { unstable_readConfig } from "wrangler";
+import { z } from "zod/v4";
 
 import type { CloudflareTarget, ReleaseEnvironment } from "./schema.ts";
 
@@ -158,6 +159,65 @@ const safeRelativePath = (value: string): boolean =>
   !isAbsolute(value) &&
   !value.includes("\\") &&
   value.split("/").every((part) => part.length > 0 && part !== "." && part !== "..");
+
+const workerArtifactFileSchema = z.strictObject({
+  bytes: z.number().int().min(0).max(MAX_FILE_BYTES),
+  path: z.string().refine(safeRelativePath),
+  sha256: z.string().regex(SHA256),
+});
+
+export const workerArtifactManifestSchema: z.ZodType<WorkerArtifactManifest> = z
+  .strictObject({
+    schemaVersion: z.literal(1),
+    wranglerVersion: z.literal(WRANGLER_VERSION),
+    target: z.strictObject({
+      accountId: z.string(),
+      environment: z.enum(["staging", "production"]),
+      productionWorkerName: z.string(),
+      workerName: z.string(),
+      wranglerEnvironment: z.string(),
+    }),
+    source: z.strictObject({
+      configPath: z.string().refine(safeRelativePath),
+      configSha256: z.string().regex(SHA256),
+    }),
+    uploadConfig: workerArtifactFileSchema,
+    entrypoint: z.literal(ENTRYPOINT_PATH),
+    files: z.array(workerArtifactFileSchema).min(1).max(MAX_FILES),
+    policy: z.strictObject({
+      browser: z.strictObject({ binding: z.literal("BROWSER") }),
+      compatibilityDate: z.string(),
+      compatibilityFlags: z.array(z.string()),
+      durableObjects: z.strictObject({
+        bindings: z.tuple([
+          z.strictObject({
+            className: z.literal("CollaborationRoom"),
+            name: z.literal("COLLABORATION_ROOMS"),
+          }),
+        ]),
+      }),
+      migrations: z.tuple([
+        z.strictObject({
+          newSqliteClasses: z.tuple([z.literal("CollaborationRoom")]),
+          tag: z.literal("v1"),
+        }),
+      ]),
+      observability: z.unknown(),
+      requiredSecretNames: z.tuple([z.literal("TICKET_HMAC_SECRET"), z.literal("ADMIN_TOKEN")]),
+      workersDev: z.literal(true),
+    }),
+  })
+  .superRefine((manifest, context) => {
+    const paths = manifest.files.map(({ path }) => path);
+    if (
+      new Set(paths).size !== paths.length ||
+      !paths.includes(ENTRYPOINT_PATH) ||
+      JSON.stringify(stableValue(manifest.uploadConfig)) !==
+        JSON.stringify(stableValue(manifest.files.find(({ path }) => path === UPLOAD_CONFIG_PATH)))
+    ) {
+      context.addIssue({ code: "custom", message: "Worker artifact manifest differs." });
+    }
+  });
 
 const readRegularFile = async (path: string, maxBytes = MAX_FILE_BYTES): Promise<Buffer> => {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -674,9 +734,9 @@ export const verifyWorkerArtifacts = async (
   if (sha256(manifestBytes) !== prepared.manifestSha256) {
     throw new WorkerArtifactError("artifact");
   }
-  let manifest: unknown;
+  let manifest: WorkerArtifactManifest;
   try {
-    manifest = JSON.parse(manifestBytes.toString("utf8"));
+    manifest = workerArtifactManifestSchema.parse(JSON.parse(manifestBytes.toString("utf8")));
   } catch {
     throw new WorkerArtifactError("artifact");
   }
@@ -739,5 +799,5 @@ export const verifyWorkerArtifacts = async (
     join(input.artifactDirectory, UPLOAD_CONFIG_PATH),
   );
   if (!actualUploadConfig.equals(expectedUploadConfig)) throw new WorkerArtifactError("artifact");
-  return manifest as unknown as WorkerArtifactManifest;
+  return manifest;
 };

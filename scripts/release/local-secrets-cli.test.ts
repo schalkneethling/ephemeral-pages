@@ -41,6 +41,7 @@ const input = {
     COLLABORATION_TICKET_AUDIENCE: "ephemeral-pages-collaboration-staging",
     COLLABORATION_CAPABILITY_CURRENT_VERSION: "v1",
     COLLABORATION_ENABLED: "true",
+    GITHUB_OIDC_AUDIENCE: "https://ephemeral-pages-staging.netlify.app",
   },
 };
 const completeInput: NetlifyStagingBootstrapInput = { ...input, productionSiteId };

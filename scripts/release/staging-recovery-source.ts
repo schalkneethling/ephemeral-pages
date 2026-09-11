@@ -1,6 +1,6 @@
 import { z } from "zod/v4";
 
-import { artifactHash } from "./artifact-contract.ts";
+import { artifactConfigurationFingerprint, artifactHash } from "./artifact-contract.ts";
 import { preparedReleaseSchema } from "./prepare.ts";
 import { successfulRehearsalSchema } from "./production-approval.ts";
 import { digestSchema, pairSchema, providerIdSchema } from "./production-record.ts";
@@ -94,6 +94,7 @@ export type ValidatedStagingRecoverySource = {
 export function validateStagingRecoverySource(
   rawSource: StagingRecoverySource,
   rawConfiguration: ReleaseConfig,
+  workerConfig: string,
 ): ValidatedStagingRecoverySource {
   const source = stagingRecoverySourceSchema.parse(rawSource);
   const configuration = releaseConfigSchema.parse(rawConfiguration);
@@ -111,6 +112,13 @@ export function validateStagingRecoverySource(
     staging.cloudflare.workerName === production.cloudflare.workerName
   ) {
     throw new Error("Distinct staging recovery targets are required.");
+  }
+  const expectedConfigurationFingerprint = artifactConfigurationFingerprint(staging, workerConfig);
+  if (
+    source.source.prepared.source.configurationFingerprint !== expectedConfigurationFingerprint ||
+    source.target.prepared.source.configurationFingerprint !== expectedConfigurationFingerprint
+  ) {
+    throw new Error("Staging recovery artifact configuration differs.");
   }
   for (const release of [source.target, source.source]) {
     if (

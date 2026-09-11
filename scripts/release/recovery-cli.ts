@@ -39,7 +39,7 @@ import { expectedProductionPair } from "./production-runner.ts";
 import { runRecovery, type RecoveryDependencies } from "./recovery-runner.ts";
 import { createRecoveryProviderDependencies } from "./recovery-providers.ts";
 import type { RecoveryProviderPlan } from "./recovery-provider-adapters.ts";
-import type { WorkerArtifactManifest } from "./worker-artifacts.ts";
+import { workerArtifactManifestSchema } from "./worker-artifacts.ts";
 import { verifyProductionWorkspace } from "./production-workspace.ts";
 
 import {
@@ -367,9 +367,10 @@ export async function runRecoveryCli(argv: readonly string[], repositoryRoot: st
       "artifacts",
       local.targetPrepared.artifacts.worker.directory,
     );
-    const manifest = JSON.parse(
-      await readFile(resolve(artifactDirectory, "worker-artifact.json"), "utf8"),
-    ) as WorkerArtifactManifest;
+    const manifest = await readReleaseJson(
+      resolve(artifactDirectory, "worker-artifact.json"),
+      workerArtifactManifestSchema,
+    );
     const plan: RecoveryProviderPlan = {
       environment: "production",
       productionSiteId: app.siteId,

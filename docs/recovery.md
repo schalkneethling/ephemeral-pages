@@ -67,7 +67,9 @@ for seven days. Resume reuses sealed A/B evidence in that retained artifact and 
 writes before retrying. After the drill, use the normal forward rehearsal path to establish the
 intended final staging candidate and retain its newly observed IDs.
 
-These operations are implemented and locally tested; a successful live drill is still required.
+These operations are implemented and locally tested. The registration-only bootstrap was merged
+through reviewed CI-only PR #50; the full implementations must reach protected `stage` before
+dispatch. A successful live drill is still required.
 See [the staging recovery workflow](../.github/workflows/release-staging-recovery.yml),
 [CLI](../scripts/release/staging-recovery-cli.ts),
 [source contract](../scripts/release/staging-recovery-source.ts), and
@@ -79,8 +81,16 @@ The initial Worker launch has no retained artifact proving its source. Ordinary 
 requires a known production baseline, while ordinary recovery requires a retained successful release.
 Those checks deliberately do not infer the missing Worker provenance from the Netlify commit.
 
-A separate, reviewed, one-time adoption operation is proposed; it is not implemented or authorized
-for execution by this document. After a protected staging recovery drill passes, it would:
+A read-only comparison on 11 September found that the active Worker module matches a retained
+local artifact whose manifest names `eaec58c43192e7d78859da87799a2b683a6ddf5b`. The active deployment,
+version and script ETag remained stable before and after retrieval. This establishes a byte match
+with that artifact, but does not independently verify its declared source. Two clean builds through the historical preparation pipeline produced identical output to each
+other, but different bytes from the live module. Source attribution therefore remains unverified. The ordinary recovery path still requires its normal
+tag and trusted release artifact, so this comparison cannot populate `recovery-target.json` or
+authorize production cutover.
+
+An alternative, reviewed, one-time forward adoption operation is proposed; it is not implemented or
+authorized for execution by this document. After a protected staging recovery drill passes, it would:
 
 1. Require an absent baseline and an exact reviewed production candidate with retained staging evidence.
 2. Verify and seal its production Worker artifact, current configuration, `v1` migration compatibility,

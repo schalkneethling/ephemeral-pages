@@ -19,6 +19,9 @@ export class ArtifactContractError extends Error {
 export const artifactHash = (data: string | Uint8Array): string =>
   createHash("sha256").update(data).digest("hex");
 
+export const artifactConfigurationFingerprint = (target: unknown, workerConfig: string): string =>
+  artifactHash(JSON.stringify({ target, workerConfig }));
+
 export const sourceContractSchema = z.strictObject({
   candidate: fullCommitSchema,
   tree: fullCommitSchema,
@@ -148,7 +151,7 @@ export async function verifyArtifactSource(
       candidate,
       tree,
       environment,
-      configurationFingerprint: artifactHash(JSON.stringify({ target, workerConfig })),
+      configurationFingerprint: artifactConfigurationFingerprint(target, workerConfig),
     },
     configuration,
   };

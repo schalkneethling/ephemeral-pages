@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { artifactHash } from "./artifact-contract.ts";
+import { artifactConfigurationFingerprint, artifactHash } from "./artifact-contract.ts";
 import { preparedReleaseSchema } from "./prepare.ts";
 import { successfulRehearsalSchema } from "./production-approval.ts";
 import { releaseConfigSchema } from "./schema.ts";
@@ -100,7 +100,10 @@ async function fixture() {
     JSON.parse(await readFile(new URL("./environments.json", import.meta.url), "utf8")),
   );
   await writeJson(join(repository, "scripts/release/environments.json"), configuration);
-  const configurationFingerprint = artifactHash(JSON.stringify(configuration));
+  const configurationFingerprint = artifactConfigurationFingerprint(
+    configuration.environments.staging,
+    currentCommit,
+  );
   const targetPair = {
     netlifyDeployId: "target-netlify",
     workerDeploymentId: "target-worker-deployment",

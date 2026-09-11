@@ -44,6 +44,7 @@ export const stagingBootstrapFileInputSchema = z.strictObject({
     COLLABORATION_TICKET_AUDIENCE: valueSchema,
     COLLABORATION_CAPABILITY_CURRENT_VERSION: valueSchema,
     COLLABORATION_ENABLED: valueSchema,
+    GITHUB_OIDC_AUDIENCE: valueSchema,
   }),
 });
 

@@ -139,8 +139,8 @@ describe("staging recovery GitHub evidence", () => {
       runAttempt: 1 as const,
       workflowId: 12,
       workflowCommit: sha,
-      createdAt: "2026-09-11T11:00:00.000Z",
-      updatedAt: "2026-09-11T11:01:00.000Z",
+      createdAt: "2026-09-11T10:00:00.000Z",
+      updatedAt: "2026-09-11T10:30:00.000Z",
       environmentPolicyId: 80,
     };
     const currentRun = run({
@@ -194,5 +194,63 @@ describe("staging recovery GitHub evidence", () => {
       verifyStagingRecoveryHistory(client, { current, resumeRecoveryRunId: 99, now }),
     ).resolves.toMatchObject({ mode: "resume", run: { runId: 99 } });
     await expect(verifyStagingRecoveryHistory(client, { current, now })).rejects.toThrow();
+  });
+
+  it("finds a decisive prior run within the bounded scan when total history exceeds the bound", async () => {
+    const current = {
+      runId: 101,
+      runAttempt: 1 as const,
+      workflowId: 12,
+      workflowCommit: sha,
+      createdAt: "2026-09-11T10:00:00.000Z",
+      updatedAt: "2026-09-11T10:30:00.000Z",
+      environmentPolicyId: 80,
+    };
+    const currentRun = run({
+      id: 101,
+      workflowId: 12,
+      path: STAGING_RECOVERY_WORKFLOW_PATH,
+      status: "in_progress",
+      conclusion: null,
+    });
+    const prior = run({
+      id: 100,
+      workflowId: 12,
+      path: STAGING_RECOVERY_WORKFLOW_PATH,
+      conclusion: "failure",
+    });
+    const client = api(({ path }) => {
+      if (path.endsWith(`/actions/workflows/${STAGING_RECOVERY_WORKFLOW_PATH}`))
+        return workflow(STAGING_RECOVERY_WORKFLOW_PATH, 12);
+      if (path.endsWith(`/${STAGING_RECOVERY_WORKFLOW_PATH}/runs`))
+        return { total_count: 301, workflow_runs: [currentRun, prior] };
+      if (path.endsWith("/actions/runs/100/attempts/1/jobs"))
+        return {
+          total_count: 1,
+          jobs: [
+            {
+              id: 700,
+              name: "Staging recovery",
+              head_sha: sha,
+              status: "completed",
+              conclusion: "failure",
+              steps: [
+                {
+                  name: STAGING_RECOVERY_STEP_NAME,
+                  status: "completed",
+                  conclusion: "failure",
+                  number: 8,
+                },
+              ],
+            },
+          ],
+        };
+      if (path.endsWith("/actions/runs/100/artifacts"))
+        return { total_count: 1, artifacts: [artifact(100, STAGING_RECOVERY_ARTIFACT_NAME)] };
+      throw new Error(`unexpected ${path}`);
+    });
+    await expect(
+      verifyStagingRecoveryHistory(client, { current, resumeRecoveryRunId: 100, now }),
+    ).resolves.toMatchObject({ mode: "resume", run: { runId: 100 } });
   });
 });

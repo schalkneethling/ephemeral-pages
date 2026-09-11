@@ -11,6 +11,7 @@ export const NETLIFY_STAGING_VARIABLE_POLICY = {
   COLLABORATION_TICKET_AUDIENCE: ["functions"],
   COLLABORATION_CAPABILITY_CURRENT_VERSION: ["functions"],
   COLLABORATION_ENABLED: ["functions"],
+  GITHUB_OIDC_AUDIENCE: ["functions"],
 } as const satisfies Readonly<Record<string, readonly NetlifyVariableScope[]>>;
 
 export type NetlifyStagingVariableName = keyof typeof NETLIFY_STAGING_VARIABLE_POLICY;
@@ -132,7 +133,10 @@ const validateInput = (input: NetlifyStagingBootstrapInput): void => {
   ) {
     throw new StagingBootstrapError("invalid-input");
   }
-  if (input.nonSecretVariables.PUBLIC_BASE_URL !== `https://${input.siteName}.netlify.app`) {
+  if (
+    input.nonSecretVariables.PUBLIC_BASE_URL !== `https://${input.siteName}.netlify.app` ||
+    input.nonSecretVariables.GITHUB_OIDC_AUDIENCE !== input.nonSecretVariables.PUBLIC_BASE_URL
+  ) {
     throw new StagingBootstrapError("invalid-input");
   }
 };

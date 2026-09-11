@@ -49,7 +49,7 @@ import {
   type VerifiedStagingRecoveryHistory,
 } from "./staging-recovery-github.ts";
 import { verifyProductionWorkspace } from "./production-workspace.ts";
-import type { WorkerArtifactManifest } from "./worker-artifacts.ts";
+import { workerArtifactManifestSchema } from "./worker-artifacts.ts";
 
 const activatedWorkerSchema = z.strictObject({
   accountId: providerIdSchema,
@@ -390,12 +390,16 @@ const validatePrevious = (
   }
 };
 
-const readLocalEvidence = async (args: StagingRecoveryArguments, configuration: ReleaseConfig) => {
+const readLocalEvidence = async (
+  args: StagingRecoveryArguments,
+  configuration: ReleaseConfig,
+  workerConfig: string,
+) => {
   const source = await readReleaseJson(
     resolve(args.workspace, "staging-recovery-source.json"),
     stagingRecoverySourceSchema,
   );
-  const validated = validateStagingRecoverySource(source, configuration);
+  const validated = validateStagingRecoverySource(source, configuration, workerConfig);
   if (
     source.source.workflow.runId !== args.sourceRehearsalRunId ||
     source.target.workflow.runId !== args.targetRehearsalRunId
@@ -430,6 +434,12 @@ export async function runStagingRecoveryCli(argv: readonly string[], repositoryR
     resolve(repositoryRoot, "scripts/release/environments.json"),
     releaseConfigSchema,
   );
+  const stagingWorker = configuration.environments.staging.cloudflare;
+  if (!stagingWorker) throw Error("Staging recovery targets are missing.");
+  const workerConfig = await gitReleaseValue(repositoryRoot, [
+    "show",
+    `HEAD:${stagingWorker.wranglerConfigPath}`,
+  ]);
   const token = process.env.GITHUB_TOKEN ?? "";
   const runtime = process.env as GitHubRuntimeEnvironment;
   const context = async () => {
@@ -550,7 +560,7 @@ export async function runStagingRecoveryCli(argv: readonly string[], repositoryR
       sourceArtifact = previousPreflight.sourceArtifact;
       targetArtifact = previousPreflight.targetArtifact;
     }
-    const local = await readLocalEvidence(args, configuration);
+    const local = await readLocalEvidence(args, configuration, workerConfig);
     if (!same(source, local.source)) throw Error("Staging recovery source changed.");
     if (
       local.previousPreflight &&
@@ -601,7 +611,7 @@ export async function runStagingRecoveryCli(argv: readonly string[], repositoryR
     resolve(args.workspace, "staging-recovery-preflight.json"),
     stagingRecoveryPreflightSchema,
   );
-  const local = await readLocalEvidence(args, configuration);
+  const local = await readLocalEvidence(args, configuration, workerConfig);
   const sourceSha256 = artifactHash(JSON.stringify(local.source));
   if (
     String(preflight.runId) !== runtime.GITHUB_RUN_ID ||
@@ -675,9 +685,10 @@ export async function runStagingRecoveryCli(argv: readonly string[], repositoryR
       "target-release/artifacts",
       target.prepared.artifacts.worker.directory,
     );
-    const manifest = JSON.parse(
-      await readFile(resolve(artifactDirectory, "worker-artifact.json"), "utf8"),
-    ) as WorkerArtifactManifest;
+    const manifest = await readReleaseJson(
+      resolve(artifactDirectory, "worker-artifact.json"),
+      workerArtifactManifestSchema,
+    );
     const plan: RecoveryProviderPlan & { environment: "staging" } = {
       environment: "staging",
       requested: local.validated.targetPair,
@@ -733,6 +744,7 @@ export async function runStagingRecoveryCli(argv: readonly string[], repositoryR
       reportDirectory: resolve(args.workspace, "run"),
       repositoryRoot,
       source: local.source,
+      workerConfig,
     },
     {
       inspect: async () => (await get()).inspect(),

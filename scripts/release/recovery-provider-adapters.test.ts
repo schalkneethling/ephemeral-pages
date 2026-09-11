@@ -304,7 +304,11 @@ describe("recovery provider adapters", () => {
       versionId: "target-worker-version",
     });
     const mutation = fixture.events.findIndex((event) => event.startsWith("worker:POST:"));
-    expect(fixture.events[mutation]).not.toContain("force");
+    const request = fixture.workerDispatch.mock.calls
+      .map(([value]) => value)
+      .find(({ method }) => method === "POST");
+    expect(request).toBeDefined();
+    expect(JSON.parse(String(request?.body))).not.toHaveProperty("force");
     expect(fixture.events.indexOf("checkpoint:worker-rollback-pending")).toBeLessThan(mutation);
     expect(fixture.events.indexOf("checkpoint:worker-rollback-response-received")).toBeGreaterThan(
       mutation,

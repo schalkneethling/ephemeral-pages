@@ -4,7 +4,8 @@ Status: Native branch protections, read-only planning, local artifact preparatio
 and the production provider/runner implementation are present. The first full [staging calibration](release-evidence/2026-09-10-staging/README.md)
 passed, including both transition and final-pair browser smokes. Manual production orchestration and resumption are implemented;
 live verification remains pending. Recovery is implemented under review, and deployment credentials
-are provisioned in branch-restricted GitHub environments. Provider authorization, recovery drills,
+are provisioned in branch-restricted GitHub environments. Read-only provider inspection passed, and
+the staging workflows are registered on the default branch. Live deployment authorization, recovery drills,
 publishing cutover, the attributable baseline, and the first production release remain gates. Production publishing
 settings have not been changed by this increment.
 

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 
-import { artifactHash } from "./artifact-contract.ts";
+import { artifactConfigurationFingerprint, artifactHash } from "./artifact-contract.ts";
 import type { PreparedRelease } from "./prepare.ts";
 import type { ReleaseConfig } from "./schema.ts";
 import {
@@ -64,6 +64,11 @@ const configuration: ReleaseConfig = {
     },
   },
 };
+const workerConfig = "{ name: 'staging-worker' }";
+const configurationFingerprint = artifactConfigurationFingerprint(
+  configuration.environments.staging,
+  workerConfig,
+);
 
 const pair = (prefix: string) => ({
   netlifyDeployId: `${prefix}-app`,
@@ -86,7 +91,7 @@ const release = (
       candidate,
       tree: prefix.repeat(40).slice(0, 40),
       environment: "staging",
-      configurationFingerprint: "c".repeat(64),
+      configurationFingerprint,
     },
     toolchain: { bun: "1.3.14" },
     artifacts: {
@@ -170,6 +175,7 @@ async function fixture() {
     reportDirectory: join(root, "run"),
     repositoryRoot: join(root, "repo"),
     source: recoverySource,
+    workerConfig,
   };
   const dependencies: StagingRecoveryDependencies = {
     inspect: async () => ({ ...livePair }),

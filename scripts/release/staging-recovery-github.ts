@@ -316,8 +316,11 @@ export async function verifyStagingRecoveryHistory(
     throw new StagingRecoveryGitHubError();
   }
   const workflow = await readWorkflow(api, STAGING_RECOVERY_WORKFLOW_PATH);
-  const runs: z.infer<typeof runSchema>[] = [];
-  let total: number | undefined;
+  const runIds = new Set<number>();
+  let foundCurrent = false;
+  let lastCreatedAt = Number.POSITIVE_INFINITY;
+  let lastRunId = Number.POSITIVE_INFINITY;
+  let seen = 0;
   for (let page = 1; page <= 3; page += 1) {
     const response = parse(
       runsSchema,
@@ -331,67 +334,93 @@ export async function verifyStagingRecoveryHistory(
         },
       }),
     );
-    total ??= response.total_count;
-    if (response.total_count !== total) throw new StagingRecoveryGitHubError();
-    runs.push(...response.workflow_runs);
-    if (runs.length >= total) break;
-  }
-  if (total === undefined || total !== runs.length || total > 300)
-    throw new StagingRecoveryGitHubError();
-  const unique = new Set(runs.map(({ id }) => id));
-  if (unique.size !== runs.length) throw new StagingRecoveryGitHubError();
-  const currentIndex = runs.findIndex(
-    ({ id, run_attempt }) => id === input.current.runId && run_attempt === 1,
-  );
-  if (currentIndex < 0) throw new StagingRecoveryGitHubError();
-  for (const candidate of runs.slice(currentIndex + 1)) {
-    const run = verifyRun(candidate, workflow, STAGING_RECOVERY_WORKFLOW_PATH);
-    if (candidate.status !== "completed" || candidate.conclusion === null)
+    if (response.workflow_runs.length === 0 && seen < response.total_count)
       throw new StagingRecoveryGitHubError();
-    const jobs = parse(
-      jobsSchema,
-      await api.get({
-        path: repositoryPath(`actions/runs/${run.runId}/attempts/1/jobs`),
-        query: { page: "1", per_page: "100" },
-      }),
-    );
-    const job = jobs.jobs[0];
-    const steps = job?.steps.filter(({ name }) => name === STAGING_RECOVERY_STEP_NAME) ?? [];
-    if (
-      jobs.total_count !== 1 ||
-      jobs.jobs.length !== 1 ||
-      job === undefined ||
-      job.name !== STAGING_RECOVERY_JOB_NAME ||
-      job.head_sha !== run.workflowCommit ||
-      job.status !== "completed" ||
-      job.conclusion === null ||
-      steps.length !== 1 ||
-      steps[0].status !== "completed"
-    ) {
-      throw new StagingRecoveryGitHubError();
-    }
-    const step = steps[0];
-    if (step.conclusion === "skipped") continue;
-    const matchingOutcomes =
-      (candidate.conclusion === "success" && job.conclusion === "success") ||
-      (candidate.conclusion !== "success" && job.conclusion !== "success");
-    if (step.conclusion === "success" && matchingOutcomes) {
-      if (input.resumeRecoveryRunId !== undefined) throw new StagingRecoveryGitHubError();
+    for (const candidate of response.workflow_runs) {
+      seen += 1;
+      const createdAt = Date.parse(candidate.created_at);
+      if (
+        runIds.has(candidate.id) ||
+        createdAt > lastCreatedAt ||
+        (createdAt === lastCreatedAt && candidate.id >= lastRunId)
+      ) {
+        throw new StagingRecoveryGitHubError();
+      }
+      runIds.add(candidate.id);
+      lastCreatedAt = createdAt;
+      lastRunId = candidate.id;
+      const run = verifyRun(candidate, workflow, STAGING_RECOVERY_WORKFLOW_PATH);
+      if (!foundCurrent) {
+        if (candidate.id === input.current.runId && candidate.run_attempt === 1) {
+          if (
+            run.workflowId !== input.current.workflowId ||
+            run.workflowCommit !== input.current.workflowCommit ||
+            run.createdAt !== input.current.createdAt ||
+            run.updatedAt !== input.current.updatedAt
+          ) {
+            throw new StagingRecoveryGitHubError();
+          }
+          foundCurrent = true;
+        }
+        continue;
+      }
+      if (
+        candidate.id === input.current.runId ||
+        candidate.status !== "completed" ||
+        candidate.conclusion === null
+      ) {
+        throw new StagingRecoveryGitHubError();
+      }
+      const jobs = parse(
+        jobsSchema,
+        await api.get({
+          path: repositoryPath(`actions/runs/${run.runId}/attempts/1/jobs`),
+          query: { page: "1", per_page: "100" },
+        }),
+      );
+      const job = jobs.jobs[0];
+      const steps = job?.steps.filter(({ name }) => name === STAGING_RECOVERY_STEP_NAME) ?? [];
+      if (
+        jobs.total_count !== 1 ||
+        jobs.jobs.length !== 1 ||
+        job === undefined ||
+        job.name !== STAGING_RECOVERY_JOB_NAME ||
+        job.head_sha !== run.workflowCommit ||
+        job.status !== "completed" ||
+        job.conclusion === null ||
+        steps.length !== 1 ||
+        steps[0].status !== "completed"
+      ) {
+        throw new StagingRecoveryGitHubError();
+      }
+      const step = steps[0];
+      if (step.conclusion === "skipped") continue;
+      const matchingOutcomes =
+        (candidate.conclusion === "success" && job.conclusion === "success") ||
+        (candidate.conclusion !== "success" && job.conclusion !== "success");
+      if (step.conclusion === "success" && matchingOutcomes) {
+        if (input.resumeRecoveryRunId !== undefined) throw new StagingRecoveryGitHubError();
+        return {
+          mode: "fresh",
+          completed: {
+            run,
+            artifact: await verifyRecoveryArtifact(api, candidate, now),
+          },
+        };
+      }
+      if (input.resumeRecoveryRunId !== run.runId) throw new StagingRecoveryGitHubError();
       return {
-        mode: "fresh",
-        completed: {
-          run,
-          artifact: await verifyRecoveryArtifact(api, candidate, now),
-        },
+        mode: "resume",
+        run,
+        artifact: await verifyRecoveryArtifact(api, candidate, now),
       };
     }
-    if (input.resumeRecoveryRunId !== run.runId) throw new StagingRecoveryGitHubError();
-    return {
-      mode: "resume",
-      run,
-      artifact: await verifyRecoveryArtifact(api, candidate, now),
-    };
+    if (seen >= response.total_count) {
+      if (!foundCurrent || input.resumeRecoveryRunId !== undefined)
+        throw new StagingRecoveryGitHubError();
+      return { mode: "fresh" };
+    }
+    if (response.workflow_runs.length < 100) throw new StagingRecoveryGitHubError();
   }
-  if (input.resumeRecoveryRunId !== undefined) throw new StagingRecoveryGitHubError();
-  return { mode: "fresh" };
+  throw new StagingRecoveryGitHubError();
 }

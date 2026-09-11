@@ -89,6 +89,7 @@ export type StagingRecoveryRunInput = {
   reportDirectory: string;
   repositoryRoot: string;
   source: StagingRecoverySource;
+  workerConfig: string;
 };
 
 const samePair = (left: DeploymentPair, right: DeploymentPair): boolean =>
@@ -107,7 +108,7 @@ export async function runStagingRecovery(
   dependencies: StagingRecoveryDependencies,
 ): Promise<StagingRecoveryRecord> {
   const source = stagingRecoverySourceSchema.parse(input.source);
-  const validated = validateStagingRecoverySource(source, input.configuration);
+  const validated = validateStagingRecoverySource(source, input.configuration, input.workerConfig);
   if (
     !Number.isSafeInteger(input.currentRunId) ||
     input.currentRunId < 1 ||

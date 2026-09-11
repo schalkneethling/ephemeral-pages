@@ -469,8 +469,8 @@
       </div>
       <div class="notice">
         <strong>Current control gap.</strong> Netlify still publishes production automatically from
-        main. Cloudflare Git deployment is not enabled. These are operator-supplied current
-        assumptions; no fresh provider audit was performed for this map.
+        main. Cloudflare Git deployment is not enabled. Read-only provider inspection passed on 11
+        September; production cutover and live recovery verification remain outstanding.
       </div>
     </header>
     <main id="explorer">
@@ -790,7 +790,7 @@
           "6 · Explicit recovery",
           "built",
           "Restore a verified pair; reconcile interruptions",
-          "Manual recovery shares production serialization. It verifies retained target evidence, restores Netlify, tests the transition, restores the Worker and tests the final pair. Resume reconciles uncertain writes before retry. A separate protected staging workflow uses real A/B rehearsal evidence, and calibration cannot issue production approval. The implementation is under review; live recovery drills and adoption of an attributable initial production baseline remain outstanding.",
+          "Manual recovery shares production serialization. It verifies retained target evidence, restores Netlify, tests the transition, restores the Worker and tests the final pair. Resume reconciles uncertain writes before retry. A separate protected staging workflow uses real A/B rehearsal evidence, and calibration cannot issue production approval. The implementation is under review and registration-only staging workflows are on main. Live recovery drills and adoption of an attributable initial production baseline remain outstanding.",
           [
             ["scripts/release/recovery-runner.ts"],
             ["scripts/release/recovery-cli.ts"],
