@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { rehearsePreparedRelease, type RehearsalDependencies } from "./rehearsal.ts";
 import { verifyArtifactSource } from "./artifact-contract.ts";
+import { ProviderInspectionError } from "./providers.ts";
 
 vi.mock("./artifact-contract.ts", async (original) => ({
   ...(await original<object>()),
@@ -51,6 +52,11 @@ async function fixture() {
       workerDeploymentId: worker,
       workerVersionId: worker,
     }),
+    observePublishedPair: async () => ({
+      netlifyDeployId: app,
+      workerDeploymentId: worker,
+      workerVersionId: worker,
+    }),
     holdNetlify: async () => {
       calls.push("hold");
     },
@@ -84,6 +90,7 @@ it("verifies the transition before publishing the app and records the final pair
   const { input, dependencies, calls } = await fixture();
   const report = await rehearsePreparedRelease(input, dependencies);
   expect(calls).toEqual(["hold", "upload", "activate", "transition", "publish", "pair"]);
+  expect(calls.filter((call) => call === "publish")).toHaveLength(1);
   expect(report.outcome).toBe("passed");
   expect(report.observedPair?.netlifyDeployId).toBe("new-app");
   expect(JSON.parse(await readFile(join(input.reportDirectory, "rehearsal.json"), "utf8"))).toEqual(
@@ -150,4 +157,35 @@ it("records successful activation separately from failed observation", async () 
   expect(report.activatedWorker).toEqual({ deploymentId: "new-worker", versionId: "new-worker" });
   expect(report.observedPair).toBeUndefined();
   expect(calls).not.toContain("publish");
+});
+
+it("persists only the safe observation diagnostic when the native cause is sensitive", async () => {
+  const { input, dependencies } = await fixture();
+  const original = new Error("super-secret-sentinel");
+  dependencies.observePublishedPair = async () => {
+    throw new ProviderInspectionError(
+      {
+        provider: "netlify",
+        operation: "getSiteDeploy",
+        classification: "command",
+        commandKind: "failed",
+        exitCode: 23,
+      },
+      original,
+    );
+  };
+
+  const report = await rehearsePreparedRelease(input, dependencies);
+  expect(report.failure).toEqual({
+    stage: "observe-netlify",
+    kind: "failed",
+    diagnostic: {
+      provider: "netlify",
+      operation: "getSiteDeploy",
+      classification: "command",
+      commandKind: "failed",
+      exitCode: 23,
+    },
+  });
+  expect(JSON.stringify(report)).not.toContain("super-secret-sentinel");
 });

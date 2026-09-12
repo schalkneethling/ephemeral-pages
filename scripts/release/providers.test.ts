@@ -250,6 +250,34 @@ describe("inspectNetlify", () => {
     expect(calls).toBe(1);
   });
 
+  it("classifies a postpublication lock disagreement without retaining responses", async () => {
+    const failure = inspectNetlify(netlifyConfig, async (_executable, args) => {
+      if (args[1] === "getSite") {
+        return JSON.stringify({
+          id: "site-123",
+          account_id: "account-123",
+          published_deploy: { id: "deploy-123", state: "ready", locked: true },
+        });
+      }
+      return JSON.stringify({
+        id: "deploy-123",
+        site_id: "site-123",
+        state: "ready",
+        locked: false,
+      });
+    });
+    const error = await failure.catch((value: unknown) => value);
+    expect(error).toMatchObject({
+      diagnostic: {
+        provider: "netlify",
+        operation: "getSiteDeploy",
+        classification: "assertion",
+        assertion: "deploy-lock-match",
+      },
+    });
+    expect(error).not.toHaveProperty("diagnostic.response");
+  });
+
   it("normalizes all verified Envelope API scopes", async () => {
     const config: NetlifyInspectionConfig = {
       siteId: "site-123",

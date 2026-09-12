@@ -9,6 +9,7 @@ import {
 } from "./production-runner.ts";
 import { lazyProductionDependencies } from "./production-lazy-providers.ts";
 import type { ProductionResults } from "./production-record.ts";
+import { ProviderInspectionError } from "./providers.ts";
 const roots: string[] = [];
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -194,6 +195,36 @@ it("reports the mixed pair when Worker succeeds and Netlify fails without rollba
   });
   expect(JSON.stringify(result)).not.toContain("secret payload");
   expect(f.calls).not.toContain("verify");
+});
+it("retains only a structured provider diagnostic when its cause is sensitive", async () => {
+  const f = await fixture();
+  const cause = new Error("secret-bearing-provider-cause");
+  f.deps.inspect = async () => {
+    throw new ProviderInspectionError(
+      {
+        provider: "netlify",
+        operation: "getSite",
+        classification: "command",
+        commandKind: "failed",
+        exitCode: 23,
+      },
+      cause,
+    );
+  };
+
+  const result = await runProductionRelease(f.input, f.deps);
+  expect(result.failure).toEqual({
+    stage: "inspect",
+    kind: "unknown",
+    diagnostic: {
+      provider: "netlify",
+      operation: "getSite",
+      classification: "command",
+      commandKind: "failed",
+      exitCode: 23,
+    },
+  });
+  expect(JSON.stringify(result)).not.toContain("secret-bearing-provider-cause");
 });
 it("reconciles a returned activation ID without dispatching the activation again", async () => {
   const f = await fixture();

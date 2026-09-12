@@ -4,6 +4,10 @@ import { createAtomicJsonStore } from "./bootstrap-safety.ts";
 import { preparedReleaseSchema, type PreparedRelease } from "./prepare.ts";
 import { readReleaseJson } from "./files.ts";
 import {
+  providerInspectionDiagnosticSchema,
+  type ProviderInspectionDiagnostic,
+} from "./providers.ts";
+import {
   artifactHash,
   assertExternalArtifactDirectory,
   verifyArtifactSource,
@@ -37,11 +41,16 @@ export type RehearsalRecord = {
   activatedWorker?: { deploymentId: string; versionId: string };
   publishedNetlify?: { publishedDeployId: string };
   stages: Partial<Record<RehearsalStep, RehearsalOutcome>>;
-  failure?: { stage: RehearsalStep; kind: string };
+  failure?: {
+    stage: RehearsalStep;
+    kind: string;
+    diagnostic?: ProviderInspectionDiagnostic;
+  };
   recovery: "none" | "inspect-recorded-targets-before-recovery";
 };
 export type RehearsalDependencies = {
   inspect: () => Promise<DeploymentPair>;
+  observePublishedPair: (expectedPair: DeploymentPair) => Promise<DeploymentPair>;
   holdNetlify: () => Promise<void>;
   uploadWorker: () => Promise<void>;
   activateWorker: () => Promise<{ deploymentId: string; versionId: string }>;
@@ -120,9 +129,15 @@ export async function rehearsePreparedRelease(
       record.failure = {
         stage: name,
         kind: typeof kind === "string" && safeKinds.includes(kind) ? kind : "unknown",
+        ...(typeof error === "object" && error !== null && "diagnostic" in error
+          ? (() => {
+              const diagnostic = providerInspectionDiagnosticSchema.safeParse(error.diagnostic);
+              return diagnostic.success ? { diagnostic: diagnostic.data } : {};
+            })()
+          : {}),
       };
       record.stages[name] = failure;
-      throw new Error("Rehearsal stage stopped.");
+      throw new Error("Rehearsal stage stopped.", { cause: error });
     }
   };
   let expectedPair: DeploymentPair | undefined;
@@ -163,7 +178,18 @@ export async function rehearsePreparedRelease(
       record.publishedNetlify = { publishedDeployId: published.publishedDeployId };
       expectedPair = { ...expectedPair!, netlifyDeployId: published.publishedDeployId };
     });
-    await stage("observe-netlify", inspectExpectedPair, "failed");
+    await stage(
+      "observe-netlify",
+      async () => {
+        if (!expectedPair) throw new Error("Missing expected deployment pair.");
+        delete record.observedPair;
+        const observed = await dependencies.observePublishedPair(expectedPair);
+        record.observedPair = observed;
+        if (JSON.stringify(observed) !== JSON.stringify(expectedPair))
+          throw new Error("Live deployment pair changed.");
+      },
+      "failed",
+    );
     await stage("verify-pair", async () => {
       if (!(await dependencies.verifyPair())) throw new Error("Pair verification did not pass.");
       await inspectExpectedPair();

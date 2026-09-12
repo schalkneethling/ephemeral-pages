@@ -7,10 +7,18 @@ Production Worker adoption and the publication lock are verified; the production
 recovery target are recorded. Adoption is disabled and ordinary releases are enabled in policy.
 The first coordinated application release still requires a successful approval rehearsal.
 
-Approval rehearsal [34688990620](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34688990620)
+Approval rehearsals [34688990620](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34688990620)
+and [34691105495](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34691105495)
 completed both staging writes but failed during the Netlify readback. Subsequent independent readback
-and all six collaboration smoke checks passed against the recorded final pair. A reviewed resolution
-can clear this interrupted run for a fresh rehearsal; it does not supply production approval.
+and all six collaboration smoke checks passed against the recorded final pair. Reviewed resolutions
+can clear interrupted history for a fresh rehearsal; they do not supply production approval.
+The repeated failure requires bounded post-publication observation and retained diagnostic causes;
+see the [readback investigation](release-evidence/2026-09-12-staging-readback-34691105495/README.md).
+
+Production inspection failures retain an optional structured diagnostic in `run/production.json`,
+including the provider, read operation, and assertion or command failure. Original causes remain
+available in memory; arbitrary upstream messages and payloads are not serialized. This diagnostic
+change does not add production retries or change deployment sequencing.
 
 The implementation references for this checkpoint are the [production CLI](../scripts/release/production-cli.ts),
 [GitHub release verifier](../scripts/release/github-release.ts), [production context](../scripts/release/production-context.ts),

@@ -16,6 +16,7 @@ import {
 } from "./github-release.ts";
 import { configurationFingerprint } from "./planner.ts";
 import { successfulRehearsalSchema } from "./production-approval.ts";
+import { providerInspectionDiagnosticSchema } from "./providers.ts";
 import { digestSchema, pairSchema, providerIdSchema } from "./production-record.ts";
 import { recoveryTargetEvidenceSchema } from "./recovery-record.ts";
 import type { DeploymentPair } from "./rehearsal.ts";
@@ -126,7 +127,11 @@ export const readOnlyRehearsalFailureSchema = z.strictObject({
   preparationSha256: digestSchema,
   priorPair: pairSchema.optional(),
   stages: z.strictObject({ inspect: z.enum(["blocked", "failed"]) }),
-  failure: z.strictObject({ stage: z.literal("inspect"), kind: safeFailureKindSchema }),
+  failure: z.strictObject({
+    stage: z.literal("inspect"),
+    kind: safeFailureKindSchema,
+    diagnostic: providerInspectionDiagnosticSchema.optional(),
+  }),
   recovery: z.literal("none"),
 });
 
@@ -174,7 +179,11 @@ export const unresolvedRehearsalSchema = z.strictObject({
     rehearsalStepSchema,
     z.enum(["pending", "running", "passed", "failed", "blocked"]),
   ),
-  failure: z.strictObject({ stage: rehearsalStepSchema, kind: safeFailureKindSchema }),
+  failure: z.strictObject({
+    stage: rehearsalStepSchema,
+    kind: safeFailureKindSchema,
+    diagnostic: providerInspectionDiagnosticSchema.optional(),
+  }),
   recovery: z.literal("inspect-recorded-targets-before-recovery"),
 });
 
