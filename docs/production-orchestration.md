@@ -1,6 +1,8 @@
 # Production orchestration
 
-Current rollout checkpoint: the first ordinary release stopped after Worker activation and transition verification, before Netlify publication. Resume exposed a reproduced artifact-permission defect. See the [production resume investigation](release-evidence/2026-09-12-production-resume-investigation/README.md) for verified results and the repair boundary. Earlier status below describes the preceding implementation checkpoint.
+Recovery evidence checkpoint (12 September 2026 UTC): production recovery [34700516404](release-evidence/2026-09-12-production-recovery-34700516404/README.md) passed, retaining Netlify and restoring the prior Worker version under its actual new deployment ID. The recovered baseline and recovery target record the pair observed when that workflow completed. They are not a real-time provider observation or approval to release a different candidate. The [retrospective closeout](coordinated-release-retrospective.md#closeout-and-handoff-correction) records the operator's confirmation of successful production; no new release is requested. Checkpoint text below is historical.
+
+Pre-recovery checkpoint (historical): the first ordinary release stopped after Worker activation and transition verification, before Netlify publication. Resume exposed a reproduced artifact-permission defect. See the [production resume investigation](release-evidence/2026-09-12-production-resume-investigation/README.md) for verified results and the repair boundary. Earlier status below describes the preceding implementation checkpoint.
 
 Status: production orchestration and resumption are implemented. Protected staging calibration,
 recovery, interrupted recovery, and forward deployment passed the

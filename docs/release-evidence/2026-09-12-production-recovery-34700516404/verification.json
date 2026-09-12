@@ -1,0 +1,35 @@
+{
+  "artifact": {
+    "artifactId": 10299189717,
+    "name": "release-production",
+    "digest": "sha256:50b387ceab65d5e6266ea6d28bee308e87e7d079e31b3acf1c669679566c9840",
+    "sizeInBytes": 37389678,
+    "createdAt": "2026-09-12T14:54:03Z",
+    "updatedAt": "2026-09-12T14:54:03Z",
+    "expiresAt": "2026-09-19T14:54:00Z"
+  },
+  "run": {
+    "runId": 34700516404,
+    "runAttempt": 1,
+    "workflowId": 356385147,
+    "workflowPath": ".github/workflows/release-production.yml",
+    "branch": "main",
+    "headSha": "f37bfb36f159b0bae2b786213f640ff308be406c",
+    "createdAt": "2026-09-12T14:51:45Z",
+    "updatedAt": "2026-09-12T14:54:07Z"
+  },
+  "conclusion": "success",
+  "outcome": "passed",
+  "stages": {
+    "inspect": "passed",
+    "restore-netlify": "passed",
+    "verify-transition": "passed",
+    "restore-worker": "passed",
+    "verify-pair": "passed"
+  },
+  "pair": {
+    "netlifyDeployId": "6aa43cfb4b7bde0008cfc4d9",
+    "workerDeploymentId": "96462fa9-6f87-4983-aafd-b18fb609d070",
+    "workerVersionId": "8c17bf49-e1f2-465a-8ddb-cb990f2c1cf7"
+  }
+}
