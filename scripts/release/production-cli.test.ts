@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { runProductionCli } from "./production-cli.ts";
 import { preparedReleaseSchema } from "./prepare.ts";
@@ -218,16 +219,11 @@ it("retains a runner record when execute-phase GitHub verification is temporaril
 });
 
 it("flushes a failed record and exits despite a lingering process handle", () => {
-  const moduleUrl = new URL("./production-cli.ts", import.meta.url).href;
-  const output = `${JSON.stringify({ outcome: "failed" })}\n`;
-  const result = spawnSync(
-    "bun",
-    [
-      "-e",
-      `import { exitAfterProductionCliFailure } from ${JSON.stringify(moduleUrl)}; setInterval(() => {}, 60_000); exitAfterProductionCliFailure(${JSON.stringify(output)}, process.stdout);`,
-    ],
-    { encoding: "utf8", timeout: 5_000 },
+  const fixturePath = fileURLToPath(
+    new URL("./fixtures/production-cli-failure.ts", import.meta.url),
   );
+  const output = `${JSON.stringify({ outcome: "failed" })}\n`;
+  const result = spawnSync("bun", [fixturePath], { encoding: "utf8", timeout: 5_000 });
 
   expect(result.error).toBeUndefined();
   expect(result.status).toBe(1);
