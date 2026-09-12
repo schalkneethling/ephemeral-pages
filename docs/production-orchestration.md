@@ -62,6 +62,10 @@ production policy. A successful local rehearsal alone is not a trusted workflow 
 
 ## First Worker adoption
 
+Completed on 12 September 2026 UTC; see the [verified adoption evidence](release-evidence/2026-09-12-production-adoption-34688347172/README.md).
+The baseline and recovery target are recorded. The adoption gate is closed and ordinary releases are enabled in policy.
+The following describes the one-time procedure and its safeguards.
+
 The one-time adoption establishes source provenance for the Worker while retaining the independently
 attributed Netlify deployment. It does not turn the historical Worker into a verified rollback target.
 The operator accepted fail-forward recovery for this initial operation; no legacy restore path is added.
@@ -69,7 +73,7 @@ The operator accepted fail-forward recovery for this initial operation; no legac
 The distinct adoption runner uses the same protected production workflow and serialization as routine
 releases. Its source is an exact reviewed `stage` to `main` promotion with successful CI and a retained
 successful staging calibration for that candidate. Calibration is used here because ordinary approval
-requires the production baseline that adoption establishes. A separate adoption policy (disabled by default, enabled for the initial cutover candidate) and
+requires the production baseline that adoption establishes. A separate adoption policy (now disabled after verified adoption) and
 an absent baseline guard prevent it from becoming a routine alternative to release approval.
 
 Before a Worker write, adoption verifies the sealed production artifact, current configuration,

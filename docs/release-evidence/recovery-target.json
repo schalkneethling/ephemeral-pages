@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "operation": "recovery-target",
+  "configurationFingerprint": "98642ac680525668839e2213ff846a591ddf0f95d007972b6e960990ec64609b",
+  "pair": {
+    "netlifyDeployId": "6aa43cfb4b7bde0008cfc4d9",
+    "workerDeploymentId": "4cac129b-ed26-45b4-94e3-d0730930daee",
+    "workerVersionId": "8c17bf49-e1f2-465a-8ddb-cb990f2c1cf7"
+  },
+  "netlifySourceCommit": "65aab59bd6ec4a9ae84aa55f8154287b5bbd9e8b",
+  "workerSourceCommit": "7a7b25b9c6cd631e8762cb504c01ad7d5e56f8a0",
+  "workerArtifactRunId": 34688347172,
+  "workerArtifactKind": "production-adoption",
+  "workerArtifactSha256": "adece72444d399305ecaacc5fcc0965c4542947d87e73b74a22caf3af7f54aba",
+  "workerScriptEtag": "38144714aa12a4cb5ce2089c6acd360323f0655a7cf8844f1b61d3da8fe7effd"
+}

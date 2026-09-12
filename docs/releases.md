@@ -1,20 +1,15 @@
 # Repeatable releases
 
-Status: protected staging preparation, calibrations A/B, explicit B-to-A recovery with resume,
-and the final forward calibration passed. Both recovery and forward deployment passed their
-transition and final-pair browser smokes. See [the verified checkpoint](release-evidence/2026-09-11-staging-recovery-34652303609/README.md)
-and [earlier findings](release-evidence/2026-09-11-staging/README.md). Native branch protections
-and branch-restricted deployment credentials are configured. Production orchestration and recovery
-are implemented but remain live-unverified. The attributable production
-baseline and the first coordinated production release remain gates. The separate
-[one-time Worker adoption](production-orchestration.md#first-worker-adoption) preserves Netlify and
-records the accepted fail-forward policy; it does not establish a historical Worker rollback target.
-The adoption gate is enabled for the initial cutover candidate; ordinary releases remain disabled.
-Fresh read-only production inspection passed configuration and secret-presence checks on 12 September
-2026 UTC. Exact-candidate staging rehearsal passed and Netlify publication was locked; a subsequent
-Git-triggered build did not replace the live app. Production adoption stopped before mutation because
-the GitHub API version omitted a required merge-commit field. See the
-[12 September cutover checkpoint](release-evidence/2026-09-12-production-cutover/README.md).
+Status: staging preparation, calibration, explicit recovery and resume are live-verified. Production
+publication is locked, and subsequent Git-triggered builds did not replace the published app.
+The [first production Worker adoption](release-evidence/2026-09-12-production-adoption-34688347172/README.md)
+passed on 12 September 2026 UTC, establishing the reviewed source-attributed baseline and recovery target.
+The one-time adoption gate is disabled; ordinary production orchestration is enabled in policy.
+The first ordinary coordinated application release still requires approval rehearsal, a reviewed
+stage-to-main promotion, exact-main CI and manual dispatch. Production recovery remains live-unverified.
+
+The earlier [cutover checkpoint](release-evidence/2026-09-12-production-cutover/README.md) records
+the publication lock and pre-mutation API compatibility failure, corrected before successful adoption.
 The release client pins the supported API version matching its promotion schema; upgrading that
 version requires validating the response contract against GitHub's documented breaking changes.
 

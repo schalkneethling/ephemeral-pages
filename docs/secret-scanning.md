@@ -31,7 +31,9 @@ capability URL are safe to publish. The release evidence restrictions and saniti
 reports still apply.
 
 The repository has one exact fingerprint exception for a demonstrably
-synthetic historical unit-test fixture. Do not add file, directory, rule, or
-regular-expression allowlists. Investigate a new finding without copying its
+synthetic historical unit-test fixture. A second, value-bound exception covers the verified public
+Netlify source commit in `docs/release-evidence/recovery-target.json`: only the `netlify-access-token`
+rule, exact path and exact public SHA match together. Other values and paths remain scanned.
+Do not add broad file, directory, rule, or regular-expression allowlists. Investigate a new finding without copying its
 matched content into an issue or CI log, revoke any real credential, remove it
 from the current tree, and decide separately whether history must be rewritten.
