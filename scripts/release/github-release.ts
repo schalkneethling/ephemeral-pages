@@ -1371,10 +1371,69 @@ export async function inspectPreviousProductionRun(
         }
         continue;
       }
-      if (run.id === input.current.runId || run.run_attempt !== 1) {
+      if (run.id === input.current.runId) {
         throw new GitHubReleaseError("resume");
       }
       const previous = verifyRunSource(run, workflow, "main") as VerifiedProductionRun;
+      if (run.run_attempt !== 1) {
+        // A debug rerun must not erase an earlier mutation. Only skip the run
+        // after every attempt proves that all mutation steps were skipped.
+        if (
+          run.run_attempt > MAX_SKIPPED_ACTIVATION_RUNS ||
+          run.status !== "completed" ||
+          run.conclusion === null ||
+          run.conclusion === "success"
+        )
+          throw new GitHubReleaseError("resume");
+        let lastSkipped: { runId: number; jobId: number; stepNumber: number } | undefined;
+        for (let attempt = 1; attempt <= run.run_attempt; attempt += 1) {
+          const jobs = parseResponse(
+            jobsSchema,
+            await api.get({
+              path: repositoryPath(`actions/runs/${run.id}/attempts/${attempt}/jobs`),
+              query: { page: "1", per_page: String(MAX_LIST_ITEMS) },
+            }),
+          );
+          const [job] = jobs.jobs;
+          if (
+            jobs.total_count !== 1 ||
+            jobs.jobs.length !== 1 ||
+            !job ||
+            job.name !== GITHUB_RELEASE_PRODUCTION_JOB_NAME ||
+            job.head_sha !== previous.headSha ||
+            job.status !== "completed" ||
+            job.conclusion === null ||
+            job.conclusion === "success"
+          ) {
+            throw new GitHubReleaseError("resume");
+          }
+          const activation = job.steps.filter(
+            (step) => step.name === GITHUB_RELEASE_ACTIVATION_STEP_NAME,
+          );
+          const recovery = job.steps.filter(
+            (step) => step.name === GITHUB_RELEASE_RECOVERY_STEP_NAME,
+          );
+          const adoption = job.steps.filter(
+            (step) => step.name === GITHUB_RELEASE_ADOPTION_STEP_NAME,
+          );
+          if (
+            activation.length !== 1 ||
+            recovery.length !== 1 ||
+            adoption.length !== 1 ||
+            [...activation, ...recovery, ...adoption].some(
+              (step) => step.status !== "completed" || step.conclusion !== "skipped",
+            )
+          ) {
+            throw new GitHubReleaseError("resume");
+          }
+          lastSkipped = { runId: run.id, jobId: job.id, stepNumber: activation[0]!.number };
+        }
+        if (!lastSkipped) throw new GitHubReleaseError("resume");
+        skippedActivations.push(lastSkipped);
+        if (skippedActivations.length > MAX_SKIPPED_ACTIVATION_RUNS)
+          throw new GitHubReleaseError("resume");
+        continue;
+      }
       let productionJob: z.infer<typeof jobsSchema>["jobs"][number] | undefined;
       let activationStep: z.infer<typeof jobsSchema>["jobs"][number]["steps"][number] | undefined;
       let recoveryStep: z.infer<typeof jobsSchema>["jobs"][number]["steps"][number] | undefined;
