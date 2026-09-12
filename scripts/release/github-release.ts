@@ -20,7 +20,10 @@ export const GITHUB_RELEASE_RECOVERY_STEP_NAME = "Restore verified prior pair";
 export const GITHUB_RELEASE_ADOPTION_STEP_NAME = "Adopt verified Worker baseline";
 
 const GITHUB_API_ORIGIN = "https://api.github.com";
-const GITHUB_API_VERSION = "2026-03-10";
+// The promotion verifier requires pull_request.merge_commit_sha. GitHub's
+// 2026-03-10 REST version removes that field, so this client stays on the
+// schema-compatible version rather than silently weakening merge identity.
+const GITHUB_API_VERSION = "2022-11-28";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const DEFAULT_MAX_ARTIFACT_BYTES = 128 * 1024 * 1024;

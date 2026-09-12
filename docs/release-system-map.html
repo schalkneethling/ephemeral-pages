@@ -465,15 +465,16 @@
         storage make coordination necessary.
       </p>
       <div class="snapshot">
-        Documentation checkpoint · 12 September 2026 UTC · Adoption reviewed; latest staging
-        calibration requires Worker-only recovery
+        Documentation checkpoint · 12 September 2026 UTC · Staging passed; publication locked;
+        adoption preflight blocked
       </div>
       <div class="notice">
-        <strong>Current control gap.</strong> Netlify still publishes production automatically from
-        main. Cloudflare Git deployment is not enabled. Protected staging calibration, recovery and
-        resume passed for the earlier candidate. The latest calibration stopped after Worker
-        activation; Netlify remained unchanged. Worker-only recovery and fresh rehearsal are
-        required before production cutover and the attributable initial production baseline.
+        <strong>Current checkpoint.</strong> Worker-only recovery and fresh staging rehearsal
+        passed. Netlify publication is locked; a subsequent main build did not replace the live app.
+        Cloudflare Git deployment remains disabled. Production adoption stopped before mutation
+        because the selected GitHub API version omitted a required merge-commit field. The
+        attributable production baseline and first coordinated production release remain
+        outstanding.
       </div>
     </header>
     <main id="explorer">
@@ -619,10 +620,10 @@
           ],
         ],
         main: [
-          "Main auto-publishes",
-          "assumption",
-          "Current production side effect",
-          "The operator briefing says Netlify main automatic production publication is still enabled, and Cloudflare Git deployment is not enabled. The release contract identifies replacing this publish path as a prerequisite to authoritative controlled promotion. This map did not re-query provider settings.",
+          "Main builds stay unpublished",
+          "live",
+          "Verified publication lock",
+          "Netlify production publication was locked on 12 September. The Git-triggered build following PR #60 completed without replacing the published main@65aab59 deployment. Cloudflare Git deployment remains disabled.",
           [["docs/releases.md"]],
         ],
         baseline: [
@@ -753,7 +754,7 @@
           "4 · Rehearse exact candidate",
           "live",
           "Held upload → Worker → app → smoke",
-          "Protected calibrations A and B passed with identical configuration and distinct reviewed commits and provider IDs. Netlify held the previous app while the Worker activated, followed by transition smoke, publication of the held Netlify deployment and final smoke. Explicit B-to-A recovery and resume also passed, followed by a forward calibration of 293f5ed with the recovered pair as its prior pair. That successful checkpoint used Netlify deployment 6aa47c40f0b74e3ac28b75ea and Worker version c12bb05c-bf4e-408f-b96f-e4b65d13a07a. The later calibration 34678563923 for 93a8c08 stopped during transition synchronization after activating Worker version 3bd41af3-70a2-42d2-a7e0-f087af16d3a9, retaining the prior Netlify app. A subsequent explicit Worker-only recovery restored version c12bb05c-bf4e-408f-b96f-e4b65d13a07a under deployment f9737b9b-d15e-4ef3-b063-7948f22a2662 and passed the full smoke. Resolution review and fresh exact-candidate rehearsal remain required; earlier diagnostic smokes alone did not clear the interrupted workflow. Calibration never issues production approval; a changed candidate requires fresh rehearsal.",
+          "Protected calibrations A and B passed with identical configuration and distinct reviewed commits and provider IDs. Netlify held the previous app while the Worker activated, followed by transition smoke, publication of the held Netlify deployment and final smoke. Explicit B-to-A recovery and resume also passed, followed by a forward calibration of 293f5ed with the recovered pair as its prior pair. That successful checkpoint used Netlify deployment 6aa47c40f0b74e3ac28b75ea and Worker version c12bb05c-bf4e-408f-b96f-e4b65d13a07a. The later calibration 34678563923 for 93a8c08 stopped during transition synchronization after activating Worker version 3bd41af3-70a2-42d2-a7e0-f087af16d3a9, retaining the prior Netlify app. A subsequent explicit Worker-only recovery restored version c12bb05c-bf4e-408f-b96f-e4b65d13a07a under deployment f9737b9b-d15e-4ef3-b063-7948f22a2662 and passed the full smoke. Resolution review and exact-candidate rehearsal 34682366013 subsequently passed; earlier diagnostic smokes alone did not clear the interrupted workflow. Calibration never issues production approval; a changed candidate requires fresh rehearsal.",
           [
             ["scripts/release/rehearsal-cli.ts"],
             [
@@ -766,7 +767,7 @@
           "One-time Worker adoption",
           "built",
           "Preserve Netlify; establish Worker provenance",
-          "The separate adoption gate is enabled for the initial cutover candidate; ordinary releases remain disabled. The operation uses protected main, exact staged source evidence and the production concurrency group. It verifies the locked, Git-attributed Netlify deployment and preserves it while activating a sealed Worker artifact with no migration or secret rotation. A passed collaboration/screenshot smoke and distinct adoption record can establish the first reviewed baseline. The operator accepted fail-forward recovery for the historical Worker; no legacy restore target is invented. Live adoption remains outstanding.",
+          "The separate adoption gate is enabled for the initial cutover candidate; ordinary releases remain disabled. The operation uses protected main, exact staged source evidence and the production concurrency group. It verifies the locked, Git-attributed Netlify deployment and preserves it while activating a sealed Worker artifact with no migration or secret rotation. A passed collaboration/screenshot smoke and distinct adoption record can establish the first reviewed baseline. The operator accepted fail-forward recovery for the historical Worker; no legacy restore target is invented. Live adoption remains outstanding: run 34683011398 stopped during preflight before any provider mutation because the selected GitHub API version omitted merge_commit_sha.",
           [
             ["scripts/release/production-adoption-record.ts"],
             ["scripts/release/production-adoption-runner.ts"],
@@ -816,7 +817,7 @@
           "6 · Explicit recovery",
           "live",
           "Restore a verified pair; reconcile interruptions",
-          "Protected staging B-to-A recovery and resume passed on 11 September UTC. The first live attempt restored Netlify A and stopped at role verification. A later full local smoke passed. Resume exposed a temporary-path-dependent inspection fingerprint; the reviewed correction reverified the retained evidence read-only and persisted portable version-2 evidence before further mutation. The successful resume retained the completed Netlify step, passed transition smoke, restored Worker version A under a new deployment ID, and passed final-pair smoke. Both smokes included ticket authorization, synchronization, reload, network-loss recovery and screenshot download. Production recovery remains live-unverified. Publishing cutover and an attributable initial production baseline remain outstanding; the operator accepted one-time fail-forward adoption without a legacy restore subsystem.",
+          "Protected staging B-to-A recovery and resume passed on 11 September UTC. The first live attempt restored Netlify A and stopped at role verification. A later full local smoke passed. Resume exposed a temporary-path-dependent inspection fingerprint; the reviewed correction reverified the retained evidence read-only and persisted portable version-2 evidence before further mutation. The successful resume retained the completed Netlify step, passed transition smoke, restored Worker version A under a new deployment ID, and passed final-pair smoke. Both smokes included ticket authorization, synchronization, reload, network-loss recovery and screenshot download. Production recovery remains live-unverified. Publishing cutover is verified locked; an attributable initial production baseline remains outstanding; the operator accepted one-time fail-forward adoption without a legacy restore subsystem.",
           [
             ["scripts/release/recovery-runner.ts"],
             ["scripts/release/recovery-cli.ts"],
@@ -836,10 +837,10 @@
         ],
         cutover: [
           "6 · Publishing cutover",
-          "planned",
-          "Replace automatic main publication",
-          "Verify provider capabilities, packaging, authentication and account-plan constraints in staging before replacing automatic Netlify production publication. Controlled promotion becomes authoritative only after this bypass route is closed.",
-          [["docs/releases.md"]],
+          "live",
+          "Automatic publication locked",
+          "Staging preparation, recovery and rehearsal passed. Netlify production publication was locked through the authenticated dashboard, and a subsequent main build remained unpublished. Explicit coordinated production activation remains to be verified.",
+          [["docs/release-evidence/2026-09-12-production-cutover/README.md"]],
         ],
         complete: [
           "Verify → record → synchronize",
@@ -869,7 +870,7 @@
             [
               "Observed delivery",
               ["smoke", "main", "baseline"],
-              ["smoke establishes staging baseline", "automatic app publication remains"],
+              ["smoke establishes staging baseline", "automatic app publication locked"],
             ],
           ],
           summary: "Passing CI or planning does not authorize production promotion.",
@@ -882,7 +883,7 @@
             [
               "Control gap",
               ["route", "main"],
-              "Native protections require reviewed, passing changes; automatic main publishing can still bypass future coordinated release gates.",
+              "Native protections require reviewed, passing changes; the verified Netlify publication lock prevents Git-triggered builds from replacing production.",
             ],
             [
               "Human control",
@@ -998,7 +999,7 @@
             [
               "Bottleneck: authority",
               ["approve", "cutover"],
-              "One production release at a time, shared adoption/promotion/recovery serialization, and controlled publication are required. Netlify’s automatic main path has not yet been disabled.",
+              "One production release at a time, shared adoption/promotion/recovery serialization, and controlled publication are required. Netlify publication is locked, and a subsequent Git build was verified not to publish.",
             ],
           ],
         },
@@ -1136,7 +1137,7 @@
       $("filter").onchange = emphasis;
       const walk = [
         [
-          "Start with the control gap. Native branch protections exist, but main still triggers Netlify publication.",
+          "Start with the publication boundary. Native branch protections exist, and main builds cannot replace the locked Netlify deployment.",
           0,
           "main",
         ],
