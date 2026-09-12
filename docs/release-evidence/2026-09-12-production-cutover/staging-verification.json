@@ -1,0 +1,39 @@
+{
+  "operation": "verified-cutover-calibration",
+  "outcome": "passed",
+  "verifiedAt": "2026-09-12T08:09:12.860Z",
+  "run": {
+    "runId": 34682366013,
+    "runAttempt": 1,
+    "workflowId": 355995085,
+    "workflowCommit": "a47ba7c32057b301a340a9f5688ae8bb27917674",
+    "createdAt": "2026-09-12T08:05:08Z",
+    "updatedAt": "2026-09-12T08:08:39Z"
+  },
+  "artifact": {
+    "artifactId": 10294790924,
+    "name": "release-rehearsal-diagnostics",
+    "digest": "sha256:0ec9b56c1323fe1bc18bb86859b835cc471e3e4bcee9cc8758041d82958c022a",
+    "sizeInBytes": 12464506,
+    "expiresAt": "2026-09-19T08:08:33Z"
+  },
+  "candidate": "a47ba7c32057b301a340a9f5688ae8bb27917674",
+  "tree": "bee33678f9ca6ec526b0b08441d3cb68eae20da6",
+  "stages": {
+    "inspect": "passed",
+    "hold-netlify": "passed",
+    "upload-worker": "passed",
+    "activate-worker": "passed",
+    "observe-worker": "passed",
+    "verify-transition": "passed",
+    "prepublish-check": "passed",
+    "publish-netlify": "passed",
+    "observe-netlify": "passed",
+    "verify-pair": "passed"
+  },
+  "pair": {
+    "netlifyDeployId": "6aa50809c9bb54ac2290fbd1",
+    "workerDeploymentId": "095e900c-ff84-47ad-b46d-c0a1fa6f9005",
+    "workerVersionId": "852b066f-8717-4c14-b161-b4f4333b8ac9"
+  }
+}
