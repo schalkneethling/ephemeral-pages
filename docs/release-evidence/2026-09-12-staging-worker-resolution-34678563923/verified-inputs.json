@@ -1,0 +1,43 @@
+{
+  "operation": "staging-worker-resolution-inputs",
+  "outcome": "passed",
+  "verifiedAt": "2026-09-12T06:50:47.947Z",
+  "records": [
+    {
+      "kind": "failed",
+      "run": {
+        "runId": 34678563923,
+        "workflowCommit": "93a8c0862efd7d981b690d6d461d6c51dbd7b054"
+      },
+      "artifact": {
+        "artifactId": 10293790508,
+        "name": "release-rehearsal-diagnostics",
+        "digest": "sha256:d8ffa02908602403eeb94e7dda8bdbe64c9abc45d39fcfacccbefa90353d16b6",
+        "sizeInBytes": 12462609,
+        "expiresAt": "2026-09-19T06:39:21Z"
+      },
+      "directory": "/tmp/staging-worker-resolution-failed-34678563923",
+      "reportSha256": "ea6c8c83f2df3c294dd1956c8dda70ee6e7273464cca599ee7273574fe083b46"
+    },
+    {
+      "kind": "target",
+      "run": {
+        "runId": 34652674501,
+        "runAttempt": 1,
+        "workflowId": 355995085,
+        "workflowCommit": "293f5edbac5a9a29bbb3507a4910f677c6a66597",
+        "createdAt": "2026-09-11T22:08:44Z",
+        "updatedAt": "2026-09-11T22:12:22Z"
+      },
+      "artifact": {
+        "artifactId": 10285175230,
+        "name": "release-rehearsal-diagnostics",
+        "digest": "sha256:b6edb5f285b6511dec427202e5d132c2aa487c3f4f9b830322fd21692571c1e2",
+        "sizeInBytes": 12464147,
+        "expiresAt": "2026-09-18T22:12:17Z"
+      },
+      "directory": "/tmp/staging-worker-resolution-target-34652674501",
+      "reportSha256": "c13626beb253c55d4ac32a0df648be1fdf04abeb7868301892efefd2718f5278"
+    }
+  ]
+}

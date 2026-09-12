@@ -13,12 +13,15 @@ export function setupScreenshotCapture(pageId: string): void {
   let inFlight = false;
   const buttonHtml = button.innerHTML;
   button.hidden = false;
+  result.hidden = false;
+  status.hidden = false;
+  status.textContent = "Capture a snapshot of the current shared page.";
 
   button.addEventListener("click", async () => {
     if (inFlight) return;
     inFlight = true;
     button.disabled = true;
-    button.innerHTML = `${htmlIcon("loader", "icon btn-icon icon-spin")} Capturing…`;
+    button.innerHTML = `${htmlIcon("loader", "icon btn-icon icon-spin")} Capture screenshot`;
     result.hidden = false;
     status.hidden = false;
     status.setAttribute("role", "status");

@@ -1,0 +1,18 @@
+title = "ephemeral-pages secret scanning"
+minVersion = "v8.30.0"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "ephemeral-pages-staging-secret"
+description = "Ephemeral Pages staging credential"
+regex = '''(?i)(?:(?:STAGE_COLLABORATION_(?:CAPABILITY_CURRENT_SECRET|TICKET_SECRET|SERVICE_TOKEN))|STAGE_RATE_LIMIT_SECRET)[\x60'\"]{0,1}[\t ]*(?:=|:)[\t ]*[\x60'\"]{0,1}([a-z0-9_./+=:-]{32,})'''
+secretGroup = 1
+entropy = 3.0
+keywords = [
+  "stage_collaboration_capability_current_secret",
+  "stage_collaboration_ticket_secret",
+  "stage_collaboration_service_token",
+  "stage_rate_limit_secret",
+]

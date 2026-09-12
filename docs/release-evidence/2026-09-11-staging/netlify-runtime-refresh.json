@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "operation": "staging-netlify-env-refresh",
+  "source": "e0508d5fbf1f5cb7ffb8440918e6ac6b7c720355",
+  "inventorySha256": "89d58b657f0396a3573b66bb0b35c9513d766bce37c0878a4debfdac688fb4c4",
+  "failedRunId": 34639972407,
+  "outcome": "passed-awaiting-protected-transition-smoke",
+  "stage": "complete",
+  "checkpoints": [
+    {
+      "operation": "createSiteDeploy",
+      "phase": "pending-mutation"
+    },
+    {
+      "operation": "createSiteDeploy",
+      "phase": "mutation-response-received",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "updateSiteDeploy",
+      "phase": "pending-mutation",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "uploadDeployFunction",
+      "phase": "pending-mutation",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "uploadDeployFunction",
+      "phase": "pending-mutation",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "uploadDeployFunction",
+      "phase": "pending-mutation",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "uploadDeployFunction",
+      "phase": "pending-mutation",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "uploadDeployFunction",
+      "phase": "pending-mutation",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "uploadDeployFunction",
+      "phase": "pending-mutation",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "uploadDeployFunction",
+      "phase": "pending-mutation",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "uploadDeployFunction",
+      "phase": "pending-mutation",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "uploadDeployFunction",
+      "phase": "pending-mutation",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "uploadDeployFunction",
+      "phase": "pending-mutation",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "restoreSiteDeploy",
+      "phase": "pending-mutation",
+      "deployId": "6aa45e304f4fd676a16c545e"
+    },
+    {
+      "operation": "restoreSiteDeploy",
+      "phase": "mutation-response-received",
+      "deployId": "6aa45e304f4fd676a16c545e",
+      "publishedDeployId": "6aa45e304f4fd676a16c545e"
+    }
+  ],
+  "startingPair": {
+    "netlifyDeployId": "6aa327145fc723d7169c4879",
+    "workerDeploymentId": "5692b4ef-bcb1-4635-9e91-62411c9ee82c",
+    "workerVersionId": "a8bd1a52-3e0a-4e3f-a791-ec6d3e668cd9"
+  },
+  "heldDeployId": "6aa45e304f4fd676a16c545e",
+  "publishedDeployId": "6aa45e304f4fd676a16c545e"
+}

@@ -1,0 +1,13 @@
+{
+  "accountId": "369e0fbadd08f6f15efd9fb63c7f5193",
+  "workerName": "ephemeral-pages-collaboration-staging",
+  "productionWorkerName": "ephemeral-pages-collaboration",
+  "wranglerEnvironment": "staging",
+  "wranglerConfigPath": "collaboration-worker/wrangler.jsonc",
+  "expectedNonSecretVariables": {
+    "ALLOWED_ORIGINS": "https://ephemeral-pages-staging.netlify.app",
+    "PAGE_CONTENT_ORIGIN": "https://ephemeral-pages-staging.netlify.app",
+    "PUBLIC_WORKER_ORIGIN": "https://ephemeral-pages-collaboration-staging.volume4-schalk.workers.dev",
+    "TICKET_AUDIENCE": "ephemeral-pages-collaboration-staging"
+  }
+}

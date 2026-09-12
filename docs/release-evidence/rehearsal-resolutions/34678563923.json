@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "operation": "resolve-staging-rehearsal",
+  "failedRunId": 34678563923,
+  "failedDiagnosticsDigest": "sha256:d8ffa02908602403eeb94e7dda8bdbe64c9abc45d39fcfacccbefa90353d16b6",
+  "failedRehearsalSha256": "ea6c8c83f2df3c294dd1956c8dda70ee6e7273464cca599ee7273574fe083b46",
+  "restoredPair": {
+    "netlifyDeployId": "6aa47c40f0b74e3ac28b75ea",
+    "workerDeploymentId": "f9737b9b-d15e-4ef3-b063-7948f22a2662",
+    "workerVersionId": "c12bb05c-bf4e-408f-b96f-e4b65d13a07a"
+  },
+  "recoveryRecord": {
+    "path": "docs/release-evidence/rehearsal-resolutions/34678563923-recovery.json",
+    "sha256": "3f21d329bea815ad45a0ba2d7d64b19cd55cb8de56f12e7bd26f769d78c60c46"
+  },
+  "passedSmoke": {
+    "path": "docs/release-evidence/rehearsal-resolutions/34678563923-smoke.json",
+    "sha256": "d5eeee673537ad6a972f29439eb5f1055e56e5e8d44625a1e6a28bec0bac1de4"
+  }
+}
