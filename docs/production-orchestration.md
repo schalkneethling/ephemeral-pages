@@ -50,10 +50,10 @@ preparation and rehearsal records. The operator supplies that approval file's SH
 Approval stays outside the candidate's source tree, avoiding a self-referential commit/hash.
 
 The producer requires a reviewed `docs/release-evidence/production-baseline.json` with the actual
-source commit and provider identity for each live service. That known-source bootstrap record has
-not yet been established. Do not infer both services' source from `main`, or substitute the 9/10
-historical launch evidence that lacks the required source attribution. An unavailable baseline blocks
-approval generation.
+source commit and provider identity for each live service. The verified adoption established that
+record, retaining the older Netlify source and recording the newly attributable Worker source.
+Do not infer both services' source from `main` or substitute historical launch evidence without
+source attribution. An unavailable baseline blocks approval generation.
 
 Both production phases check GitHub provenance and approval again. GitHub artifact downloads must
 match the API's size and SHA-256, remain unexpired, and pass bounded ZIP extraction. Missing evidence,
@@ -165,12 +165,12 @@ alone does not establish that restoration is possible or compatible with current
 ## Remaining rollout gates
 
 See [recovery and cutover](recovery.md) for implementation details and the current setup checkpoint.
-Staging recovery, resume, and forward deployment have passed. Rehearse the exact cutover candidate,
-lock Netlify publication, and verify that the promotion merge cannot replace its published deployment.
-Establish the attributable production baseline through the one-time Worker adoption and verify the
-production collaboration and screenshot operations. Keep
-independent Cloudflare Git deployment disabled. Only then enable the reviewed production policy and
-perform the first coordinated production release.
+Staging recovery, resume, and forward deployment have passed. Netlify publication is locked, and a
+subsequent Git build was verified not to publish. Production Worker adoption, collaboration and
+screenshot verification, baseline recording, and the production policy transition are complete.
+Keep independent Cloudflare Git deployment disabled. The remaining release gate is a successful
+approval rehearsal for the exact candidate, followed by its reviewed promotion and the first
+coordinated production release.
 
 Dispatch `Staging release rehearsal` from `stage` in `approval` mode. Its successful `release-rehearsal` artifact contains
 only the approval bundle; `release-rehearsal-diagnostics` retains prepared artifacts and reports even
