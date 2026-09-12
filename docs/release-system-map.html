@@ -465,15 +465,17 @@
         storage make coordination necessary.
       </p>
       <div class="snapshot">
-        Documentation checkpoint · 12 September 2026 UTC · Staging passed; publication locked;
-        adoption preflight blocked
+        Documentation checkpoint · 12 September 2026 UTC · Production Worker adopted; baseline
+        verified; ordinary application release pending
       </div>
       <div class="notice">
-        <strong>Current checkpoint.</strong> Worker-only recovery and fresh staging rehearsal
-        passed. Netlify publication is locked; a subsequent main build did not replace the live app.
-        Cloudflare Git deployment remains disabled. Production adoption stopped before mutation
-        because the selected GitHub API version omitted a required merge-commit field. The
-        attributable production baseline and first coordinated production release remain
+        <strong>Current checkpoint.</strong> Staging rehearsal and production Worker adoption
+        passed. Netlify publication remains locked; the existing app was preserved. The
+        source-attributed production baseline and recovery target are recorded. Adoption is disabled
+        and ordinary releases enabled in policy. Two approval rehearsals completed both staging
+        writes but failed at immediate readback; subsequent inspection and all six smoke checks
+        passed. The readback correction must preserve diagnostic causes and bound observation of the
+        exact pair. A fresh approval rehearsal and the first coordinated application release remain
         outstanding.
       </div>
     </header>
@@ -534,9 +536,9 @@
         * “Live verified” refers to dated evidence in the repository, not a real-time monitor.
         Staging preparation and the full coordinated rehearsal passed for the recorded candidate.
         Production promotion/resume provider and runner code is implemented but live-unverified;
-        staging recovery and resume passed their protected drill. Production recovery and publishing
-        cutover remain unverified. Layer numbers describe the implementation plan, not command
-        syntax.
+        staging recovery and resume passed their protected drill. Production adoption and publishing
+        cutover passed; production recovery remains unverified. Layer numbers describe the
+        implementation plan, not command syntax.
       </p>
       <p>
         Portable source links are relative to the intended
@@ -629,9 +631,12 @@
         baseline: [
           "Verified production baseline",
           "live",
-          "Historical pair, not a release approval",
-          "The 9 September collaboration launch has live browser and API smoke evidence. Netlify deploy 6aa1c499a64d39a10fb86df2 and Worker version 4b747f21-d3a0-4566-8026-8dae1ea13109 identify the historical pair. It predates runner artifact hashes and fingerprints; it is not the required known-source docs/release-evidence/production-baseline.json.",
-          [["docs/collaboration-production-release.md"], ["docs/production-orchestration.md"]],
+          "Verified pair with separate service sources",
+          "Production adoption run 34688347172 passed on 12 September. The locked Netlify deployment retains source 65aab59, while the sealed Worker version 8c17bf49 is attributed to source 7a7b25b. The baseline records the actual pair and the recovery target references the verified adoption artifact. These records establish release inputs, not approval for a different candidate.",
+          [
+            ["docs/release-evidence/production-baseline.json"],
+            ["docs/release-evidence/2026-09-12-production-adoption-34688347172/README.md"],
+          ],
         ],
         html: [
           "Uploaded HTML sandbox",
@@ -765,9 +770,9 @@
         ],
         adopt: [
           "One-time Worker adoption",
-          "built",
+          "live",
           "Preserve Netlify; establish Worker provenance",
-          "The separate adoption gate is enabled for the initial cutover candidate; ordinary releases remain disabled. The operation uses protected main, exact staged source evidence and the production concurrency group. It verifies the locked, Git-attributed Netlify deployment and preserves it while activating a sealed Worker artifact with no migration or secret rotation. A passed collaboration/screenshot smoke and distinct adoption record can establish the first reviewed baseline. The operator accepted fail-forward recovery for the historical Worker; no legacy restore target is invented. Live adoption remains outstanding: run 34683011398 stopped during preflight before any provider mutation because the selected GitHub API version omitted merge_commit_sha.",
+          "Production adoption run 34688347172 passed on protected main after exact staged-source verification. It retained the locked Netlify deployment while activating sealed Worker version 8c17bf49 without migrations or secret rotation. Collaboration and screenshot smoke passed, establishing the reviewed production baseline and recovery target. The adoption gate is now disabled and ordinary releases enabled in policy. No historical Worker rollback guarantee is invented.",
           [
             ["scripts/release/production-adoption-record.ts"],
             ["scripts/release/production-adoption-runner.ts"],
@@ -817,7 +822,7 @@
           "6 · Explicit recovery",
           "live",
           "Restore a verified pair; reconcile interruptions",
-          "Protected staging B-to-A recovery and resume passed on 11 September UTC. The first live attempt restored Netlify A and stopped at role verification. A later full local smoke passed. Resume exposed a temporary-path-dependent inspection fingerprint; the reviewed correction reverified the retained evidence read-only and persisted portable version-2 evidence before further mutation. The successful resume retained the completed Netlify step, passed transition smoke, restored Worker version A under a new deployment ID, and passed final-pair smoke. Both smokes included ticket authorization, synchronization, reload, network-loss recovery and screenshot download. Production recovery remains live-unverified. Publishing cutover is verified locked; an attributable initial production baseline remains outstanding; the operator accepted one-time fail-forward adoption without a legacy restore subsystem.",
+          "Protected staging B-to-A recovery and resume passed on 11 September UTC. The first live attempt restored Netlify A and stopped at role verification. A later full local smoke passed. Resume exposed a temporary-path-dependent inspection fingerprint; the reviewed correction reverified the retained evidence read-only and persisted portable version-2 evidence before further mutation. The successful resume retained the completed Netlify step, passed transition smoke, restored Worker version A under a new deployment ID, and passed final-pair smoke. Both smokes included ticket authorization, synchronization, reload, network-loss recovery and screenshot download. Production recovery remains live-unverified. Publishing cutover is verified locked; the attributable production baseline is verified; the operator accepted one-time fail-forward adoption without a legacy restore subsystem.",
           [
             ["scripts/release/recovery-runner.ts"],
             ["scripts/release/recovery-cli.ts"],
@@ -964,7 +969,7 @@
           name: "Coordinated release",
           title: "Staging verified. Production controls next.",
           intro:
-            "Layer 4 passed a complete staging rehearsal. Layer 5 provider and runner code is implemented; live workflow verification remains pending. Protected staging recovery and resume passed. Production recovery, the initial baseline and publishing cutover remain outstanding.",
+            "Layer 4 passed a complete staging rehearsal. Layer 5 provider and runner code is implemented; live workflow verification remains pending. Protected staging recovery and resume passed. Production adoption, the initial baseline and publishing cutover passed. Ordinary production release and production recovery remain live-unverified.",
           lanes: [
             [
               "Layer 4 / Preparation",

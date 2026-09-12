@@ -49,6 +49,10 @@ For release-system changes, update `docs/release-system-map.html`, `docs/release
 operator guidance at completed implementation, validation, review, or rollout checkpoints. Keep
 verified behavior distinct from planned work and link dated evidence; real-time updates are unnecessary.
 
+Keep failures diagnosable. Concise user-facing errors must preserve underlying causes for debugging.
+Retain useful structured operational diagnostics, with secrets and sensitive payloads excluded, and
+test that wrapping and redaction do not make distinct failures indistinguishable.
+
 Review the final version after refactoring and rerun the checks relevant to the change.
 
 Run `bun run security:secrets` with the pinned Gitleaks binary before pushing changes. CI also scans

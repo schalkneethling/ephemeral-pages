@@ -9,7 +9,7 @@ import {
   verifyArtifactSource,
 } from "./artifact-contract.ts";
 import { readBoundedJson } from "./bootstrap-safety.ts";
-import { runCommand } from "./command.ts";
+import { runCommand, SafeCommandError } from "./command.ts";
 import {
   verifyNetlifyArtifacts,
   type NetlifyArtifactInventory,
@@ -38,8 +38,7 @@ import type { ProductionDependencies, ProductionMutationStep } from "./productio
 import {
   inspectCloudflare,
   inspectNetlify,
-  type CloudflareInspection,
-  type NetlifyInspection,
+  ProviderInspectionError,
   type ProviderCommandRunner,
 } from "./providers.ts";
 import { releaseConfigSchema, type ReleaseConfig } from "./schema.ts";
@@ -140,17 +139,47 @@ const exactOrigin = (value: string | undefined): value is string => {
   }
 };
 
-const inspectionIsConfigured = (app: NetlifyInspection, worker: CloudflareInspection): boolean =>
-  app.publishLocked &&
-  app.variableScopesMatch &&
-  Object.values(app.nonSecretVariables).every((value) => value.present && value.matchesExpected) &&
-  Object.values(app.requiredSecrets).every(Boolean) &&
-  Object.values(worker.nonSecretVariables).every(
-    (value) => value.present && value.matchesExpected,
-  ) &&
-  Object.values(worker.requiredSecrets).every(Boolean) &&
-  worker.traffic.length === 1 &&
-  worker.traffic[0].percentage === 100;
+const inspectionCommandFailure = (
+  executable: string,
+  argv: readonly string[],
+  exitCode: number | null,
+): ProviderInspectionError => {
+  const netlify = executable.endsWith("netlify");
+  const cloudflare = executable.endsWith("wrangler");
+  const operation = netlify
+    ? argv[0] === "api" && argv[1] === "getSite"
+      ? "getSite"
+      : argv[0] === "api" && argv[1] === "getSiteDeploy"
+        ? "getSiteDeploy"
+        : argv[0] === "api" && argv[1] === "getEnvVars"
+          ? "getEnvVars"
+          : undefined
+    : cloudflare
+      ? argv[0] === "deployments" && argv[1] === "status"
+        ? "deploymentsStatus"
+        : argv[0] === "versions" && argv[1] === "view"
+          ? "versionView"
+          : argv[0] === "secret" && argv[1] === "list"
+            ? "secretList"
+            : undefined
+      : undefined;
+  if (
+    !operation ||
+    (exitCode !== null && (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255))
+  ) {
+    throw new Error("Production provider inspection failed.");
+  }
+  return new ProviderInspectionError(
+    {
+      provider: netlify ? "netlify" : "cloudflare",
+      operation,
+      classification: "command",
+      commandKind: "failed",
+      exitCode,
+    },
+    new SafeCommandError("failed"),
+  );
+};
 
 const safeSmokeReport = (report: CollaborationSmokeReport): CollaborationSmokeReport => {
   if (
@@ -316,7 +345,9 @@ export async function createProductionProviderDependencies(
         inheritEnv: false,
         timeoutMs: 60_000,
       });
-      if (result.exitCode !== 0) throw new Error("Production provider inspection failed.");
+      if (result.exitCode !== 0) {
+        throw inspectionCommandFailure(executable, args, result.exitCode);
+      }
       return result.stdout;
     });
   const inspect = async () => {
@@ -330,13 +361,44 @@ export async function createProductionProviderDependencies(
         providerRun,
       ),
     ]);
+    if (app.siteId !== appTarget.siteId || !app.publishLocked) {
+      throw new ProviderInspectionError({
+        provider: "netlify",
+        operation: "getSite",
+        classification: "assertion",
+        assertion: "provider-policy",
+      });
+    }
     if (
-      app.siteId !== appTarget.siteId ||
+      !app.variableScopesMatch ||
+      Object.values(app.nonSecretVariables).some(
+        (value) => !value.present || !value.matchesExpected,
+      ) ||
+      Object.values(app.requiredSecrets).some((value) => !value)
+    ) {
+      throw new ProviderInspectionError({
+        provider: "netlify",
+        operation: "getEnvVars",
+        classification: "assertion",
+        assertion: "provider-policy",
+      });
+    }
+    if (
       workerState.accountId !== workerTarget.accountId ||
       workerState.workerName !== workerTarget.workerName ||
-      !inspectionIsConfigured(app, workerState)
+      Object.values(workerState.nonSecretVariables).some(
+        (value) => !value.present || !value.matchesExpected,
+      ) ||
+      Object.values(workerState.requiredSecrets).some((value) => !value) ||
+      workerState.traffic.length !== 1 ||
+      workerState.traffic[0].percentage !== 100
     ) {
-      throw new Error("Production provider inspection did not pass.");
+      throw new ProviderInspectionError({
+        provider: "cloudflare",
+        operation: "deploymentsStatus",
+        classification: "assertion",
+        assertion: "provider-policy",
+      });
     }
     return {
       netlifyDeployId: app.publishedDeployId,

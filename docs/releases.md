@@ -1,20 +1,15 @@
 # Repeatable releases
 
-Status: protected staging preparation, calibrations A/B, explicit B-to-A recovery with resume,
-and the final forward calibration passed. Both recovery and forward deployment passed their
-transition and final-pair browser smokes. See [the verified checkpoint](release-evidence/2026-09-11-staging-recovery-34652303609/README.md)
-and [earlier findings](release-evidence/2026-09-11-staging/README.md). Native branch protections
-and branch-restricted deployment credentials are configured. Production orchestration and recovery
-are implemented but remain live-unverified. The attributable production
-baseline and the first coordinated production release remain gates. The separate
-[one-time Worker adoption](production-orchestration.md#first-worker-adoption) preserves Netlify and
-records the accepted fail-forward policy; it does not establish a historical Worker rollback target.
-The adoption gate is enabled for the initial cutover candidate; ordinary releases remain disabled.
-Fresh read-only production inspection passed configuration and secret-presence checks on 12 September
-2026 UTC. Exact-candidate staging rehearsal passed and Netlify publication was locked; a subsequent
-Git-triggered build did not replace the live app. Production adoption stopped before mutation because
-the GitHub API version omitted a required merge-commit field. See the
-[12 September cutover checkpoint](release-evidence/2026-09-12-production-cutover/README.md).
+Status: staging preparation, calibration, explicit recovery and resume are live-verified. Production
+publication is locked, and subsequent Git-triggered builds did not replace the published app.
+The [first production Worker adoption](release-evidence/2026-09-12-production-adoption-34688347172/README.md)
+passed on 12 September 2026 UTC, establishing the reviewed source-attributed baseline and recovery target.
+The one-time adoption gate is disabled; ordinary production orchestration is enabled in policy.
+The first ordinary coordinated application release still requires approval rehearsal, a reviewed
+stage-to-main promotion, exact-main CI and manual dispatch. Production recovery remains live-unverified.
+
+The earlier [cutover checkpoint](release-evidence/2026-09-12-production-cutover/README.md) records
+the publication lock and pre-mutation API compatibility failure, corrected before successful adoption.
 The release client pins the supported API version matching its promotion schema; upgrading that
 version requires validating the response contract against GitHub's documented breaking changes.
 
@@ -91,6 +86,19 @@ mutation step was skipped before a preflight failure can be ignored without arti
 runs require intact, digest-verified diagnostics. A proven read-only failure cannot hide an older partial
 mutation. Missing evidence, uncertain writes, or unresolved partial deployment stop execution.
 
+After staging publication returns, the runner observes the exact expected pair for at most two
+minutes and 30 attempts. Only read-only inspection repeats; publication is not repeated. Each
+subprocess shares the remaining deadline, and both provider reads settle before another attempt.
+`reports/postpublish-observation.json` retains failed attempts even when a later inspection succeeds.
+A deadline, mismatch, or inspection failure cannot advance to final smoke without exact verification.
+
+Operational errors must remain diagnosable. A concise user-facing message must not discard the
+underlying cause: preserve error chains for debugging and retain structured diagnostic details in
+release reports. Identify the provider, operation, failed assertion, and timeout or exit status where
+available. Project safe fields into retained evidence; do not serialize arbitrary upstream messages,
+credentials, response payloads, page contents, or browser traces. Tests must show that distinct
+underlying failures remain distinguishable after wrapping and redaction.
+
 Retained JSON evidence is excluded from automatic formatting because references bind its exact bytes.
 Validate it through its release schema and secret scanning; do not reformat a signed-off record.
 
@@ -98,7 +106,12 @@ An explicit staging recovery can clear that boundary through a reviewed resoluti
 protected `stage`. The resolution binds the failed run and report, the recovery record, a subsequent
 passed smoke report, and the actually restored pair. Fresh provider inspection must match that pair
 before another rehearsal can write. A local smoke alone is diagnostic evidence, not permission to
-ignore a partially completed workflow. See [recovery](recovery.md) for the operator boundary.
+ignore a partially completed workflow. If both writes completed and only final Netlify readback failed,
+a reviewed final-pair resolution can instead bind those returned IDs to a full passed smoke and fresh
+provider inspection. It permits a new rehearsal without repeating writes merely to clear history;
+the failed run still cannot issue production approval. See the
+[recorded verification](release-evidence/2026-09-12-staging-final-pair-34688990620/README.md)
+and [recovery](recovery.md) for the operator boundary.
 
 The ordinary Worker path supports the reviewed `v1` SQLite Durable Object lifecycle with no migration
 change. Different migration state blocks this path. Netlify upload acknowledgements and Cloudflare

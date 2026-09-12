@@ -13,6 +13,7 @@ import {
   type ProductionProviderFactoryOverrides,
 } from "./production-providers.ts";
 import { productionRecordSchema, productionSteps } from "./production-record.ts";
+import { ProviderInspectionError } from "./providers.ts";
 import { releaseConfigSchema } from "./schema.ts";
 import type { ActivatedProductionWorkerVersion } from "./worker-release.ts";
 
@@ -263,10 +264,72 @@ it("blocks an unlocked production publication before creating mutation clients",
   overrides.inspectNetlify = vi.fn(async () => ({ ...value.appInspection, publishLocked: false }));
   const createNetlifyClient = vi.fn(async () => async () => ({}));
   overrides.createNetlifyClient = createNetlifyClient;
-  await expect(createProductionProviderDependencies(value.input, overrides)).rejects.toThrow(
-    "inspection did not pass",
-  );
+  await expect(createProductionProviderDependencies(value.input, overrides)).rejects.toMatchObject({
+    diagnostic: {
+      assertion: "provider-policy",
+      classification: "assertion",
+      operation: "getSite",
+      provider: "netlify",
+    },
+  });
   expect(createNetlifyClient).not.toHaveBeenCalled();
+});
+
+it("preserves a native inspection cause without exposing it in the diagnostic", async () => {
+  const value = await fixture();
+  const overrides = createOverrides(value);
+  const cause = new Error("secret-bearing-native-cause");
+  const failure = new ProviderInspectionError(
+    {
+      provider: "netlify",
+      operation: "getSite",
+      classification: "assertion",
+      assertion: "site-identity",
+    },
+    cause,
+  );
+  overrides.inspectNetlify = vi.fn(async () => {
+    throw failure;
+  });
+
+  let observed: unknown;
+  try {
+    await createProductionProviderDependencies(value.input, overrides);
+  } catch (error) {
+    observed = error;
+  }
+  expect(observed).toBe(failure);
+  expect((observed as Error).cause).toBe(cause);
+  expect(JSON.stringify((observed as ProviderInspectionError).diagnostic)).not.toContain(
+    "secret-bearing-native-cause",
+  );
+});
+
+it("retains a safe nonzero inspection exit code", async () => {
+  const value = await fixture();
+  const overrides = createOverrides(value);
+  delete overrides.providerRun;
+  delete overrides.inspectNetlify;
+  overrides.inspectCloudflare = vi.fn(async () => value.workerInspection);
+  overrides.run = vi.fn(async () => ({ exitCode: 23, stdout: "secret-bearing-command-output" }));
+
+  let observed: unknown;
+  try {
+    await createProductionProviderDependencies(value.input, overrides);
+  } catch (error) {
+    observed = error;
+  }
+  expect(observed).toBeInstanceOf(ProviderInspectionError);
+  expect((observed as ProviderInspectionError).diagnostic).toEqual({
+    provider: "netlify",
+    operation: "getSite",
+    classification: "command",
+    commandKind: "failed",
+    exitCode: 23,
+  });
+  expect(JSON.stringify((observed as ProviderInspectionError).diagnostic)).not.toContain(
+    "secret-bearing-command-output",
+  );
 });
 
 it("selects only the exact activation response checkpoint before a later inspection", async () => {

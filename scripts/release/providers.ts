@@ -1,4 +1,107 @@
 import { unstable_readConfig } from "wrangler";
+import { z } from "zod/v4";
+
+const providerInspectionOperationSchema = z.enum([
+  "configuration",
+  "getSite",
+  "getSiteDeploy",
+  "getEnvVars",
+  "deploymentsStatus",
+  "versionView",
+  "secretList",
+  "expectedPair",
+]);
+const providerInspectionAssertionSchema = z.enum([
+  "configuration",
+  "site-identity",
+  "published-deploy-ready",
+  "published-lock-shape",
+  "deploy-identity-ready",
+  "deploy-lock-shape",
+  "deploy-lock-match",
+  "deploy-source-shape",
+  "environment-shape",
+  "environment-entry",
+  "environment-scopes",
+  "environment-duplicate",
+  "deployment-identity",
+  "traffic-shape",
+  "traffic-entry",
+  "traffic-total",
+  "version-identity",
+  "bindings-shape",
+  "binding-entry",
+  "binding-duplicate",
+  "secrets-shape",
+  "secret-entry",
+  "secret-duplicate",
+  "provider-policy",
+  "observation-deadline",
+]);
+
+export const providerInspectionDiagnosticSchema = z
+  .strictObject({
+    provider: z.enum(["netlify", "cloudflare", "pair"]),
+    operation: providerInspectionOperationSchema,
+    classification: z.enum(["command", "json", "assertion", "mismatch"]),
+    assertion: providerInspectionAssertionSchema.optional(),
+    commandKind: z.enum(["failed", "spawn", "timeout", "output-limit"]).optional(),
+    exitCode: z.number().int().min(0).max(255).nullable().optional(),
+  })
+  .superRefine((value, context) => {
+    const validOperation =
+      (value.provider === "netlify" &&
+        ["configuration", "getSite", "getSiteDeploy", "getEnvVars"].includes(value.operation)) ||
+      (value.provider === "cloudflare" &&
+        ["configuration", "deploymentsStatus", "versionView", "secretList"].includes(
+          value.operation,
+        )) ||
+      (value.provider === "pair" && value.operation === "expectedPair");
+    const validDetails =
+      (value.classification === "command" &&
+        value.commandKind !== undefined &&
+        value.assertion === undefined &&
+        (value.commandKind === "failed"
+          ? value.exitCode !== undefined
+          : value.exitCode === undefined)) ||
+      (value.classification === "assertion" &&
+        value.assertion !== undefined &&
+        value.commandKind === undefined &&
+        value.exitCode === undefined) ||
+      ((value.classification === "json" || value.classification === "mismatch") &&
+        value.assertion === undefined &&
+        value.commandKind === undefined &&
+        value.exitCode === undefined);
+    if (
+      !validOperation ||
+      !validDetails ||
+      (value.classification === "mismatch" && value.provider !== "pair") ||
+      (value.provider === "pair" && !["mismatch", "assertion"].includes(value.classification))
+    ) {
+      context.addIssue({ code: "custom", message: "Provider inspection diagnostic is invalid." });
+    }
+  });
+export type ProviderInspectionDiagnostic = z.infer<typeof providerInspectionDiagnosticSchema>;
+
+export class ProviderInspectionError extends Error {
+  readonly kind = "failed";
+  readonly diagnostic: ProviderInspectionDiagnostic;
+
+  constructor(diagnostic: ProviderInspectionDiagnostic, cause?: unknown) {
+    const provider = diagnostic.provider === "netlify" ? "Netlify" : "Cloudflare";
+    const message =
+      diagnostic.provider === "pair"
+        ? "Provider inspection failed."
+        : diagnostic.operation === "configuration"
+          ? `${provider} inspection configuration is invalid.`
+          : diagnostic.classification === "command"
+            ? `${provider} inspection command failed.`
+            : `${provider} inspection response is invalid.`;
+    super(message, cause instanceof Error ? { cause } : undefined);
+    this.name = "ProviderInspectionError";
+    this.diagnostic = providerInspectionDiagnosticSchema.parse(diagnostic);
+  }
+}
 
 export type ProviderCommandRunner = (
   executable: string,
@@ -134,7 +237,8 @@ const hasValidNetlifyScopeConfig = (config: NetlifyInspectionConfig): boolean =>
 };
 
 const parseCommandJson = async (
-  provider: "Netlify" | "Cloudflare",
+  provider: "netlify" | "cloudflare",
+  operation: ProviderInspectionDiagnostic["operation"],
   run: ProviderCommandRunner,
   executable: string,
   args: readonly string[],
@@ -143,30 +247,58 @@ const parseCommandJson = async (
   let stdout: string;
   try {
     stdout = await run(executable, args, env);
-  } catch {
-    throw new Error(`${provider} inspection command failed.`);
+  } catch (error) {
+    if (error instanceof ProviderInspectionError) throw error;
+    const kind =
+      typeof error === "object" &&
+      error !== null &&
+      "kind" in error &&
+      ["failed", "spawn", "timeout", "output-limit"].includes(String(error.kind))
+        ? (error.kind as "failed" | "spawn" | "timeout" | "output-limit")
+        : "failed";
+    throw new ProviderInspectionError(
+      {
+        provider,
+        operation,
+        classification: "command",
+        commandKind: kind,
+        ...(kind === "failed" ? { exitCode: null } : {}),
+      },
+      error,
+    );
   }
 
   try {
     return JSON.parse(stdout) as unknown;
-  } catch {
-    throw new Error(`${provider} inspection response is invalid.`);
+  } catch (error) {
+    throw new ProviderInspectionError({ provider, operation, classification: "json" }, error);
   }
 };
 
-const invalidResponse = (provider: "Netlify" | "Cloudflare"): never => {
-  throw new Error(`${provider} inspection response is invalid.`);
+const invalidResponse = (
+  provider: "netlify" | "cloudflare",
+  operation: ProviderInspectionDiagnostic["operation"],
+  assertion: NonNullable<ProviderInspectionDiagnostic["assertion"]>,
+): never => {
+  throw new ProviderInspectionError({
+    provider,
+    operation,
+    classification: "assertion",
+    assertion,
+  });
 };
 
 function assertValidResponse(
   condition: unknown,
-  provider: "Netlify" | "Cloudflare",
+  provider: "netlify" | "cloudflare",
+  operation: ProviderInspectionDiagnostic["operation"],
+  assertion: NonNullable<ProviderInspectionDiagnostic["assertion"]>,
 ): asserts condition {
-  if (!condition) invalidResponse(provider);
+  if (!condition) invalidResponse(provider, operation, assertion);
 }
 
 const parseNetlifyEnvironment = (value: unknown): readonly NetlifyEnvironmentVariable[] => {
-  assertValidResponse(Array.isArray(value), "Netlify");
+  assertValidResponse(Array.isArray(value), "netlify", "getEnvVars", "environment-shape");
 
   const environment: NetlifyEnvironmentVariable[] = [];
   for (const item of value) {
@@ -177,13 +309,17 @@ const parseNetlifyEnvironment = (value: unknown): readonly NetlifyEnvironmentVar
         Array.isArray(item.scopes) &&
         Array.isArray(item.values) &&
         item.values.every((entry) => isObject(entry) && isNonEmptyString(entry.context)),
-      "Netlify",
+      "netlify",
+      "getEnvVars",
+      "environment-entry",
     );
     const scopes = item.scopes.map(normalizeNetlifyVariableScope);
     assertValidResponse(
       scopes.every((scope): scope is NetlifyVariableScope => scope !== undefined) &&
         new Set(scopes).size === scopes.length,
-      "Netlify",
+      "netlify",
+      "getEnvVars",
+      "environment-scopes",
     );
     environment.push({
       key: item.key,
@@ -202,18 +338,22 @@ const resolveNetlifyProductionValue = (
   const allValues = variable.values.filter((value) => value.context === "all");
   const applicable = productionValues.length > 0 ? productionValues : allValues;
 
-  if (applicable.length > 1) invalidResponse("Netlify");
+  if (applicable.length > 1) invalidResponse("netlify", "getEnvVars", "environment-entry");
   if (applicable.length === 0) return undefined;
 
   const value = applicable[0].value;
-  assertValidResponse(typeof value === "string", "Netlify");
+  assertValidResponse(typeof value === "string", "netlify", "getEnvVars", "environment-entry");
   return value;
 };
 
-const normalizeNetlifyLock = (value: unknown): boolean => {
+const normalizeNetlifyLock = (value: unknown, operation: "getSite" | "getSiteDeploy"): boolean => {
   if (value === true) return true;
   if (value === false || value === null) return false;
-  return invalidResponse("Netlify");
+  return invalidResponse(
+    "netlify",
+    operation,
+    operation === "getSite" ? "published-lock-shape" : "deploy-lock-shape",
+  );
 };
 
 const inspectNetlifyVariables = (
@@ -226,7 +366,7 @@ const inspectNetlifyVariables = (
 } => {
   const byKey = new Map<string, NetlifyEnvironmentVariable>();
   for (const variable of environment) {
-    if (byKey.has(variable.key)) invalidResponse("Netlify");
+    if (byKey.has(variable.key)) invalidResponse("netlify", "getEnvVars", "environment-duplicate");
     byKey.set(variable.key, variable);
   }
 
@@ -273,10 +413,15 @@ export const inspectNetlify = async (
     !hasValidVariableConfig(config.expectedNonSecretVariables, config.requiredSecretNames) ||
     !hasValidNetlifyScopeConfig(config)
   ) {
-    throw new Error("Netlify inspection configuration is invalid.");
+    throw new ProviderInspectionError({
+      provider: "netlify",
+      operation: "configuration",
+      classification: "assertion",
+      assertion: "configuration",
+    });
   }
 
-  const site = await parseCommandJson("Netlify", run, NETLIFY_EXECUTABLE, [
+  const site = await parseCommandJson("netlify", "getSite", run, NETLIFY_EXECUTABLE, [
     "api",
     "getSite",
     "--data",
@@ -284,7 +429,9 @@ export const inspectNetlify = async (
   ]);
   assertValidResponse(
     isObject(site) && site.id === config.siteId && site.account_id === config.accountId,
-    "Netlify",
+    "netlify",
+    "getSite",
+    "site-identity",
   );
 
   const publishedDeploy = site.published_deploy;
@@ -292,11 +439,13 @@ export const inspectNetlify = async (
     isObject(publishedDeploy) &&
       isNonEmptyString(publishedDeploy.id) &&
       publishedDeploy.state === "ready",
-    "Netlify",
+    "netlify",
+    "getSite",
+    "published-deploy-ready",
   );
-  const publishedDeployLocked = normalizeNetlifyLock(publishedDeploy.locked);
+  const publishedDeployLocked = normalizeNetlifyLock(publishedDeploy.locked, "getSite");
 
-  const deploy = await parseCommandJson("Netlify", run, NETLIFY_EXECUTABLE, [
+  const deploy = await parseCommandJson("netlify", "getSiteDeploy", run, NETLIFY_EXECUTABLE, [
     "api",
     "getSiteDeploy",
     "--data",
@@ -307,14 +456,23 @@ export const inspectNetlify = async (
       deploy.id === publishedDeploy.id &&
       deploy.site_id === config.siteId &&
       deploy.state === "ready",
-    "Netlify",
+    "netlify",
+    "getSiteDeploy",
+    "deploy-identity-ready",
   );
-  const deployLocked = normalizeNetlifyLock(deploy.locked);
-  assertValidResponse(deployLocked === publishedDeployLocked, "Netlify");
+  const deployLocked = normalizeNetlifyLock(deploy.locked, "getSiteDeploy");
+  assertValidResponse(
+    deployLocked === publishedDeployLocked,
+    "netlify",
+    "getSiteDeploy",
+    "deploy-lock-match",
+  );
   for (const value of [deploy.commit_ref, deploy.branch, deploy.context]) {
     assertValidResponse(
       value === undefined || value === null || typeof value === "string",
-      "Netlify",
+      "netlify",
+      "getSiteDeploy",
+      "deploy-source-shape",
     );
   }
   const publishedDeploySource: NetlifySourceAttribution = {
@@ -327,7 +485,7 @@ export const inspectNetlify = async (
   };
 
   const environment = parseNetlifyEnvironment(
-    await parseCommandJson("Netlify", run, NETLIFY_EXECUTABLE, [
+    await parseCommandJson("netlify", "getEnvVars", run, NETLIFY_EXECUTABLE, [
       "api",
       "getEnvVars",
       "--data",
@@ -350,7 +508,12 @@ export const inspectNetlify = async (
 };
 
 const parseCloudflareTraffic = (value: unknown): readonly CloudflareTraffic[] => {
-  assertValidResponse(Array.isArray(value) && value.length > 0, "Cloudflare");
+  assertValidResponse(
+    Array.isArray(value) && value.length > 0,
+    "cloudflare",
+    "deploymentsStatus",
+    "traffic-shape",
+  );
 
   const traffic: CloudflareTraffic[] = value.map((item) => {
     assertValidResponse(
@@ -360,7 +523,9 @@ const parseCloudflareTraffic = (value: unknown): readonly CloudflareTraffic[] =>
         Number.isFinite(item.percentage) &&
         item.percentage > 0 &&
         item.percentage <= 100,
-      "Cloudflare",
+      "cloudflare",
+      "deploymentsStatus",
+      "traffic-entry",
     );
     return { versionId: item.version_id, percentage: item.percentage };
   });
@@ -370,7 +535,7 @@ const parseCloudflareTraffic = (value: unknown): readonly CloudflareTraffic[] =>
     Math.abs(traffic.reduce((total, { percentage }) => total + percentage, 0) - 100) >
       PERCENTAGE_EPSILON
   ) {
-    invalidResponse("Cloudflare");
+    invalidResponse("cloudflare", "deploymentsStatus", "traffic-total");
   }
   return traffic;
 };
@@ -381,18 +546,27 @@ const parseCloudflareBindings = (
 ): readonly CloudflareBinding[] => {
   assertValidResponse(
     isObject(value) && value.id === versionId && isObject(value.resources),
-    "Cloudflare",
+    "cloudflare",
+    "versionView",
+    "version-identity",
   );
   const rawBindings = value.resources.bindings;
-  assertValidResponse(Array.isArray(rawBindings), "Cloudflare");
+  assertValidResponse(Array.isArray(rawBindings), "cloudflare", "versionView", "bindings-shape");
 
   const bindings: CloudflareBinding[] = [];
   for (const item of rawBindings) {
     assertValidResponse(
       isObject(item) && isNonEmptyString(item.name) && isNonEmptyString(item.type),
-      "Cloudflare",
+      "cloudflare",
+      "versionView",
+      "binding-entry",
     );
-    assertValidResponse(item.type !== "plain_text" || typeof item.text === "string", "Cloudflare");
+    assertValidResponse(
+      item.type !== "plain_text" || typeof item.text === "string",
+      "cloudflare",
+      "versionView",
+      "binding-entry",
+    );
     bindings.push({
       name: item.name,
       type: item.type,
@@ -403,15 +577,17 @@ const parseCloudflareBindings = (
 };
 
 const parseCloudflareSecretNames = (value: unknown): ReadonlySet<string> => {
-  assertValidResponse(Array.isArray(value), "Cloudflare");
+  assertValidResponse(Array.isArray(value), "cloudflare", "secretList", "secrets-shape");
 
   const names = new Set<string>();
   for (const item of value) {
     assertValidResponse(
       isObject(item) && isNonEmptyString(item.name) && item.type === "secret_text",
-      "Cloudflare",
+      "cloudflare",
+      "secretList",
+      "secret-entry",
     );
-    if (names.has(item.name)) invalidResponse("Cloudflare");
+    if (names.has(item.name)) invalidResponse("cloudflare", "secretList", "secret-duplicate");
     names.add(item.name);
   }
   return names;
@@ -428,7 +604,7 @@ const inspectCloudflareVariables = (
   const bindingMaps = bindingsByVersion.map((bindings) => {
     const map = new Map<string, CloudflareBinding>();
     for (const binding of bindings) {
-      if (map.has(binding.name)) invalidResponse("Cloudflare");
+      if (map.has(binding.name)) invalidResponse("cloudflare", "versionView", "binding-duplicate");
       map.set(binding.name, binding);
     }
     return map;
@@ -466,7 +642,12 @@ export const inspectCloudflare = async (
     !isNonEmptyString(config.wranglerConfigPath) ||
     !hasValidVariableConfig(config.expectedNonSecretVariables, config.requiredSecretNames)
   ) {
-    throw new Error("Cloudflare inspection configuration is invalid.");
+    throw new ProviderInspectionError({
+      provider: "cloudflare",
+      operation: "configuration",
+      classification: "assertion",
+      assertion: "configuration",
+    });
   }
 
   try {
@@ -486,8 +667,17 @@ export const inspectCloudflare = async (
     ) {
       throw new Error();
     }
-  } catch {
-    throw new Error("Cloudflare inspection configuration is invalid.");
+  } catch (error) {
+    if (error instanceof ProviderInspectionError) throw error;
+    throw new ProviderInspectionError(
+      {
+        provider: "cloudflare",
+        operation: "configuration",
+        classification: "assertion",
+        assertion: "configuration",
+      },
+      error,
+    );
   }
 
   const wranglerEnvironment = { CLOUDFLARE_ACCOUNT_ID: config.accountId };
@@ -500,19 +690,26 @@ export const inspectCloudflare = async (
     config.wranglerEnvironment,
   ] as const;
   const deployment = await parseCommandJson(
-    "Cloudflare",
+    "cloudflare",
+    "deploymentsStatus",
     run,
     WRANGLER_EXECUTABLE,
     ["deployments", "status", ...commonArgs, "--json"],
     wranglerEnvironment,
   );
-  assertValidResponse(isObject(deployment) && isNonEmptyString(deployment.id), "Cloudflare");
+  assertValidResponse(
+    isObject(deployment) && isNonEmptyString(deployment.id),
+    "cloudflare",
+    "deploymentsStatus",
+    "deployment-identity",
+  );
   const traffic = parseCloudflareTraffic(deployment.versions);
 
   const bindingsByVersion: CloudflareBinding[][] = [];
   for (const { versionId } of traffic) {
     const version = await parseCommandJson(
-      "Cloudflare",
+      "cloudflare",
+      "versionView",
       run,
       WRANGLER_EXECUTABLE,
       ["versions", "view", versionId, ...commonArgs, "--json"],
@@ -523,7 +720,8 @@ export const inspectCloudflare = async (
 
   const secretNames = parseCloudflareSecretNames(
     await parseCommandJson(
-      "Cloudflare",
+      "cloudflare",
+      "secretList",
       run,
       WRANGLER_EXECUTABLE,
       [

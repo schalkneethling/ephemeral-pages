@@ -3,13 +3,22 @@
 Status: production orchestration and resumption are implemented. Protected staging calibration,
 recovery, interrupted recovery, and forward deployment passed the
 [recorded exercise](release-evidence/2026-09-11-staging-recovery-34652303609/README.md).
-Production adoption, publication cutover, and the first coordinated production release remain
-live-unverified. The one-time adoption gate is enabled for the reviewed cutover candidate; ordinary
-production releases remain disabled. Automatic publication settings have not changed.
-The newer calibration [34678563923](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34678563923)
-stopped after Worker activation and before Netlify publication. The subsequent
-[Worker-only recovery and full smoke](release-evidence/2026-09-12-staging-worker-resolution-34678563923/README.md)
-passed. Cutover still requires review of the resolution and a fresh exact-candidate rehearsal.
+Production Worker adoption and the publication lock are verified; the production baseline and
+recovery target are recorded. Adoption is disabled and ordinary releases are enabled in policy.
+The first coordinated application release still requires a successful approval rehearsal.
+
+Approval rehearsals [34688990620](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34688990620)
+and [34691105495](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34691105495)
+completed both staging writes but failed during the Netlify readback. Subsequent independent readback
+and all six collaboration smoke checks passed against the recorded final pair. Reviewed resolutions
+can clear interrupted history for a fresh rehearsal; they do not supply production approval.
+The repeated failure requires bounded post-publication observation and retained diagnostic causes;
+see the [readback investigation](release-evidence/2026-09-12-staging-readback-34691105495/README.md).
+
+Production inspection failures retain an optional structured diagnostic in `run/production.json`,
+including the provider, read operation, and assertion or command failure. Original causes remain
+available in memory; arbitrary upstream messages and payloads are not serialized. This diagnostic
+change does not add production retries or change deployment sequencing.
 
 The implementation references for this checkpoint are the [production CLI](../scripts/release/production-cli.ts),
 [GitHub release verifier](../scripts/release/github-release.ts), [production context](../scripts/release/production-context.ts),
@@ -49,10 +58,10 @@ preparation and rehearsal records. The operator supplies that approval file's SH
 Approval stays outside the candidate's source tree, avoiding a self-referential commit/hash.
 
 The producer requires a reviewed `docs/release-evidence/production-baseline.json` with the actual
-source commit and provider identity for each live service. That known-source bootstrap record has
-not yet been established. Do not infer both services' source from `main`, or substitute the 9/10
-historical launch evidence that lacks the required source attribution. An unavailable baseline blocks
-approval generation.
+source commit and provider identity for each live service. The verified adoption established that
+record, retaining the older Netlify source and recording the newly attributable Worker source.
+Do not infer both services' source from `main` or substitute historical launch evidence without
+source attribution. An unavailable baseline blocks approval generation.
 
 Both production phases check GitHub provenance and approval again. GitHub artifact downloads must
 match the API's size and SHA-256, remain unexpired, and pass bounded ZIP extraction. Missing evidence,
@@ -62,6 +71,10 @@ production policy. A successful local rehearsal alone is not a trusted workflow 
 
 ## First Worker adoption
 
+Completed on 12 September 2026 UTC; see the [verified adoption evidence](release-evidence/2026-09-12-production-adoption-34688347172/README.md).
+The baseline and recovery target are recorded. The adoption gate is closed and ordinary releases are enabled in policy.
+The following describes the one-time procedure and its safeguards.
+
 The one-time adoption establishes source provenance for the Worker while retaining the independently
 attributed Netlify deployment. It does not turn the historical Worker into a verified rollback target.
 The operator accepted fail-forward recovery for this initial operation; no legacy restore path is added.
@@ -69,7 +82,7 @@ The operator accepted fail-forward recovery for this initial operation; no legac
 The distinct adoption runner uses the same protected production workflow and serialization as routine
 releases. Its source is an exact reviewed `stage` to `main` promotion with successful CI and a retained
 successful staging calibration for that candidate. Calibration is used here because ordinary approval
-requires the production baseline that adoption establishes. A separate adoption policy (disabled by default, enabled for the initial cutover candidate) and
+requires the production baseline that adoption establishes. A separate adoption policy (now disabled after verified adoption) and
 an absent baseline guard prevent it from becoming a routine alternative to release approval.
 
 Before a Worker write, adoption verifies the sealed production artifact, current configuration,
@@ -160,12 +173,12 @@ alone does not establish that restoration is possible or compatible with current
 ## Remaining rollout gates
 
 See [recovery and cutover](recovery.md) for implementation details and the current setup checkpoint.
-Staging recovery, resume, and forward deployment have passed. Rehearse the exact cutover candidate,
-lock Netlify publication, and verify that the promotion merge cannot replace its published deployment.
-Establish the attributable production baseline through the one-time Worker adoption and verify the
-production collaboration and screenshot operations. Keep
-independent Cloudflare Git deployment disabled. Only then enable the reviewed production policy and
-perform the first coordinated production release.
+Staging recovery, resume, and forward deployment have passed. Netlify publication is locked, and a
+subsequent Git build was verified not to publish. Production Worker adoption, collaboration and
+screenshot verification, baseline recording, and the production policy transition are complete.
+Keep independent Cloudflare Git deployment disabled. The remaining release gate is a successful
+approval rehearsal for the exact candidate, followed by its reviewed promotion and the first
+coordinated production release.
 
 Dispatch `Staging release rehearsal` from `stage` in `approval` mode. Its successful `release-rehearsal` artifact contains
 only the approval bundle; `release-rehearsal-diagnostics` retains prepared artifacts and reports even

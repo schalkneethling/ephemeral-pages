@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "operation": "prepare",
+  "outcome": "passed",
+  "source": {
+    "candidate": "7a7b25b9c6cd631e8762cb504c01ad7d5e56f8a0",
+    "tree": "4048bba8f364d025cc554e68f32feeb8e47c0f5e",
+    "environment": "production",
+    "configurationFingerprint": "9fa15de9fdb0835c3d671f93e009909d78408bddcef4e501e63a3fcec052239e"
+  },
+  "toolchain": {
+    "bun": "1.3.14"
+  },
+  "artifacts": {
+    "netlify": {
+      "directory": "netlify",
+      "sha256": "54569ccb9cc9261f0bad55fc9445b4ae3987c34398cc73cbc83591ec449f4554"
+    },
+    "worker": {
+      "directory": "worker",
+      "sha256": "adece72444d399305ecaacc5fcc0965c4542947d87e73b74a22caf3af7f54aba"
+    }
+  }
+}

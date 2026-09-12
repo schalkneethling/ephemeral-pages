@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "productionEnabled": false,
-  "adoptionEnabled": true,
+  "productionEnabled": true,
+  "adoptionEnabled": false,
   "repository": "schalkneethling/ephemeral-pages",
   "productionWorkflow": ".github/workflows/release-production.yml",
   "rehearsalWorkflow": ".github/workflows/release-rehearsal.yml",
