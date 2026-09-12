@@ -133,8 +133,11 @@ export type PreparedNetlifyArtifacts = {
 export class NetlifyArtifactError extends Error {
   readonly kind: "bounds" | "invalid-input" | "invalid-output" | "state";
 
-  constructor(kind: NetlifyArtifactError["kind"]) {
-    super("Netlify artifacts could not be prepared or verified safely.");
+  constructor(kind: NetlifyArtifactError["kind"], cause?: unknown) {
+    super(
+      "Netlify artifacts could not be prepared or verified safely.",
+      cause instanceof Error ? { cause } : undefined,
+    );
     this.name = "NetlifyArtifactError";
     this.kind = kind;
   }
@@ -889,12 +892,13 @@ export async function prepareNetlifyArtifacts(
 const verifyNetlifyArtifactsUnsafe = async (
   prepared: PreparedNetlifyArtifacts,
   requestedLimits?: Partial<NetlifyArtifactLimits>,
+  requireImmutableModes = true,
 ): Promise<void> => {
   const limits = resolveLimits(requestedLimits);
   const artifactDirectory = resolve(prepared.artifactDirectory);
   const inventoryPath = resolve(artifactDirectory, INVENTORY_PATH);
-  const rootEntries = await readdir(artifactDirectory, { withFileTypes: true }).catch(() => {
-    throw new NetlifyArtifactError("state");
+  const rootEntries = await readdir(artifactDirectory, { withFileTypes: true }).catch((error) => {
+    throw new NetlifyArtifactError("state", error);
   });
   if (
     rootEntries.length !== 4 ||
@@ -977,9 +981,11 @@ const verifyNetlifyArtifactsUnsafe = async (
     resolve(artifactDirectory, prepared.inventory.deployConfiguration.file.relativePath),
     ...[...expectedFunctionPaths].map((path) => resolve(artifactDirectory, path)),
   ];
-  for (const path of paths) {
-    const metadata = await stat(path);
-    if ((metadata.mode & 0o222) !== 0) throw new NetlifyArtifactError("state");
+  if (requireImmutableModes) {
+    for (const path of paths) {
+      const metadata = await stat(path);
+      if ((metadata.mode & 0o222) !== 0) throw new NetlifyArtifactError("state");
+    }
   }
   for (const path of [
     artifactDirectory,
@@ -988,7 +994,11 @@ const verifyNetlifyArtifactsUnsafe = async (
     resolve(artifactDirectory, "functions"),
   ]) {
     const metadata = await lstat(path);
-    if (!metadata.isDirectory() || metadata.isSymbolicLink() || (metadata.mode & 0o222) !== 0) {
+    if (
+      !metadata.isDirectory() ||
+      metadata.isSymbolicLink() ||
+      (requireImmutableModes && (metadata.mode & 0o222) !== 0)
+    ) {
       throw new NetlifyArtifactError("state");
     }
   }
@@ -1012,6 +1022,22 @@ export async function verifyNetlifyArtifacts(
     await verifyNetlifyArtifactsUnsafe(prepared, requestedLimits);
   } catch (error) {
     if (error instanceof NetlifyArtifactError) throw error;
-    throw new NetlifyArtifactError("state");
+    throw new NetlifyArtifactError("state", error);
+  }
+}
+
+export async function restoreExtractedNetlifyArtifacts(
+  prepared: PreparedNetlifyArtifacts,
+  requestedLimits?: Partial<NetlifyArtifactLimits>,
+): Promise<void> {
+  try {
+    // GitHub artifact extraction deliberately creates private writable files.
+    // Validate every retained path and byte before restoring immutable modes.
+    await verifyNetlifyArtifactsUnsafe(prepared, requestedLimits, false);
+    await freezeTree(resolve(prepared.artifactDirectory));
+    await verifyNetlifyArtifactsUnsafe(prepared, requestedLimits);
+  } catch (error) {
+    if (error instanceof NetlifyArtifactError) throw error;
+    throw new NetlifyArtifactError("state", error);
   }
 }

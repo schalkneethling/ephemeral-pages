@@ -1,5 +1,7 @@
 # Repeatable releases
 
+Current rollout checkpoint: the first ordinary release stopped after Worker activation and transition verification, before Netlify publication. Resume exposed a reproduced artifact-permission defect. See the [production resume investigation](release-evidence/2026-09-12-production-resume-investigation/README.md) for verified results and the repair boundary. Earlier status below describes the preceding implementation checkpoint.
+
 Status: staging preparation, calibration, explicit recovery and resume are live-verified. Production
 publication is locked, and subsequent Git-triggered builds did not replace the published app.
 The [first production Worker adoption](release-evidence/2026-09-12-production-adoption-34688347172/README.md)

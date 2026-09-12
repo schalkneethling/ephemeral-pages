@@ -226,6 +226,33 @@ it("retains only a structured provider diagnostic when its cause is sensitive", 
   });
   expect(JSON.stringify(result)).not.toContain("secret-bearing-provider-cause");
 });
+it("records a known local artifact failure without retaining its cause", async () => {
+  const f = await fixture();
+  f.deps.inspect = async () => {
+    throw new ProviderInspectionError(
+      {
+        provider: "netlify",
+        operation: "verifyArtifacts",
+        classification: "assertion",
+        assertion: "artifact-state",
+      },
+      new Error("secret-bearing-artifact-cause"),
+    );
+  };
+
+  const result = await runProductionRelease(f.input, f.deps);
+  expect(result.failure).toEqual({
+    stage: "inspect",
+    kind: "unknown",
+    diagnostic: {
+      provider: "netlify",
+      operation: "verifyArtifacts",
+      classification: "assertion",
+      assertion: "artifact-state",
+    },
+  });
+  expect(JSON.stringify(result)).not.toContain("secret-bearing-artifact-cause");
+});
 it("reconciles a returned activation ID without dispatching the activation again", async () => {
   const f = await fixture();
   const activate = f.deps.activateWorker.bind(f.deps);

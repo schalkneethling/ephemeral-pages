@@ -11,6 +11,7 @@ import {
 import { readBoundedJson } from "./bootstrap-safety.ts";
 import { runCommand, SafeCommandError } from "./command.ts";
 import {
+  NetlifyArtifactError,
   verifyNetlifyArtifacts,
   type NetlifyArtifactInventory,
   type PreparedNetlifyArtifacts,
@@ -181,6 +182,35 @@ const inspectionCommandFailure = (
   );
 };
 
+const netlifyArtifactAssertion = {
+  bounds: "artifact-bounds",
+  "invalid-input": "artifact-invalid-input",
+  "invalid-output": "artifact-invalid-output",
+  state: "artifact-state",
+} as const;
+
+const verifyProductionNetlifyArtifacts = async (
+  verify: typeof verifyNetlifyArtifacts,
+  artifacts: PreparedNetlifyArtifacts,
+): Promise<void> => {
+  try {
+    await verify(artifacts);
+  } catch (error) {
+    if (error instanceof NetlifyArtifactError) {
+      throw new ProviderInspectionError(
+        {
+          provider: "netlify",
+          operation: "verifyArtifacts",
+          classification: "assertion",
+          assertion: netlifyArtifactAssertion[error.kind],
+        },
+        error,
+      );
+    }
+    throw error;
+  }
+};
+
 const safeSmokeReport = (report: CollaborationSmokeReport): CollaborationSmokeReport => {
   if (
     report.schemaVersion !== 1 ||
@@ -325,7 +355,10 @@ export async function createProductionProviderDependencies(
     ),
     target: workerTarget,
   };
-  await (overrides.verifyNetlifyArtifacts ?? verifyNetlifyArtifacts)(netlify);
+  await verifyProductionNetlifyArtifacts(
+    overrides.verifyNetlifyArtifacts ?? verifyNetlifyArtifacts,
+    netlify,
+  );
   await (overrides.verifyWorkerArtifacts ?? verifyWorkerArtifacts)(workerArtifactInput, worker);
   await assertExternalArtifactDirectory(repositoryRoot, smokeOutputDirectory);
   await mkdir(smokeOutputDirectory, { mode: 0o700 });

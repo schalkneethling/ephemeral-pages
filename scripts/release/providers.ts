@@ -6,6 +6,7 @@ const providerInspectionOperationSchema = z.enum([
   "getSite",
   "getSiteDeploy",
   "getEnvVars",
+  "verifyArtifacts",
   "deploymentsStatus",
   "versionView",
   "secretList",
@@ -24,6 +25,10 @@ const providerInspectionAssertionSchema = z.enum([
   "environment-entry",
   "environment-scopes",
   "environment-duplicate",
+  "artifact-bounds",
+  "artifact-invalid-input",
+  "artifact-invalid-output",
+  "artifact-state",
   "deployment-identity",
   "traffic-shape",
   "traffic-entry",
@@ -51,7 +56,9 @@ export const providerInspectionDiagnosticSchema = z
   .superRefine((value, context) => {
     const validOperation =
       (value.provider === "netlify" &&
-        ["configuration", "getSite", "getSiteDeploy", "getEnvVars"].includes(value.operation)) ||
+        ["configuration", "getSite", "getSiteDeploy", "getEnvVars", "verifyArtifacts"].includes(
+          value.operation,
+        )) ||
       (value.provider === "cloudflare" &&
         ["configuration", "deploymentsStatus", "versionView", "secretList"].includes(
           value.operation,
