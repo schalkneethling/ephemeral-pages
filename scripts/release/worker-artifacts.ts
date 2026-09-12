@@ -801,3 +801,14 @@ export const verifyWorkerArtifacts = async (
   if (!actualUploadConfig.equals(expectedUploadConfig)) throw new WorkerArtifactError("artifact");
   return manifest;
 };
+
+export const restoreExtractedWorkerArtifacts = async (
+  input: PrepareWorkerArtifactsInput,
+  prepared: PreparedWorkerArtifacts,
+): Promise<WorkerArtifactManifest> => {
+  // The first verification checks the complete manifest and artifact contents;
+  // it intentionally does not grant trust based on archive file modes.
+  await verifyWorkerArtifacts(input, prepared);
+  await freezeTree(resolve(input.artifactDirectory));
+  return verifyWorkerArtifacts(input, prepared);
+};

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -165,6 +166,36 @@ describe("Netlify artifact preparation", () => {
       chmodSync(frozenFile, 0o600);
       writeFileSync(frozenFile, "changed\n");
       await expect(verifyNetlifyArtifacts(prepared)).rejects.toMatchObject({ kind: "state" });
+    } finally {
+      removeFixture(root);
+    }
+  });
+
+  it("rejects an inventory path outside the artifact tree before accepting matching bytes", async () => {
+    const { root, publishDirectory, functionsDirectory } = fixture();
+    const artifactDirectory = join(root, "artifact");
+    try {
+      const prepared = await prepareNetlifyArtifacts({
+        artifactDirectory,
+        repositoryRoot: root,
+        publishDirectory,
+        userFunctionsDirectory: functionsDirectory,
+      });
+      const original = prepared.inventory.deployConfiguration.file.relativePath;
+      const externalPath = join(root, "outside-netlify.toml");
+      writeFileSync(externalPath, readFileSync(join(artifactDirectory, original)), { mode: 0o400 });
+      const changed = structuredClone(prepared);
+      changed.inventory.deployConfiguration.file.relativePath = "../outside-netlify.toml";
+      const inventoryBytes = `${JSON.stringify(changed.inventory)}\n`;
+      changed.inventorySha256 = createHash("sha256").update(inventoryBytes).digest("hex");
+      chmodSync(artifactDirectory, 0o700);
+      chmodSync(join(artifactDirectory, "inventory.json"), 0o600);
+      writeFileSync(join(artifactDirectory, "inventory.json"), inventoryBytes);
+      chmodSync(join(artifactDirectory, "inventory.json"), 0o400);
+      chmodSync(artifactDirectory, 0o500);
+
+      await expect(verifyNetlifyArtifacts(changed)).rejects.toMatchObject({ kind: "state" });
+      expect(lstatSync(externalPath).mode & 0o777).toBe(0o400);
     } finally {
       removeFixture(root);
     }

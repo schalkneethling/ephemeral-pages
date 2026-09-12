@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   history: vi.fn(),
   productionFactory: vi.fn(),
   recoveryFactory: vi.fn(),
+  restoreArtifacts: vi.fn(),
   run: vi.fn(),
   targetArtifact: vi.fn(),
   verifyInvocation: vi.fn(),
@@ -53,6 +54,9 @@ vi.mock("./recovery-providers.ts", () => ({
 vi.mock("./recovery-runner.ts", async (original) => ({
   ...(await original<typeof import("./recovery-runner.ts")>()),
   runRecovery: mocks.run,
+}));
+vi.mock("./restore-release-artifacts.ts", () => ({
+  restoreExtractedReleaseArtifacts: mocks.restoreArtifacts,
 }));
 
 const roots: string[] = [];
@@ -407,6 +411,19 @@ describe("recovery CLI evidence boundaries", () => {
           targetArtifact: data.targetArtifact,
         }),
       ),
+    );
+    expect(mocks.restoreArtifacts).toHaveBeenCalledTimes(2);
+    expect(mocks.restoreArtifacts).toHaveBeenNthCalledWith(
+      1,
+      data.repository,
+      join(data.workspace, "source/artifacts"),
+      expect.anything(),
+    );
+    expect(mocks.restoreArtifacts).toHaveBeenNthCalledWith(
+      2,
+      data.repository,
+      join(data.workspace, "target/artifacts"),
+      expect.anything(),
     );
     expect(mocks.productionFactory).not.toHaveBeenCalled();
     expect(mocks.recoveryFactory).not.toHaveBeenCalled();

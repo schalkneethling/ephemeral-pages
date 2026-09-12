@@ -23,6 +23,7 @@ import { lazyProductionDependencies } from "./production-lazy-providers.ts";
 import { verifyProductionWorkspace } from "./production-workspace.ts";
 import { approvalSchema, productionRecordSchema } from "./production-record.ts";
 import { approvalBytes } from "./production-approval.ts";
+import { restoreExtractedReleaseArtifacts } from "./restore-release-artifacts.ts";
 
 export async function runProductionCli(argv: readonly string[], repositoryRoot: string) {
   const phase = argv[0];
@@ -62,6 +63,11 @@ export async function runProductionCli(argv: readonly string[], repositoryRoot: 
         resolve(previousDirectory, "run/production.json"),
         resolve(args.workspace, "previous-production.json"),
         { errorOnExist: true, force: false },
+      );
+      await restoreExtractedReleaseArtifacts(
+        repositoryRoot,
+        resolve(previousDirectory, "artifacts"),
+        context.configuration,
       );
       await rename(resolve(previousDirectory, "artifacts"), artifactDirectory);
       await rm(previousDirectory, { recursive: true });
@@ -161,18 +167,30 @@ export async function runProductionCli(argv: readonly string[], repositoryRoot: 
   );
 }
 
+type ProductionFailureOutput = {
+  write: (message: string, flushed: () => void) => unknown;
+};
+
+export function exitAfterProductionCliFailure(
+  message: string,
+  output: ProductionFailureOutput = process.stderr,
+  exit: (code: number) => unknown = (code) => process.exit(code),
+): void {
+  output.write(message, () => exit(1));
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const result = await runProductionCli(
       process.argv.slice(2),
       fileURLToPath(new URL("../..", import.meta.url)),
     );
-    process.stdout.write(JSON.stringify(result) + "\n");
-    if (result.outcome !== "passed") process.exitCode = 1;
+    const output = JSON.stringify(result) + "\n";
+    if (result.outcome === "passed") process.stdout.write(output);
+    else exitAfterProductionCliFailure(output, process.stdout);
   } catch {
-    process.stderr.write(
+    exitAfterProductionCliFailure(
       "Production release blocked; inspect retained sanitized workflow evidence.\n",
     );
-    process.exitCode = 1;
   }
 }

@@ -1,5 +1,15 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { crc32 } from "node:zlib";
@@ -31,6 +41,15 @@ import {
   type GitHubRuntimeEnvironment,
   type VerifiedProductionInvocation,
 } from "./github-release.ts";
+import { artifactHash } from "./artifact-contract.ts";
+import { prepareNetlifyArtifacts, verifyNetlifyArtifacts } from "./netlify-artifacts.ts";
+import { preparedReleaseSchema } from "./prepare.ts";
+import {
+  ReleaseArtifactRestorationError,
+  restoreExtractedReleaseArtifacts,
+} from "./restore-release-artifacts.ts";
+import { releaseConfigSchema } from "./schema.ts";
+import { prepareWorkerArtifacts, verifyWorkerArtifacts } from "./worker-artifacts.ts";
 
 const candidate = "a".repeat(40);
 const promotion = "b".repeat(40);
@@ -218,6 +237,34 @@ const storedZip = (entries: readonly ZipEntry[]): Uint8Array => {
   end.writeUInt32LE(centralSize, 12);
   end.writeUInt32LE(localOffset, 16);
   return Buffer.concat([...locals, ...central, end]);
+};
+
+const archiveTree = (root: string, prefix: string): ZipEntry[] => {
+  const entries: ZipEntry[] = [];
+  const visit = (directory: string, relativeDirectory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const relativePath = `${relativeDirectory}${entry.name}`;
+      const absolutePath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        entries.push({ name: `${prefix}/${relativePath}/` });
+        visit(absolutePath, `${relativePath}/`);
+      } else if (entry.isFile()) {
+        entries.push({ name: `${prefix}/${relativePath}`, contents: readFileSync(absolutePath) });
+      } else {
+        throw new Error("Unsupported test artifact entry.");
+      }
+    }
+  };
+  visit(root, "");
+  return entries;
+};
+
+const makeTreeWritable = (root: string): void => {
+  if (!existsSync(root)) return;
+  chmodSync(root, 0o700);
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.isDirectory()) makeTreeWritable(join(root, entry.name));
+  }
 };
 
 const runtime = (overrides: Partial<GitHubRuntimeEnvironment> = {}): GitHubRuntimeEnvironment => ({
@@ -581,6 +628,140 @@ describe("verified artifact extraction", () => {
       );
       expect(statSync(join(destination, "reports/rehearsal.json")).mode & 0o777).toBe(0o600);
     } finally {
+      rmSync(parent, { force: true, recursive: true });
+    }
+  });
+
+  it("restores extracted release modes only after real artifact contents verify", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "github-release-resume-artifacts-"));
+    const repositoryRoot = join(parent, "repository");
+    const sourceArtifacts = join(parent, "source-artifacts");
+    const publishDirectory = join(repositoryRoot, "dist");
+    const functionsDirectory = join(repositoryRoot, "netlify/functions");
+    const configPath = join(repositoryRoot, "collaboration-worker/wrangler.jsonc");
+    const wranglerManifestPath = join(repositoryRoot, "node_modules/wrangler/package.json");
+    try {
+      mkdirSync(publishDirectory, { recursive: true });
+      mkdirSync(functionsDirectory, { recursive: true });
+      mkdirSync(join(repositoryRoot, "collaboration-worker"), { recursive: true });
+      mkdirSync(join(repositoryRoot, "node_modules/wrangler"), { recursive: true });
+      mkdirSync(sourceArtifacts);
+      writeFileSync(join(repositoryRoot, "netlify.toml"), '[build]\n  publish = "dist"\n');
+      writeFileSync(
+        join(publishDirectory, "index.html"),
+        "<!doctype html><title>release</title>\n",
+      );
+      writeFileSync(join(publishDirectory, "_headers"), "/*\n  X-Content-Type-Options: nosniff\n");
+      writeFileSync(
+        join(functionsDirectory, "hello.ts"),
+        "export default () => new Response('ok')\n",
+      );
+      const workerConfig = readFileSync(
+        new URL("../../collaboration-worker/wrangler.jsonc", import.meta.url),
+      );
+      writeFileSync(configPath, workerConfig);
+      writeFileSync(
+        wranglerManifestPath,
+        readFileSync(new URL("../../node_modules/wrangler/package.json", import.meta.url)),
+      );
+      const configuration = releaseConfigSchema.parse(
+        JSON.parse(
+          readFileSync(new URL("../../scripts/release/environments.json", import.meta.url), "utf8"),
+        ),
+      );
+      const target = configuration.environments.production;
+      if (!target.cloudflare) throw new Error("Missing production Worker fixture.");
+      const netlify = await prepareNetlifyArtifacts({
+        artifactDirectory: join(sourceArtifacts, "netlify"),
+        repositoryRoot,
+        publishDirectory,
+        userFunctionsDirectory: functionsDirectory,
+      });
+      const workerInput = {
+        artifactDirectory: join(sourceArtifacts, "worker"),
+        environment: "production" as const,
+        productionWorkerName: target.cloudflare.workerName,
+        repositoryRoot,
+        sourceConfigSha256: artifactHash(workerConfig),
+        target: target.cloudflare,
+      };
+      const worker = await prepareWorkerArtifacts(workerInput, {
+        run: async (_executable, args) => {
+          const outdir = args[args.indexOf("--outdir") + 1];
+          if (!outdir) return { exitCode: 1, stdout: "", stderr: "" };
+          mkdirSync(outdir, { recursive: true });
+          writeFileSync(join(outdir, "README.md"), "This folder contains the built output assets");
+          writeFileSync(join(outdir, "index.js"), "export default { fetch() {} };\n");
+          writeFileSync(join(outdir, "index.js.map"), "{}\n");
+          return { exitCode: 0, stdout: "dry run complete", stderr: "" };
+        },
+      });
+      const prepared = preparedReleaseSchema.parse({
+        schemaVersion: 1,
+        operation: "prepare",
+        outcome: "passed",
+        source: {
+          candidate: "a".repeat(40),
+          tree: "b".repeat(40),
+          environment: "production",
+          configurationFingerprint: "c".repeat(64),
+        },
+        toolchain: { bun: "1.3.14" },
+        artifacts: {
+          netlify: { directory: "netlify", sha256: netlify.inventorySha256 },
+          worker: { directory: "worker", sha256: worker.manifestSha256 },
+        },
+      });
+      writeFileSync(
+        join(sourceArtifacts, "prepared-release.json"),
+        `${JSON.stringify(prepared)}\n`,
+      );
+      const entries = archiveTree(sourceArtifacts, "artifacts");
+
+      const restored = join(parent, "restored");
+      await extractVerifiedGitHubArtifact(storedZip(entries), restored, repositoryRoot);
+      const extractedArtifacts = join(restored, "artifacts");
+      await expect(
+        verifyNetlifyArtifacts({
+          ...netlify,
+          artifactDirectory: join(extractedArtifacts, "netlify"),
+        }),
+      ).rejects.toMatchObject({ kind: "state" });
+      await expect(
+        restoreExtractedReleaseArtifacts(repositoryRoot, extractedArtifacts, configuration),
+      ).resolves.toEqual(prepared);
+      await expect(
+        verifyNetlifyArtifacts({
+          ...netlify,
+          artifactDirectory: join(extractedArtifacts, "netlify"),
+        }),
+      ).resolves.toBeUndefined();
+      await expect(
+        verifyWorkerArtifacts(
+          { ...workerInput, artifactDirectory: join(extractedArtifacts, "worker") },
+          { ...worker, artifactDirectory: join(extractedArtifacts, "worker") },
+        ),
+      ).resolves.toEqual(worker.manifest);
+
+      const corrupted = join(parent, "corrupted");
+      const corruptedEntries = entries.map((entry) =>
+        entry.name === "artifacts/netlify/publish/index.html"
+          ? { ...entry, contents: new TextEncoder().encode("tampered\n") }
+          : entry,
+      );
+      await extractVerifiedGitHubArtifact(storedZip(corruptedEntries), corrupted, repositoryRoot);
+      await expect(
+        restoreExtractedReleaseArtifacts(
+          repositoryRoot,
+          join(corrupted, "artifacts"),
+          configuration,
+        ),
+      ).rejects.toBeInstanceOf(ReleaseArtifactRestorationError);
+      expect(statSync(join(corrupted, "artifacts/netlify/publish/index.html")).mode & 0o777).toBe(
+        0o600,
+      );
+    } finally {
+      makeTreeWritable(parent);
       rmSync(parent, { force: true, recursive: true });
     }
   });

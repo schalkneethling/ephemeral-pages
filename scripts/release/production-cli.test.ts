@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   factory: vi.fn(),
   run: vi.fn(),
   bind: vi.fn(),
+  restore: vi.fn(),
+  productionArtifact: vi.fn(),
 }));
 vi.mock("./production-context.ts", async (original) => ({
   ...(await original<typeof import("./production-context.ts")>()),
@@ -30,6 +33,7 @@ vi.mock("./github-release.ts", async (original) => ({
   ...(await original<typeof import("./github-release.ts")>()),
   downloadGitHubArtifact: mocks.download,
   extractVerifiedGitHubArtifact: mocks.extract,
+  verifyProductionArtifact: mocks.productionArtifact,
 }));
 vi.mock("./production-providers.ts", () => ({
   createProductionProviderDependencies: mocks.factory,
@@ -37,6 +41,9 @@ vi.mock("./production-providers.ts", () => ({
 vi.mock("./production-runner.ts", () => ({ runProductionRelease: mocks.run }));
 vi.mock("./production-authorization.ts", () => ({
   bindProductionProviderAuthorization: mocks.bind,
+}));
+vi.mock("./restore-release-artifacts.ts", () => ({
+  restoreExtractedReleaseArtifacts: mocks.restore,
 }));
 const roots: string[] = [];
 afterEach(async () => {
@@ -118,8 +125,18 @@ async function fixture() {
   mocks.local.mockResolvedValue({ approval, previous: undefined });
   mocks.download.mockResolvedValue(new Uint8Array(100));
   mocks.extract.mockImplementation(async (_bytes, directory) => {
-    await mkdir(directory);
-    await writeFile(join(directory, "approval.json"), approvalBytes(approval));
+    if (directory.endsWith("/approval")) {
+      await mkdir(directory);
+      await writeFile(join(directory, "approval.json"), approvalBytes(approval));
+    } else {
+      await mkdir(join(directory, "run"), { recursive: true });
+      await mkdir(join(directory, "artifacts"), { recursive: true });
+      await writeFile(join(directory, "run/production.json"), "{}\n");
+      await writeFile(join(directory, "artifacts/prepared-release.json"), JSON.stringify(prepared));
+    }
+  });
+  mocks.productionArtifact.mockResolvedValue({
+    artifact: { artifactId: 103, digest: `sha256:${"c".repeat(64)}`, sizeInBytes: 100 },
   });
   mocks.prepare.mockImplementation(async ({ artifactDirectory }) => {
     await mkdir(artifactDirectory);
@@ -169,6 +186,20 @@ it("rejects repeated preflight rather than overwriting retained evidence", async
   expect(mocks.prepare).toHaveBeenCalledTimes(1);
 });
 
+it("restores verified artifact modes before accepting a resume archive", async () => {
+  const f = await fixture();
+  const flags = ["resume", ...f.flags.slice(1), "--resume-run-id", "99"];
+
+  await expect(runProductionCli(["preflight", ...flags], f.repository)).resolves.toMatchObject({
+    outcome: "passed",
+  });
+  expect(mocks.restore).toHaveBeenCalledExactlyOnceWith(
+    f.repository,
+    join(f.workspace, "previous/artifacts"),
+    expect.anything(),
+  );
+});
+
 it("retains a runner record when execute-phase GitHub verification is temporarily unavailable", async () => {
   const f = await fixture();
   await runProductionCli(["preflight", ...f.flags], f.repository);
@@ -184,4 +215,21 @@ it("retains a runner record when execute-phase GitHub verification is temporaril
   expect(record.runIds).toEqual([101]);
   expect(mocks.factory).not.toHaveBeenCalled();
   expect(mocks.bind).not.toHaveBeenCalled();
+});
+
+it("flushes a failed record and exits despite a lingering process handle", () => {
+  const moduleUrl = new URL("./production-cli.ts", import.meta.url).href;
+  const output = `${JSON.stringify({ outcome: "failed" })}\n`;
+  const result = spawnSync(
+    "bun",
+    [
+      "-e",
+      `import { exitAfterProductionCliFailure } from ${JSON.stringify(moduleUrl)}; setInterval(() => {}, 60_000); exitAfterProductionCliFailure(${JSON.stringify(output)}, process.stdout);`,
+    ],
+    { encoding: "utf8", timeout: 5_000 },
+  );
+
+  expect(result.error).toBeUndefined();
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe(output);
 });

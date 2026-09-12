@@ -135,6 +135,11 @@ describe("adoption recovery targets", () => {
     const { target, record, prepared } = fixture();
     expect(() => validateAdoptionRecoveryArtifact(target, record, prepared)).not.toThrow();
   });
+  it("accepts a restored deployment of the exact adopted Worker version", () => {
+    const { target, record, prepared } = fixture();
+    target.pair.workerDeploymentId = "restored-deployment";
+    expect(() => validateAdoptionRecoveryArtifact(target, record, prepared)).not.toThrow();
+  });
   it.each([
     ["workerArtifactKind", undefined],
     ["netlifyArtifactSha256", "d".repeat(64)],
@@ -150,14 +155,11 @@ describe("adoption recovery targets", () => {
       validateAdoptionRecoveryArtifact({ ...target, [key]: value }, record, prepared),
     ).toThrow();
   });
-  it.each(["netlifyDeployId", "workerDeploymentId", "workerVersionId"] as const)(
-    "rejects a different %s",
-    (key) => {
-      const { target, record, prepared } = fixture();
-      target.pair[key] = "different";
-      expect(() => validateAdoptionRecoveryArtifact(target, record, prepared)).toThrow();
-    },
-  );
+  it.each(["netlifyDeployId", "workerVersionId"] as const)("rejects a different %s", (key) => {
+    const { target, record, prepared } = fixture();
+    target.pair[key] = "different";
+    expect(() => validateAdoptionRecoveryArtifact(target, record, prepared)).toThrow();
+  });
   it("rejects an incomplete adoption even if its proposed pair matches", () => {
     const { target, record, prepared } = fixture();
     record.stages["verify-pair"] = "failed";
