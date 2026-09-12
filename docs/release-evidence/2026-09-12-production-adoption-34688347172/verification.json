@@ -1,0 +1,26 @@
+{
+  "outcome": "passed",
+  "verifiedAt": "2026-09-12T10:28:18.554Z",
+  "runId": 34688347172,
+  "promotionCommit": "7a7b25b9c6cd631e8762cb504c01ad7d5e56f8a0",
+  "artifact": {
+    "artifactId": 10296970037,
+    "name": "release-production",
+    "digest": "sha256:9b29837b45c4762bd6e2214cbfa02673f0fb9948550b73d2912b438039298ffe",
+    "sizeInBytes": 24923977,
+    "createdAt": "2026-09-12T10:26:23Z",
+    "updatedAt": "2026-09-12T10:26:23Z",
+    "expiresAt": "2026-09-19T10:26:21Z"
+  },
+  "pair": {
+    "netlifyDeployId": "6aa43cfb4b7bde0008cfc4d9",
+    "workerDeploymentId": "4cac129b-ed26-45b4-94e3-d0730930daee",
+    "workerVersionId": "8c17bf49-e1f2-465a-8ddb-cb990f2c1cf7"
+  },
+  "stages": {
+    "inspect": "passed",
+    "upload-worker": "passed",
+    "activate-worker": "passed",
+    "verify-pair": "passed"
+  }
+}

@@ -16,3 +16,13 @@ keywords = [
   "stage_collaboration_service_token",
   "stage_rate_limit_secret",
 ]
+
+# Public Git source verified against the retained production Netlify deployment.
+# Both the exact file and exact public SHA must match; other values still scan.
+[[allowlists]]
+description = "Verified public Netlify source commit in the adoption recovery target"
+targetRules = ["netlify-access-token"]
+condition = "AND"
+paths = ['''(^|/)docs/release-evidence/recovery-target\.json$''']
+regexTarget = "secret"
+regexes = ['''^65aab59bd6ec4a9ae84aa55f8154287b5bbd9e8b$''']

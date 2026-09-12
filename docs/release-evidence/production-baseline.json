@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "environment": "production",
+  "providers": {
+    "netlify": {
+      "siteId": "9d04748e-7c6e-4191-b918-cf64f5e33358",
+      "sourceCommit": "65aab59bd6ec4a9ae84aa55f8154287b5bbd9e8b",
+      "publishedDeployId": "6aa43cfb4b7bde0008cfc4d9",
+      "publishLocked": true
+    },
+    "cloudflare": {
+      "accountId": "369e0fbadd08f6f15efd9fb63c7f5193",
+      "workerName": "ephemeral-pages-collaboration",
+      "sourceCommit": "7a7b25b9c6cd631e8762cb504c01ad7d5e56f8a0",
+      "deploymentId": "4cac129b-ed26-45b4-94e3-d0730930daee",
+      "traffic": [
+        {
+          "versionId": "8c17bf49-e1f2-465a-8ddb-cb990f2c1cf7",
+          "percentage": 100
+        }
+      ]
+    }
+  }
+}
