@@ -464,19 +464,17 @@
         Follow a change from review to running software—and see where evidence, configuration and
         storage make coordination necessary.
       </p>
-      <div class="snapshot">
-        Documentation checkpoint · 12 September 2026 UTC · Production recovery verified; application
-        approval next
-      </div>
+      <div class="snapshot">Historical recovery evidence · 12 September 2026 UTC</div>
       <div class="notice">
-        <strong>Current checkpoint.</strong> Production recovery 34700516404 passed all five stages
-        and both six-check browser smokes. Netlify retained its locked published deployment. The
-        prior Worker version was restored under a new verified deployment ID, now recorded in the
-        baseline and recovery target.
+        <strong>Historical recovery checkpoint.</strong> Production recovery 34700516404 passed all
+        five stages and both six-check browser smokes. Netlify retained its locked published
+        deployment. The prior Worker version was restored under a new verified deployment ID, now
+        recorded in the baseline and recovery target as the pair observed when the workflow
+        completed.
         <a href="release-evidence/2026-09-12-production-recovery-34700516404/README.md"
           >Recovery evidence</a
-        >. A fresh exact-candidate approval rehearsal and ordinary application release remain
-        outstanding. Older checkpoint descriptions below are historical.
+        >. This evidence does not assert the current provider state or authorize a separate
+        application release. Older checkpoint descriptions below are historical.
       </div>
     </header>
     <main id="explorer">
@@ -536,9 +534,9 @@
         * “Live verified” refers to dated evidence in the repository, not a real-time monitor.
         Staging preparation and the full coordinated rehearsal passed for the recorded candidate.
         Production promotion/resume provider and runner code is implemented but live-unverified;
-        staging recovery and resume passed their protected drill. Production adoption and publishing
-        cutover passed; production recovery passed in run 34700516404. Layer numbers describe the
-        implementation plan, not command syntax.
+        staging recovery and resume passed their protected drill. Production adoption and
+        publication-lock cutover have dated verified records; production recovery passed in run
+        34700516404. Layer numbers describe the implementation plan, not command syntax.
       </p>
       <p>
         Portable source links are relative to the intended
@@ -967,9 +965,9 @@
         },
         {
           name: "Coordinated release",
-          title: "Staging verified. Production controls next.",
+          title: "Historical release evidence",
           intro:
-            "Layer 4 passed a complete staging rehearsal. Layer 5 provider and runner code is implemented; live workflow verification remains pending. Protected staging recovery and resume passed. Production adoption, the initial baseline and publishing cutover passed. Production recovery passed; ordinary application publication remains outstanding.",
+            "This map retains dated release-system evidence. Layer 4 passed a complete staging rehearsal, and production recovery passed in run 34700516404. The evidence does not establish current provider state or whether an application release is pending.",
           lanes: [
             [
               "Layer 4 / Preparation",

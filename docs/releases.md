@@ -1,16 +1,17 @@
 # Repeatable releases
 
-Current rollout checkpoint: production recovery [34700516404](release-evidence/2026-09-12-production-recovery-34700516404/README.md) passed, retaining Netlify and restoring the prior Worker version under its actual new deployment ID. The recovered baseline and recovery target are recorded. A fresh exact-candidate approval rehearsal and ordinary application publication remain outstanding. Earlier checkpoint text below is historical.
+Recovery evidence checkpoint (12 September 2026 UTC): production recovery [34700516404](release-evidence/2026-09-12-production-recovery-34700516404/README.md) passed, retaining Netlify and restoring the prior Worker version under its actual new deployment ID. The recovered baseline and recovery target record the pair observed when that workflow completed. They are not a real-time provider observation or approval to release a different candidate. The [retrospective closeout](coordinated-release-retrospective.md#closeout-and-handoff-correction) records the operator's confirmation of successful production; no new release is requested. Checkpoint text below is historical.
 
-Current rollout checkpoint: the first ordinary release stopped after Worker activation and transition verification, before Netlify publication. Resume exposed a reproduced artifact-permission defect. See the [production resume investigation](release-evidence/2026-09-12-production-resume-investigation/README.md) for verified results and the repair boundary. Earlier status below describes the preceding implementation checkpoint.
+Pre-recovery checkpoint (historical): the first ordinary release stopped after Worker activation and transition verification, before Netlify publication. Resume exposed a reproduced artifact-permission defect. See the [production resume investigation](release-evidence/2026-09-12-production-resume-investigation/README.md) for verified results and the repair boundary. Earlier status below describes the preceding implementation checkpoint.
 
 Status: staging preparation, calibration, explicit recovery and resume are live-verified. Production
 publication is locked, and subsequent Git-triggered builds did not replace the published app.
 The [first production Worker adoption](release-evidence/2026-09-12-production-adoption-34688347172/README.md)
 passed on 12 September 2026 UTC, establishing the reviewed source-attributed baseline and recovery target.
 The one-time adoption gate is disabled; ordinary production orchestration is enabled in policy.
-The first ordinary coordinated application release still requires approval rehearsal, a reviewed
-stage-to-main promotion, exact-main CI and manual dispatch. Production recovery remains live-unverified.
+At that pre-recovery checkpoint, the first ordinary coordinated application release required approval
+rehearsal, a reviewed stage-to-main promotion, exact-main CI and manual dispatch. This status is historical;
+the recovery record is dated evidence, not live verification after its completion.
 
 The earlier [cutover checkpoint](release-evidence/2026-09-12-production-cutover/README.md) records
 the publication lock and pre-mutation API compatibility failure, corrected before successful adoption.
@@ -454,7 +455,9 @@ The runner currently exposes planning and status under [Read-only tooling](#read
 and preparation and staging rehearsal under [artifact preparation](#prepare-artifacts-and-rehearse-on-staging).
 Production promotion and resumption use the manual workflows and tested interfaces described in
 [production orchestration](production-orchestration.md). The checked-in production gate stays off
-until rollout prerequisites pass. Explicit staging recovery and resume passed their protected live drill. Production recovery and publishing cutover remain unverified. See [recovery and cutover](recovery.md).
+until rollout prerequisites pass. Explicit staging recovery and resume passed their protected live drill.
+Production recovery and the publication-lock cutover have dated verified records; those records do
+not establish current provider state. See [recovery and cutover](recovery.md).
 
 Before production promotion can be authoritative, replace the current automatic production publish
 on merge with a controlled publish path. Otherwise a merge can bypass the release checks. Provider
