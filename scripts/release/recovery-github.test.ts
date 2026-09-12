@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   GITHUB_RELEASE_ACTIVATION_STEP_NAME,
+  GITHUB_RELEASE_ADOPTION_STEP_NAME,
   GITHUB_RELEASE_PRODUCTION_JOB_NAME,
   GITHUB_RELEASE_RECOVERY_STEP_NAME,
   GITHUB_RELEASE_REPOSITORY,
@@ -34,11 +35,13 @@ type PriorRun = {
   activation: "success" | "failure" | "cancelled" | "skipped";
   recovery: "success" | "failure" | "cancelled" | "skipped";
   createdAt: string;
+  attempt?: number;
+  earlierActivation?: PriorRun["activation"];
 };
 
 const workflowRun = (prior: PriorRun | { id: 101; createdAt: string }) => ({
   id: prior.id,
-  run_attempt: 1,
+  run_attempt: "attempt" in prior ? (prior.attempt ?? 1) : 1,
   event: "workflow_dispatch",
   status: prior.id === 101 ? "in_progress" : "completed",
   conclusion: "conclusion" in prior ? prior.conclusion : null,
@@ -65,7 +68,7 @@ const github = (runs: readonly PriorRun[], expiredRunId?: number): GitHubRelease
         ],
       };
     }
-    const jobsMatch = request.path.match(/\/actions\/runs\/(\d+)\/attempts\/1\/jobs$/u);
+    const jobsMatch = request.path.match(/\/actions\/runs\/(\d+)\/attempts\/(\d+)\/jobs$/u);
     if (jobsMatch) {
       const prior = runs.find(({ id }) => id === Number(jobsMatch[1]));
       if (!prior) throw new Error("unexpected test job");
@@ -82,7 +85,10 @@ const github = (runs: readonly PriorRun[], expiredRunId?: number): GitHubRelease
               {
                 name: GITHUB_RELEASE_ACTIVATION_STEP_NAME,
                 status: "completed",
-                conclusion: prior.activation,
+                conclusion:
+                  Number(jobsMatch[2]) === 1
+                    ? (prior.earlierActivation ?? prior.activation)
+                    : prior.activation,
                 number: 8,
               },
               {
@@ -126,6 +132,83 @@ const github = (runs: readonly PriorRun[], expiredRunId?: number): GitHubRelease
 });
 
 describe("recovery GitHub history", () => {
+  it.each([GITHUB_RELEASE_RECOVERY_STEP_NAME, GITHUB_RELEASE_ADOPTION_STEP_NAME])(
+    "rejects a rerun when an earlier attempt reached %s",
+    async (name) => {
+      const base = github([
+        {
+          id: 100,
+          attempt: 2,
+          conclusion: "failure",
+          activation: "skipped",
+          recovery: "skipped",
+          createdAt: "2026-09-11T10:00:00.000Z",
+        },
+        {
+          id: 99,
+          conclusion: "failure",
+          activation: "failure",
+          recovery: "skipped",
+          createdAt: "2026-09-11T09:00:00.000Z",
+        },
+      ]);
+      const api: GitHubReleaseApi = {
+        get: async (request) => {
+          const result = await base.get(request);
+          if (request.path.endsWith("/runs/100/attempts/1/jobs")) {
+            const jobs = result as {
+              jobs: {
+                steps: { name: string; status: string; conclusion: string; number: number }[];
+              }[];
+            };
+            const steps = jobs.jobs[0]!.steps;
+            const existing = steps.find((step) => step.name === name);
+            if (existing) existing.conclusion = "failure";
+            else steps.push({ name, status: "completed", conclusion: "failure", number: 10 });
+          }
+          return result;
+        },
+      };
+      await expect(
+        verifyRecoveryHistory(api, { current, recoverySourceRunId: 99, now }),
+      ).rejects.toMatchObject({ kind: "resume" });
+    },
+  );
+  it.each(["skipped", "failure", "success"] as const)(
+    "checks every rerun attempt before skipping preflight-only history: %s",
+    async (earlierActivation) => {
+      const skipped: PriorRun = {
+        id: 100,
+        attempt: 2,
+        conclusion: "failure",
+        activation: "skipped",
+        earlierActivation,
+        recovery: "skipped",
+        createdAt: "2026-09-11T10:00:00.000Z",
+      };
+      const source: PriorRun = {
+        id: 99,
+        conclusion: "failure",
+        activation: "failure",
+        recovery: "skipped",
+        createdAt: "2026-09-11T09:00:00.000Z",
+      };
+      const result = verifyRecoveryHistory(github([skipped, source]), {
+        current,
+        recoverySourceRunId: 99,
+        now,
+      });
+      if (earlierActivation === "skipped") {
+        await expect(result).resolves.toMatchObject({
+          evidenceRun: { runId: 99 },
+          skippedPreflightRunIds: [100],
+        });
+      } else {
+        await expect(result).rejects.toMatchObject({ kind: "resume" });
+      }
+    },
+  );
+
   it.each([
     { conclusion: "success", activation: "success" },
     { conclusion: "failure", activation: "failure" },
