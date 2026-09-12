@@ -275,7 +275,7 @@ describe("GitHub release API", () => {
     expect(observedInit?.redirect).toBe("error");
     const headers = new Headers(observedInit?.headers);
     expect(headers.get("Authorization")).toBe(`Bearer ${secret}`);
-    expect(headers.get("X-GitHub-Api-Version")).toBe("2026-03-10");
+    expect(headers.get("X-GitHub-Api-Version")).toBe("2022-11-28");
   });
 
   it("rejects other paths, oversized responses, and raw transport errors without leaking details", async () => {
@@ -720,6 +720,62 @@ describe("promotion and CI evidence", () => {
       promotionTree: tree,
       mergedAt: "2026-09-11T09:00:00.000Z",
     });
+  });
+
+  it("pins the pull-request schema version and rejects the newer response without merge identity", async () => {
+    const versions: string[] = [];
+    const versionedFetch =
+      (responseVersion?: string) => async (input: string | URL | Request, init?: RequestInit) => {
+        const version = new Headers(init?.headers).get("X-GitHub-Api-Version") ?? "";
+        versions.push(version);
+        const path = new URL(fetchInputUrl(input)).pathname;
+        let body: unknown;
+        if (path.endsWith("/pulls/42")) {
+          body = {
+            number: 42,
+            state: "closed",
+            merged_at: "2026-09-11T09:00:00.000Z",
+            ...((responseVersion ?? version) === "2026-03-10"
+              ? {}
+              : { merge_commit_sha: promotion }),
+            base: {
+              ref: "main",
+              sha: "e".repeat(40),
+              repo: { full_name: GITHUB_RELEASE_REPOSITORY },
+            },
+            head: {
+              ref: "stage",
+              sha: candidate,
+              repo: { full_name: GITHUB_RELEASE_REPOSITORY },
+            },
+          };
+        } else if (path.endsWith(`/git/commits/${candidate}`)) {
+          body = { sha: candidate, tree: { sha: tree } };
+        } else if (path.endsWith(`/git/commits/${promotion}`)) {
+          body = { sha: promotion, tree: { sha: tree } };
+        } else if (path.endsWith("/branches/main")) {
+          body = branch("main", promotion);
+        } else if (path.endsWith("/branches/stage")) {
+          body = branch("stage", candidate);
+        } else {
+          return new Response(null, { status: 404 });
+        }
+        return Response.json(body);
+      };
+    const input = { pullRequestNumber: 42, candidate, promotionCommit: promotion };
+    await expect(
+      verifyPromotionEvidence(
+        createGitHubReleaseApi({ token: secret, fetch: versionedFetch() }),
+        input,
+      ),
+    ).resolves.toMatchObject({ promotionCommit: promotion });
+    expect(new Set(versions)).toEqual(new Set(["2022-11-28"]));
+    await expect(
+      verifyPromotionEvidence(
+        createGitHubReleaseApi({ token: secret, fetch: versionedFetch("2026-03-10") }),
+        input,
+      ),
+    ).rejects.toMatchObject({ kind: "response" });
   });
 
   it.each([promotionApi({ promotionTree: "f".repeat(40) }), promotionApi({ headRef: "feature" })])(

@@ -5,13 +5,18 @@ and the final forward calibration passed. Both recovery and forward deployment p
 transition and final-pair browser smokes. See [the verified checkpoint](release-evidence/2026-09-11-staging-recovery-34652303609/README.md)
 and [earlier findings](release-evidence/2026-09-11-staging/README.md). Native branch protections
 and branch-restricted deployment credentials are configured. Production orchestration and recovery
-are implemented but remain live-unverified. Publishing cutover, the attributable production
-baseline, and the first coordinated production release remain gates. The separate
+are implemented but remain live-unverified. The attributable production
+baseline and the first coordinated production release remain gates. The separate
 [one-time Worker adoption](production-orchestration.md#first-worker-adoption) preserves Netlify and
 records the accepted fail-forward policy; it does not establish a historical Worker rollback target.
 The adoption gate is enabled for the initial cutover candidate; ordinary releases remain disabled.
 Fresh read-only production inspection passed configuration and secret-presence checks on 12 September
-2026 UTC. Netlify remains unlocked until the exact candidate passes staging rehearsal.
+2026 UTC. Exact-candidate staging rehearsal passed and Netlify publication was locked; a subsequent
+Git-triggered build did not replace the live app. Production adoption stopped before mutation because
+the GitHub API version omitted a required merge-commit field. See the
+[12 September cutover checkpoint](release-evidence/2026-09-12-production-cutover/README.md).
+The release client pins the supported API version matching its promotion schema; upgrading that
+version requires validating the response contract against GitHub's documented breaking changes.
 
 This design applies the principles in
 [The release process is part of the product](https://schalkneethling.com/posts/the-release-process-is-part-of-the-product/)
