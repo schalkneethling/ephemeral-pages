@@ -93,7 +93,12 @@ An explicit staging recovery can clear that boundary through a reviewed resoluti
 protected `stage`. The resolution binds the failed run and report, the recovery record, a subsequent
 passed smoke report, and the actually restored pair. Fresh provider inspection must match that pair
 before another rehearsal can write. A local smoke alone is diagnostic evidence, not permission to
-ignore a partially completed workflow. See [recovery](recovery.md) for the operator boundary.
+ignore a partially completed workflow. If both writes completed and only final Netlify readback failed,
+a reviewed final-pair resolution can instead bind those returned IDs to a full passed smoke and fresh
+provider inspection. It permits a new rehearsal without repeating writes merely to clear history;
+the failed run still cannot issue production approval. See the
+[recorded verification](release-evidence/2026-09-12-staging-final-pair-34688990620/README.md)
+and [recovery](recovery.md) for the operator boundary.
 
 The ordinary Worker path supports the reviewed `v1` SQLite Durable Object lifecycle with no migration
 change. Different migration state blocks this path. Netlify upload acknowledgements and Cloudflare

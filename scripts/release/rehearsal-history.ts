@@ -286,6 +286,25 @@ export const stagingRehearsalRecoveryRecordSchema = z
   });
 export type StagingRehearsalRecoveryRecord = z.infer<typeof stagingRehearsalRecoveryRecordSchema>;
 
+export const stagingRehearsalFinalPairRecordSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  operation: z.literal("staging-rehearsal-final-pair"),
+  environment: z.literal("staging"),
+  failedRunId: positiveIntegerSchema,
+  failedDiagnosticsDigest: artifactDigestSchema,
+  failedRehearsalSha256: digestSchema,
+  preparedConfigurationFingerprint: digestSchema,
+  configurationSha256: digestSchema,
+  pairSmokeSha256: digestSchema,
+  finalPair: pairSchema,
+  outcome: z.literal("passed"),
+  stages: z.strictObject({
+    inspect: z.literal("passed"),
+    "verify-pair": z.literal("passed"),
+  }),
+});
+export type StagingRehearsalFinalPairRecord = z.infer<typeof stagingRehearsalFinalPairRecordSchema>;
+
 const smokeCheckSchema = z.strictObject({
   id: z.enum([
     "upload.collaboration",
@@ -351,7 +370,12 @@ type VerifiedDiagnosticsArtifact = {
 };
 
 export type RehearsalHistoryResult = {
-  resolvedBy: "none" | "successful-run" | "passed-report" | "reviewed-recovery";
+  resolvedBy:
+    | "none"
+    | "successful-run"
+    | "passed-report"
+    | "reviewed-recovery"
+    | "reviewed-final-pair";
   runId?: number;
   skippedReadOnlyRunIds: readonly number[];
 };
@@ -571,6 +595,36 @@ const resolutionPaths = (failedRunId: number) => {
   };
 };
 
+const completedPairAfterReadbackFailure = (
+  rehearsal: z.infer<typeof unresolvedRehearsalSchema>,
+): DeploymentPair | undefined => {
+  if (
+    rehearsal.outcome !== "failed" ||
+    rehearsal.observedPair !== undefined ||
+    !rehearsal.activatedWorker ||
+    !rehearsal.publishedNetlify ||
+    rehearsal.failure.stage !== "observe-netlify" ||
+    rehearsal.failure.kind !== "failed" ||
+    Object.keys(rehearsal.stages).length !== 9 ||
+    rehearsal.stages.inspect !== "passed" ||
+    rehearsal.stages["hold-netlify"] !== "passed" ||
+    rehearsal.stages["upload-worker"] !== "passed" ||
+    rehearsal.stages["activate-worker"] !== "passed" ||
+    rehearsal.stages["observe-worker"] !== "passed" ||
+    rehearsal.stages["verify-transition"] !== "passed" ||
+    rehearsal.stages["prepublish-check"] !== "passed" ||
+    rehearsal.stages["publish-netlify"] !== "passed" ||
+    rehearsal.stages["observe-netlify"] !== "failed"
+  ) {
+    return undefined;
+  }
+  return {
+    netlifyDeployId: rehearsal.publishedNetlify.publishedDeployId,
+    workerDeploymentId: rehearsal.activatedWorker.deploymentId,
+    workerVersionId: rehearsal.activatedWorker.versionId,
+  };
+};
+
 const verifyResolution = async (
   repositoryRoot: string,
   run: z.infer<typeof runSchema>,
@@ -578,7 +632,7 @@ const verifyResolution = async (
   rehearsalBytes: Uint8Array,
   rehearsal: z.infer<typeof unresolvedRehearsalSchema>,
   inspectCurrentPair: () => Promise<DeploymentPair>,
-): Promise<void> => {
+): Promise<"reviewed-recovery" | "reviewed-final-pair"> => {
   const paths = resolutionPaths(run.id);
   const [resolutionBytes, recoveryBytes, smokeBytes, configBytes] = await Promise.all([
     readBytes(resolve(repositoryRoot, paths.resolution)),
@@ -587,7 +641,10 @@ const verifyResolution = async (
     readBytes(resolve(repositoryRoot, "scripts/release/environments.json")),
   ]);
   const resolution = parseBytes(resolutionBytes, rehearsalResolutionSchema);
-  const recovery = parseBytes(recoveryBytes, stagingRehearsalRecoveryRecordSchema);
+  const evidence = parseBytes(
+    recoveryBytes,
+    z.union([stagingRehearsalRecoveryRecordSchema, stagingRehearsalFinalPairRecordSchema]),
+  );
   const smoke = parseBytes(smokeBytes, passedStagingSmokeSchema);
   const configuration = parseBytes(configBytes, releaseConfigSchema);
   const rehearsalSha256 = artifactHash(rehearsalBytes);
@@ -601,21 +658,40 @@ const verifyResolution = async (
     resolution.recoveryRecord.sha256 !== recoverySha256 ||
     resolution.passedSmoke.path !== paths.smoke ||
     resolution.passedSmoke.sha256 !== smokeSha256 ||
-    recovery.failedRunId !== run.id ||
-    recovery.failedDiagnosticsDigest !== artifact.digest ||
-    recovery.failedRehearsalSha256 !== rehearsalSha256 ||
-    recovery.pairSmokeSha256 !== smokeSha256 ||
-    recovery.configurationSha256 !== configurationFingerprint(configuration) ||
-    smoke.configuration.fingerprint !== recovery.configurationSha256 ||
-    !samePair(recovery.targetPair, rehearsal.priorPair) ||
-    !rehearsal.observedPair ||
-    !samePair(recovery.startingPair, rehearsal.observedPair) ||
-    !samePair(resolution.restoredPair, recovery.recoveredPair)
+    evidence.failedRunId !== run.id ||
+    evidence.failedDiagnosticsDigest !== artifact.digest ||
+    evidence.failedRehearsalSha256 !== rehearsalSha256 ||
+    evidence.pairSmokeSha256 !== smokeSha256 ||
+    evidence.configurationSha256 !== configurationFingerprint(configuration) ||
+    smoke.configuration.fingerprint !== evidence.configurationSha256
   ) {
     throw new RehearsalHistoryError();
   }
+  if (evidence.operation === "staging-rehearsal-recovery") {
+    if (
+      !samePair(evidence.targetPair, rehearsal.priorPair) ||
+      !rehearsal.observedPair ||
+      !samePair(evidence.startingPair, rehearsal.observedPair) ||
+      !samePair(resolution.restoredPair, evidence.recoveredPair)
+    ) {
+      throw new RehearsalHistoryError();
+    }
+  } else {
+    const completedPair = completedPairAfterReadbackFailure(rehearsal);
+    if (
+      !completedPair ||
+      rehearsal.source.configurationFingerprint !== evidence.preparedConfigurationFingerprint ||
+      !samePair(evidence.finalPair, completedPair) ||
+      !samePair(resolution.restoredPair, evidence.finalPair)
+    ) {
+      throw new RehearsalHistoryError();
+    }
+  }
   const current = await inspectCurrentPair();
   if (!samePair(current, resolution.restoredPair)) throw new RehearsalHistoryError();
+  return evidence.operation === "staging-rehearsal-recovery"
+    ? "reviewed-recovery"
+    : "reviewed-final-pair";
 };
 
 const inspectFailedRun = async (
@@ -627,7 +703,7 @@ const inspectFailedRun = async (
     now: Date;
   },
   dependencies: RehearsalHistoryDependencies,
-): Promise<"passed" | "read-only" | "resolved"> => {
+): Promise<"passed" | "read-only" | "reviewed-recovery" | "reviewed-final-pair"> => {
   const artifact = await readDiagnosticsArtifact(api, input.run, input.now);
   const parent = await mkdtemp(join(tmpdir(), "release-rehearsal-history-"));
   const directory = join(parent, "diagnostics");
@@ -666,7 +742,7 @@ const inspectFailedRun = async (
     if (!unresolved.success || unresolved.data.source.candidate !== input.run.head_sha) {
       throw new RehearsalHistoryError();
     }
-    await verifyResolution(
+    const resolution = await verifyResolution(
       input.repositoryRoot,
       input.run,
       artifact,
@@ -674,7 +750,7 @@ const inspectFailedRun = async (
       unresolved.data,
       () => dependencies.inspectCurrentPair(),
     );
-    return "resolved";
+    return resolution;
   } finally {
     await rm(parent, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -784,7 +860,7 @@ export async function verifyRehearsalHistory(
         continue;
       }
       return {
-        resolvedBy: state === "passed" ? "passed-report" : "reviewed-recovery",
+        resolvedBy: state === "passed" ? "passed-report" : state,
         runId: run.id,
         skippedReadOnlyRunIds,
       };
