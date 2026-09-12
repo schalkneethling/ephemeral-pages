@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, open, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -221,16 +221,27 @@ describe("local secret checkpoint persistence", () => {
 
     try {
       await createPendingLocalSecretsCheckpoint(checkpointPath, pending);
-      expect((await stat(checkpointPath)).mode & 0o777).toBe(0o600);
+      const pendingHandle = await open(checkpointPath, "r");
+      try {
+        expect((await pendingHandle.stat()).mode & 0o777).toBe(0o600);
+        expect(JSON.parse(await pendingHandle.readFile("utf8"))).toEqual(pending);
+      } finally {
+        await pendingHandle.close();
+      }
       await expect(createPendingLocalSecretsCheckpoint(checkpointPath, pending)).rejects.toThrow(
         "Staging local-secret provisioning could not continue safely.",
       );
-      expect(JSON.parse(await readFile(checkpointPath, "utf8"))).toEqual(pending);
 
       await finalizeLocalSecretsCheckpoint(checkpointPath, final);
-      expect(JSON.parse(await readFile(checkpointPath, "utf8"))).toEqual(final);
-      expect((await stat(checkpointPath)).mode & 0o777).toBe(0o600);
-      expect(await readFile(checkpointPath, "utf8")).not.toContain(SECRET_SENTINEL);
+      const finalHandle = await open(checkpointPath, "r");
+      try {
+        const contents = await finalHandle.readFile("utf8");
+        expect(JSON.parse(contents)).toEqual(final);
+        expect((await finalHandle.stat()).mode & 0o777).toBe(0o600);
+        expect(contents).not.toContain(SECRET_SENTINEL);
+      } finally {
+        await finalHandle.close();
+      }
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

@@ -8,6 +8,7 @@ import { z } from "zod/v4";
 
 import { stagingBootstrapFingerprint } from "./bootstrap.ts";
 import { stagingBootstrapFileInputSchema } from "./bootstrap-cli.ts";
+import { readBoundedJson as readSafeBoundedJson } from "./bootstrap-safety.ts";
 import {
   NETLIFY_LOCAL_SECRET_KEYS,
   provisionNetlifyLocalSecrets,
@@ -132,19 +133,7 @@ export function parseLocalSecretsArguments(
 }
 
 const readBoundedJson: JsonReader = async (path, maxBytes) => {
-  let handle;
-  try {
-    handle = await open(path, constants.O_RDONLY);
-    const stat = await handle.stat();
-    if (!stat.isFile() || stat.size > maxBytes) throw new Error();
-    const contents = await handle.readFile("utf8");
-    if (Buffer.byteLength(contents, "utf8") > maxBytes) throw new Error();
-    return JSON.parse(contents) as unknown;
-  } catch {
-    throw new LocalSecretsCliError("configuration");
-  } finally {
-    await handle?.close();
-  }
+  return readSafeBoundedJson(path, maxBytes, () => new LocalSecretsCliError("configuration"));
 };
 
 const syncDirectory = async (path: string): Promise<void> => {
