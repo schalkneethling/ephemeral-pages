@@ -1,5 +1,7 @@
 # Release recovery and cutover
 
+Current rollout checkpoint: production recovery [34700516404](release-evidence/2026-09-12-production-recovery-34700516404/README.md) passed, retaining Netlify and restoring the prior Worker version under its actual new deployment ID. The recovered baseline and recovery target are recorded. A fresh exact-candidate approval rehearsal and ordinary application publication remain outstanding. Earlier checkpoint text below is historical.
+
 Status: protected staging calibrations A/B and explicit B-to-A recovery passed. The recovery
 resumed from its retained checkpoint, preserved the completed Netlify restore, and passed both
 transition and final-pair browser smokes. A subsequent forward calibration passed and left staging

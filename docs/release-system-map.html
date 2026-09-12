@@ -465,24 +465,18 @@
         storage make coordination necessary.
       </p>
       <div class="snapshot">
-        Documentation checkpoint · 12 September 2026 UTC · Production Worker adopted; baseline
-        verified; application publication blocked by resume artifact permissions
+        Documentation checkpoint · 12 September 2026 UTC · Production recovery verified; application
+        approval next
       </div>
       <div class="notice">
-        <strong>Current checkpoint.</strong> The first ordinary production run activated the Worker
-        and passed transition verification, then a Cloudflare inspection timed out before Netlify
-        publication. Resume failed before mutation because downloaded artifacts were writable. See
-        the
-        <a href="release-evidence/2026-09-12-production-resume-investigation/README.md"
-          >verified investigation</a
-        >. The following describes the preceding checkpoint. Staging rehearsal and production Worker
-        adoption passed. Netlify publication remains locked; the existing app was preserved. The
-        source-attributed production baseline and recovery target are recorded. Adoption is disabled
-        and ordinary releases enabled in policy. Two approval rehearsals completed both staging
-        writes but failed at immediate readback; subsequent inspection and all six smoke checks
-        passed. The readback correction must preserve diagnostic causes and bound observation of the
-        exact pair. A fresh approval rehearsal and the first coordinated application release remain
-        outstanding.
+        <strong>Current checkpoint.</strong> Production recovery 34700516404 passed all five stages
+        and both six-check browser smokes. Netlify retained its locked published deployment. The
+        prior Worker version was restored under a new verified deployment ID, now recorded in the
+        baseline and recovery target.
+        <a href="release-evidence/2026-09-12-production-recovery-34700516404/README.md"
+          >Recovery evidence</a
+        >. A fresh exact-candidate approval rehearsal and ordinary application release remain
+        outstanding. Older checkpoint descriptions below are historical.
       </div>
     </header>
     <main id="explorer">
@@ -543,7 +537,7 @@
         Staging preparation and the full coordinated rehearsal passed for the recorded candidate.
         Production promotion/resume provider and runner code is implemented but live-unverified;
         staging recovery and resume passed their protected drill. Production adoption and publishing
-        cutover passed; production recovery remains unverified. Layer numbers describe the
+        cutover passed; production recovery passed in run 34700516404. Layer numbers describe the
         implementation plan, not command syntax.
       </p>
       <p>
@@ -828,7 +822,7 @@
           "6 · Explicit recovery",
           "live",
           "Restore a verified pair; reconcile interruptions",
-          "Protected staging B-to-A recovery and resume passed on 11 September UTC. The first live attempt restored Netlify A and stopped at role verification. A later full local smoke passed. Resume exposed a temporary-path-dependent inspection fingerprint; the reviewed correction reverified the retained evidence read-only and persisted portable version-2 evidence before further mutation. The successful resume retained the completed Netlify step, passed transition smoke, restored Worker version A under a new deployment ID, and passed final-pair smoke. Both smokes included ticket authorization, synchronization, reload, network-loss recovery and screenshot download. Production recovery remains live-unverified. Publishing cutover is verified locked; the attributable production baseline is verified; the operator accepted one-time fail-forward adoption without a legacy restore subsystem.",
+          "Protected staging B-to-A recovery and resume passed on 11 September UTC. The first live attempt restored Netlify A and stopped at role verification. A later full local smoke passed. Resume exposed a temporary-path-dependent inspection fingerprint; the reviewed correction reverified the retained evidence read-only and persisted portable version-2 evidence before further mutation. The successful resume retained the completed Netlify step, passed transition smoke, restored Worker version A under a new deployment ID, and passed final-pair smoke. Both smokes included ticket authorization, synchronization, reload, network-loss recovery and screenshot download. Production recovery passed in run 34700516404. Publishing cutover is verified locked; the attributable production baseline is verified; the operator accepted one-time fail-forward adoption without a legacy restore subsystem.",
           [
             ["scripts/release/recovery-runner.ts"],
             ["scripts/release/recovery-cli.ts"],
@@ -975,7 +969,7 @@
           name: "Coordinated release",
           title: "Staging verified. Production controls next.",
           intro:
-            "Layer 4 passed a complete staging rehearsal. Layer 5 provider and runner code is implemented; live workflow verification remains pending. Protected staging recovery and resume passed. Production adoption, the initial baseline and publishing cutover passed. Ordinary production release and production recovery remain live-unverified.",
+            "Layer 4 passed a complete staging rehearsal. Layer 5 provider and runner code is implemented; live workflow verification remains pending. Protected staging recovery and resume passed. Production adoption, the initial baseline and publishing cutover passed. Production recovery passed; ordinary application publication remains outstanding.",
           lanes: [
             [
               "Layer 4 / Preparation",
