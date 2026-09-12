@@ -450,8 +450,7 @@ const assertSite = (value: unknown, plan: RecoveryProviderPlan, expectedDeployId
     value.id !== plan.netlify.siteId ||
     value.account_id !== plan.netlify.accountId ||
     value.ssl_url !== plan.netlify.origin ||
-    settings.repo_url ||
-    settings.repo_path ||
+    (plan.environment === "staging" && (settings.repo_url || settings.repo_path)) ||
     value.published_deploy.id !== expectedDeployId ||
     value.published_deploy.state !== "ready" ||
     value.published_deploy.locked !== true

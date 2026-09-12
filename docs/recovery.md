@@ -4,7 +4,8 @@ Status: protected staging calibrations A/B and explicit B-to-A recovery passed. 
 resumed from its retained checkpoint, preserved the completed Netlify restore, and passed both
 transition and final-pair browser smokes. A subsequent forward calibration passed and left staging
 on the latest exercised candidate. See [the verified checkpoint](release-evidence/2026-09-11-staging-recovery-34652303609/README.md).
-Production remains disabled in `production-policy.json`. Production publishing cutover, the
+Ordinary production releases remain disabled in `production-policy.json`; the separate one-time
+adoption gate is enabled for the initial cutover candidate. Production publishing cutover, the
 attributable initial baseline, and the first coordinated production release remain outstanding.
 
 ## Recovery operation

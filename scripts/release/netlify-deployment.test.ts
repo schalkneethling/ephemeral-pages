@@ -64,6 +64,7 @@ const metadata = { functionSchedules: [], functionsConfig: {}, functions: {} };
 async function fixture(
   target: NetlifyDeploymentInput | ProductionNetlifyDeploymentInput = input,
   initiallyLocked = false,
+  buildSettings: Record<string, unknown> = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "netlify-held-"));
   roots.push(root);
@@ -102,7 +103,7 @@ async function fixture(
         id: target.siteId,
         account_id: target.accountId,
         ssl_url: target.origin,
-        build_settings: {},
+        build_settings: buildSettings,
         published_deploy: { id: published, locked },
       };
     if (operation === "lockDeploy") {
@@ -342,8 +343,47 @@ it("uses explicit authorization and an already locked production publication", a
   ).resolves.toEqual({ publishedDeployId: "candidate" });
 });
 
+it("accepts a Git-linked locked production site while keeping staging Git-detached", async () => {
+  const buildSettings = {
+    repo_path: "apps/ephemeral-pages",
+    repo_url: "https://github.com/schalkneethling/ephemeral-pages",
+  };
+  const production = await fixture(productionInput, true, buildSettings);
+  const checkpoints: string[] = [];
+  const dependencies = {
+    checkpoint: async ({ operation }: { operation: string }) => {
+      checkpoints.push(operation);
+    },
+    client: production.client,
+  };
+  const held = await uploadHeldProductionNetlifyDeployment(
+    productionInput,
+    production.artifacts,
+    metadata,
+    dependencies,
+  );
+  await expect(
+    publishHeldProductionNetlifyDeployment(productionInput, held, dependencies),
+  ).resolves.toEqual({ publishedDeployId: "candidate" });
+  expect(production.calls).toContain("restoreSiteDeploy");
+
+  const staging = await fixture(input, true, buildSettings);
+  await expect(
+    uploadHeldNetlifyDeployment(input, staging.artifacts, metadata, {
+      checkpoint: async ({ operation }) => {
+        checkpoints.push(operation);
+      },
+      client: staging.client,
+    }),
+  ).rejects.toMatchObject({ kind: "verification" });
+  expect(staging.calls).toEqual(["getSite"]);
+  expect(checkpoints).not.toContain("lockDeploy");
+});
+
 it("blocks production hold without an existing publication lock and never locks it", async () => {
-  const { artifacts, calls, client } = await fixture(productionInput, false);
+  const { artifacts, calls, client } = await fixture(productionInput, false, {
+    repo_url: "https://github.com/schalkneethling/ephemeral-pages",
+  });
   await expect(
     uploadHeldProductionNetlifyDeployment(productionInput, artifacts, metadata, {
       checkpoint: async () => undefined,

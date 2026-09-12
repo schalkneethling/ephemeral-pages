@@ -465,8 +465,8 @@
         storage make coordination necessary.
       </p>
       <div class="snapshot">
-        Documentation checkpoint · 11 September 2026 UTC · Staging recovery, resume and forward
-        deployment verified
+        Documentation checkpoint · 12 September 2026 UTC · Adoption reviewed; staging recovery,
+        resume and forward deployment verified
       </div>
       <div class="notice">
         <strong>Current control gap.</strong> Netlify still publishes production automatically from
@@ -763,7 +763,7 @@
           "One-time Worker adoption",
           "built",
           "Preserve Netlify; establish Worker provenance",
-          "The separate default-off adoption operation uses protected main, exact staged source evidence and the production concurrency group. It verifies the locked, Git-attributed Netlify deployment and preserves it while activating a sealed Worker artifact with no migration or secret rotation. A passed collaboration/screenshot smoke and distinct adoption record can establish the first reviewed baseline. The operator accepted fail-forward recovery for the historical Worker; no legacy restore target is invented. Live adoption remains outstanding.",
+          "The separate adoption gate is enabled for the initial cutover candidate; ordinary releases remain disabled. The operation uses protected main, exact staged source evidence and the production concurrency group. It verifies the locked, Git-attributed Netlify deployment and preserves it while activating a sealed Worker artifact with no migration or secret rotation. A passed collaboration/screenshot smoke and distinct adoption record can establish the first reviewed baseline. The operator accepted fail-forward recovery for the historical Worker; no legacy restore target is invented. Live adoption remains outstanding.",
           [
             ["scripts/release/production-adoption-record.ts"],
             ["scripts/release/production-adoption-runner.ts"],

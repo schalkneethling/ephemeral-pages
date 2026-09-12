@@ -4,7 +4,8 @@ Status: production orchestration and resumption are implemented. Protected stagi
 recovery, interrupted recovery, and forward deployment passed the
 [recorded exercise](release-evidence/2026-09-11-staging-recovery-34652303609/README.md).
 Production adoption, publication cutover, and the first coordinated production release remain
-live-unverified. Production policy and automatic publication settings have not changed.
+live-unverified. The one-time adoption gate is enabled for the reviewed cutover candidate; ordinary
+production releases remain disabled. Automatic publication settings have not changed.
 
 The implementation references for this checkpoint are the [production CLI](../scripts/release/production-cli.ts),
 [GitHub release verifier](../scripts/release/github-release.ts), [production context](../scripts/release/production-context.ts),
@@ -64,7 +65,7 @@ The operator accepted fail-forward recovery for this initial operation; no legac
 The distinct adoption runner uses the same protected production workflow and serialization as routine
 releases. Its source is an exact reviewed `stage` to `main` promotion with successful CI and a retained
 successful staging calibration for that candidate. Calibration is used here because ordinary approval
-requires the production baseline that adoption establishes. A separate default-off adoption policy and
+requires the production baseline that adoption establishes. A separate adoption policy (disabled by default, enabled for the initial cutover candidate) and
 an absent baseline guard prevent it from becoming a routine alternative to release approval.
 
 Before a Worker write, adoption verifies the sealed production artifact, current configuration,
@@ -129,6 +130,8 @@ Netlify production must already use controlled publication. The production adapt
 current published deployment to be locked; it does not silently change publishing settings to make
 a release pass. A publication that cannot retain the required protection blocks completion. The
 cutover and restore drills must establish the supported provider behavior before enabling this path.
+Production may retain its Git connection for preview builds; a locked published deployment is required
+for every production operation. Staging remains a dedicated site without a Git connection.
 
 ## Interrupted execution
 
@@ -153,10 +156,10 @@ alone does not establish that restoration is possible or compatible with current
 ## Remaining rollout gates
 
 See [recovery and cutover](recovery.md) for implementation details and the current setup checkpoint.
-Finish PR review, then rehearse the integrated candidate and
-prove Layer 6 recovery drills on staging. Establish the attributable production baseline and verify
-provider authorization using the provisioned environment credentials. Verify Netlify controlled publishing and restoration, disable its independent
-automatic production publication, and confirm that Git-triggered builds cannot publish. Keep
+Staging recovery, resume, and forward deployment have passed. Rehearse the exact cutover candidate,
+lock Netlify publication, and verify that the promotion merge cannot replace its published deployment.
+Establish the attributable production baseline through the one-time Worker adoption and verify the
+production collaboration and screenshot operations. Keep
 independent Cloudflare Git deployment disabled. Only then enable the reviewed production policy and
 perform the first coordinated production release.
 

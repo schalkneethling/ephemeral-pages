@@ -186,8 +186,7 @@ const site = async (
     current.id !== input.siteId ||
     current.account_id !== input.accountId ||
     current.ssl_url !== input.origin ||
-    settings.repo_url ||
-    settings.repo_path ||
+    (input.environment === "staging" && (settings.repo_url || settings.repo_path)) ||
     published.id !== deployId ||
     (locked !== null && published.locked !== locked)
   )
