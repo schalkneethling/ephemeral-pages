@@ -6,10 +6,12 @@ transition and final-pair browser smokes. See [the verified checkpoint](release-
 and [earlier findings](release-evidence/2026-09-11-staging/README.md). Native branch protections
 and branch-restricted deployment credentials are configured. Production orchestration and recovery
 are implemented but remain live-unverified. Publishing cutover, the attributable production
-baseline, and the first coordinated production release remain gates. The separate default-off
+baseline, and the first coordinated production release remain gates. The separate
 [one-time Worker adoption](production-orchestration.md#first-worker-adoption) preserves Netlify and
-records the accepted fail-forward policy; it does not establish a historical Worker rollback target. Production publishing settings
-have not been changed by this exercise.
+records the accepted fail-forward policy; it does not establish a historical Worker rollback target.
+The adoption gate is enabled for the initial cutover candidate; ordinary releases remain disabled.
+Fresh read-only production inspection passed configuration and secret-presence checks on 12 September
+2026 UTC. Netlify remains unlocked until the exact candidate passes staging rehearsal.
 
 This design applies the principles in
 [The release process is part of the product](https://schalkneethling.com/posts/the-release-process-is-part-of-the-product/)

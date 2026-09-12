@@ -110,6 +110,17 @@ const plan = (): RecoveryProviderPlan => ({
   },
 });
 
+const stagingPlan = (): RecoveryProviderPlan => {
+  const input = plan();
+  input.environment = "staging";
+  input.netlify.siteId = "staging-site";
+  input.worker.workerName = "staging-worker";
+  input.worker.artifactInput.environment = "staging";
+  input.worker.artifactInput.target.workerName = "staging-worker";
+  input.worker.artifactInput.target.wranglerEnvironment = "staging";
+  return input;
+};
+
 const workerBindings = () => [
   { name: "TICKET_HMAC_SECRET", type: "secret_text" },
   { name: "ADMIN_TOKEN", type: "secret_text" },
@@ -135,7 +146,7 @@ const targetVersion = (input = plan()) => ({
   },
 });
 
-const createFixture = (input = plan()) => {
+const createFixture = (input = plan(), buildSettings: Record<string, unknown> = {}) => {
   let netlifyCurrent = input.expectedCurrent.netlifyDeployId;
   let workerCurrent = {
     id: input.expectedCurrent.workerDeploymentId,
@@ -149,7 +160,7 @@ const createFixture = (input = plan()) => {
     if (operation === "getSite")
       return {
         account_id: input.netlify.accountId,
-        build_settings: {},
+        build_settings: buildSettings,
         id: input.netlify.siteId,
         published_deploy: { id: netlifyCurrent, locked: true, state: "ready" },
         ssl_url: input.netlify.origin,
@@ -259,6 +270,27 @@ const createFixture = (input = plan()) => {
 };
 
 describe("recovery provider adapters", () => {
+  it("accepts a Git-linked locked production site and rejects a linked staging site", async () => {
+    const buildSettings = {
+      repo_path: "apps/ephemeral-pages",
+      repo_url: "https://github.com/schalkneethling/ephemeral-pages",
+    };
+    const productionInput = plan();
+    const production = createFixture(productionInput, buildSettings);
+    const evidence = await inspectRecoveryTargets(productionInput, production.dependencies);
+    await expect(
+      restoreRecoveryNetlify(productionInput, evidence, production.dependencies),
+    ).resolves.toMatchObject({ deployId: productionInput.requested.netlifyDeployId });
+
+    const stagingInput = stagingPlan();
+    const staging = createFixture(stagingInput, buildSettings);
+    await expect(inspectRecoveryTargets(stagingInput, staging.dependencies)).rejects.toMatchObject({
+      kind: "preflight",
+    });
+    expect(staging.events).toEqual(["netlify:getSite"]);
+    expect(staging.checkpoints).toEqual([]);
+  });
+
   it("proves retained target identity and reports secret values as unobservable", async () => {
     const fixture = createFixture();
     const evidence = await inspectRecoveryTargets(plan(), fixture.dependencies);
