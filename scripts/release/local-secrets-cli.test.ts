@@ -198,7 +198,8 @@ describe("local secret CLI argument parsing", () => {
 describe("local secret checkpoint persistence", () => {
   it("claims a 0600 checkpoint exclusively and atomically replaces only that pending state", async () => {
     const directory = await mkdtemp(join(tmpdir(), "local-secret-checkpoint-"));
-    const checkpointPath = join(directory, "checkpoint.json");
+    const pendingCheckpointPath = join(directory, "pending-checkpoint.json");
+    const finalCheckpointPath = join(directory, "final-checkpoint.json");
     const identity = {
       schemaVersion: 1 as const,
       operation: "staging-local-secrets" as const,
@@ -220,20 +221,21 @@ describe("local secret checkpoint persistence", () => {
     };
 
     try {
-      await createPendingLocalSecretsCheckpoint(checkpointPath, pending);
-      const pendingHandle = await open(checkpointPath, "r");
+      await createPendingLocalSecretsCheckpoint(pendingCheckpointPath, pending);
+      const pendingHandle = await open(pendingCheckpointPath, "r");
       try {
         expect((await pendingHandle.stat()).mode & 0o777).toBe(0o600);
         expect(JSON.parse(await pendingHandle.readFile("utf8"))).toEqual(pending);
       } finally {
         await pendingHandle.close();
       }
-      await expect(createPendingLocalSecretsCheckpoint(checkpointPath, pending)).rejects.toThrow(
-        "Staging local-secret provisioning could not continue safely.",
-      );
+      await expect(
+        createPendingLocalSecretsCheckpoint(pendingCheckpointPath, pending),
+      ).rejects.toThrow("Staging local-secret provisioning could not continue safely.");
 
-      await finalizeLocalSecretsCheckpoint(checkpointPath, final);
-      const finalHandle = await open(checkpointPath, "r");
+      await createPendingLocalSecretsCheckpoint(finalCheckpointPath, pending);
+      await finalizeLocalSecretsCheckpoint(finalCheckpointPath, final);
+      const finalHandle = await open(finalCheckpointPath, "r");
       try {
         const contents = await finalHandle.readFile("utf8");
         expect(JSON.parse(contents)).toEqual(final);

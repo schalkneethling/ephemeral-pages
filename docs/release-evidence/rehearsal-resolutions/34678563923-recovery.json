@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "operation": "staging-rehearsal-recovery",
+  "environment": "staging",
+  "failedRunId": 34678563923,
+  "failedDiagnosticsDigest": "sha256:d8ffa02908602403eeb94e7dda8bdbe64c9abc45d39fcfacccbefa90353d16b6",
+  "failedRehearsalSha256": "ea6c8c83f2df3c294dd1956c8dda70ee6e7273464cca599ee7273574fe083b46",
+  "configurationSha256": "4d70b61cc7e1297eb5e7fb869c8d0f3a7fcf94d3063840428cc2e0f063dd2ec2",
+  "resolutionRecordSha256": "2065d4440c07c16713a00a12b37ab4643cf60df2117821f6d89ff720baf63a6d",
+  "workerResolutionJson": "{\"artifactHashes\":{\"metadata\":\"d42977dd166703b877c53c0055c390db3e1a938228e493c5e75bbfb39c555ed8\",\"targetPrepared\":\"23c05d73e964ce4a4610ba02f07d2f984772b2a633dfc1ba76b65c13c093524a\",\"targetWorker\":\"ce11e7d160aac62e83688413c6acf7c5ac1bdae00f0ae635a95fa3b8514adee3\",\"targetComplete\":\"607c8790eeac87160228255cf133d6dcf20f8dc859f93ab438dc49f80f8c8207\",\"targetRehearsal\":\"c13626beb253c55d4ac32a0df648be1fdf04abeb7868301892efefd2718f5278\",\"targetTransition\":\"d5eeee673537ad6a972f29439eb5f1055e56e5e8d44625a1e6a28bec0bac1de4\",\"targetWorkerResult\":\"6920100f5513d9b86e98abdfee7666177dcadfaa61e2b5bfb6e1ff62a152c670\",\"failedPrepared\":\"79857eff462235668e97f478b07fcc393b88d8c7170bbf1ce3d4b5edbb5ccf4c\",\"failedWorker\":\"d9efc36a9627175ba79e4b7416127f9c6e323f08851108dae13ac317b2c2d54f\",\"failedComplete\":\"12fa85f03b5667242a64306c8bbe1e4d7a324079b68be170549dda8e00addef4\",\"failedRehearsal\":\"ea6c8c83f2df3c294dd1956c8dda70ee6e7273464cca599ee7273574fe083b46\",\"failedTransition\":\"509804c96a3ed26f37b2c1254a13feb0da70c21dbf1e72746124c718725eb180\",\"failedWorkerResult\":\"ff26c7d46ff18bde4550a244db51a977fa958c14e51e1e6c7acfc1f3e3b797fe\"},\"expectedCurrent\":{\"netlifyDeployId\":\"6aa47c40f0b74e3ac28b75ea\",\"workerDeploymentId\":\"f8e366e9-f76c-4464-850b-dbc0f304b32a\",\"workerVersionId\":\"3bd41af3-70a2-42d2-a7e0-f087af16d3a9\"},\"failedRunId\":34678563923,\"inspectionSha256\":\"6ed8559bf32864d739084c3cac2a0aef35f7d68141a7cc497080495afbc29ae5\",\"metadataSha256\":\"d42977dd166703b877c53c0055c390db3e1a938228e493c5e75bbfb39c555ed8\",\"operation\":\"staging-worker-resolution\",\"phase\":\"verified\",\"requested\":{\"netlifyDeployId\":\"6aa47c40f0b74e3ac28b75ea\",\"workerDeploymentId\":\"5c3f38ce-eca7-44d5-8591-b3f411f18ee6\",\"workerVersionId\":\"c12bb05c-bf4e-408f-b96f-e4b65d13a07a\"},\"schemaVersion\":1,\"targetEvidence\":{\"expectedCurrent\":{\"netlifyDeployId\":\"6aa47c40f0b74e3ac28b75ea\",\"workerDeploymentId\":\"f8e366e9-f76c-4464-850b-dbc0f304b32a\",\"workerVersionId\":\"3bd41af3-70a2-42d2-a7e0-f087af16d3a9\"},\"inspectionSha256\":\"6ed8559bf32864d739084c3cac2a0aef35f7d68141a7cc497080495afbc29ae5\",\"inspectionVersion\":2,\"netlifyIdentity\":\"release-artifact\",\"netlifyVariablesVerified\":true,\"requested\":{\"netlifyDeployId\":\"6aa47c40f0b74e3ac28b75ea\",\"workerDeploymentId\":\"5c3f38ce-eca7-44d5-8591-b3f411f18ee6\",\"workerVersionId\":\"c12bb05c-bf4e-408f-b96f-e4b65d13a07a\"},\"workerArtifactSha256\":\"ce11e7d160aac62e83688413c6acf7c5ac1bdae00f0ae635a95fa3b8514adee3\",\"workerMigrationTag\":\"v1\",\"workerScriptEtag\":\"38144714aa12a4cb5ce2089c6acd360323f0655a7cf8844f1b61d3da8fe7effd\",\"workerSecretBindingNames\":[\"TICKET_HMAC_SECRET\",\"ADMIN_TOKEN\"],\"workerSecretValuesObservable\":false},\"targetRunId\":34652674501,\"returnedDeploymentId\":\"f9737b9b-d15e-4ef3-b063-7948f22a2662\",\"returnedVersionId\":\"c12bb05c-bf4e-408f-b96f-e4b65d13a07a\",\"recoveredPair\":{\"netlifyDeployId\":\"6aa47c40f0b74e3ac28b75ea\",\"workerDeploymentId\":\"f9737b9b-d15e-4ef3-b063-7948f22a2662\",\"workerVersionId\":\"c12bb05c-bf4e-408f-b96f-e4b65d13a07a\"}}\n",
+  "pairSmokeSha256": "d5eeee673537ad6a972f29439eb5f1055e56e5e8d44625a1e6a28bec0bac1de4",
+  "startingPair": {
+    "netlifyDeployId": "6aa47c40f0b74e3ac28b75ea",
+    "workerDeploymentId": "f8e366e9-f76c-4464-850b-dbc0f304b32a",
+    "workerVersionId": "3bd41af3-70a2-42d2-a7e0-f087af16d3a9"
+  },
+  "targetPair": {
+    "netlifyDeployId": "6aa47c40f0b74e3ac28b75ea",
+    "workerDeploymentId": "5c3f38ce-eca7-44d5-8591-b3f411f18ee6",
+    "workerVersionId": "c12bb05c-bf4e-408f-b96f-e4b65d13a07a"
+  },
+  "observedPair": {
+    "netlifyDeployId": "6aa47c40f0b74e3ac28b75ea",
+    "workerDeploymentId": "f9737b9b-d15e-4ef3-b063-7948f22a2662",
+    "workerVersionId": "c12bb05c-bf4e-408f-b96f-e4b65d13a07a"
+  },
+  "recoveredPair": {
+    "netlifyDeployId": "6aa47c40f0b74e3ac28b75ea",
+    "workerDeploymentId": "f9737b9b-d15e-4ef3-b063-7948f22a2662",
+    "workerVersionId": "c12bb05c-bf4e-408f-b96f-e4b65d13a07a"
+  },
+  "workerResolution": {
+    "schemaVersion": 1,
+    "operation": "staging-worker-resolution",
+    "phase": "verified",
+    "metadataSha256": "d42977dd166703b877c53c0055c390db3e1a938228e493c5e75bbfb39c555ed8",
+    "targetRunId": 34652674501,
+    "failedRunId": 34678563923,
+    "expectedCurrent": {
+      "netlifyDeployId": "6aa47c40f0b74e3ac28b75ea",
+      "workerDeploymentId": "f8e366e9-f76c-4464-850b-dbc0f304b32a",
+      "workerVersionId": "3bd41af3-70a2-42d2-a7e0-f087af16d3a9"
+    },
+    "requested": {
+      "netlifyDeployId": "6aa47c40f0b74e3ac28b75ea",
+      "workerDeploymentId": "5c3f38ce-eca7-44d5-8591-b3f411f18ee6",
+      "workerVersionId": "c12bb05c-bf4e-408f-b96f-e4b65d13a07a"
+    },
+    "recoveredPair": {
+      "netlifyDeployId": "6aa47c40f0b74e3ac28b75ea",
+      "workerDeploymentId": "f9737b9b-d15e-4ef3-b063-7948f22a2662",
+      "workerVersionId": "c12bb05c-bf4e-408f-b96f-e4b65d13a07a"
+    },
+    "inspectionSha256": "6ed8559bf32864d739084c3cac2a0aef35f7d68141a7cc497080495afbc29ae5",
+    "targetEvidence": {
+      "inspectionVersion": 2,
+      "inspectionSha256": "6ed8559bf32864d739084c3cac2a0aef35f7d68141a7cc497080495afbc29ae5",
+      "requested": {
+        "netlifyDeployId": "6aa47c40f0b74e3ac28b75ea",
+        "workerDeploymentId": "5c3f38ce-eca7-44d5-8591-b3f411f18ee6",
+        "workerVersionId": "c12bb05c-bf4e-408f-b96f-e4b65d13a07a"
+      },
+      "expectedCurrent": {
+        "netlifyDeployId": "6aa47c40f0b74e3ac28b75ea",
+        "workerDeploymentId": "f8e366e9-f76c-4464-850b-dbc0f304b32a",
+        "workerVersionId": "3bd41af3-70a2-42d2-a7e0-f087af16d3a9"
+      },
+      "netlifyIdentity": "release-artifact",
+      "netlifyVariablesVerified": true,
+      "workerArtifactSha256": "ce11e7d160aac62e83688413c6acf7c5ac1bdae00f0ae635a95fa3b8514adee3",
+      "workerMigrationTag": "v1",
+      "workerScriptEtag": "38144714aa12a4cb5ce2089c6acd360323f0655a7cf8844f1b61d3da8fe7effd",
+      "workerSecretBindingNames": [
+        "TICKET_HMAC_SECRET",
+        "ADMIN_TOKEN"
+      ],
+      "workerSecretValuesObservable": false
+    },
+    "artifactHashes": {
+      "metadata": "d42977dd166703b877c53c0055c390db3e1a938228e493c5e75bbfb39c555ed8",
+      "targetPrepared": "23c05d73e964ce4a4610ba02f07d2f984772b2a633dfc1ba76b65c13c093524a",
+      "targetWorker": "ce11e7d160aac62e83688413c6acf7c5ac1bdae00f0ae635a95fa3b8514adee3",
+      "targetComplete": "607c8790eeac87160228255cf133d6dcf20f8dc859f93ab438dc49f80f8c8207",
+      "targetRehearsal": "c13626beb253c55d4ac32a0df648be1fdf04abeb7868301892efefd2718f5278",
+      "targetTransition": "d5eeee673537ad6a972f29439eb5f1055e56e5e8d44625a1e6a28bec0bac1de4",
+      "targetWorkerResult": "6920100f5513d9b86e98abdfee7666177dcadfaa61e2b5bfb6e1ff62a152c670",
+      "failedPrepared": "79857eff462235668e97f478b07fcc393b88d8c7170bbf1ce3d4b5edbb5ccf4c",
+      "failedWorker": "d9efc36a9627175ba79e4b7416127f9c6e323f08851108dae13ac317b2c2d54f",
+      "failedComplete": "12fa85f03b5667242a64306c8bbe1e4d7a324079b68be170549dda8e00addef4",
+      "failedRehearsal": "ea6c8c83f2df3c294dd1956c8dda70ee6e7273464cca599ee7273574fe083b46",
+      "failedTransition": "509804c96a3ed26f37b2c1254a13feb0da70c21dbf1e72746124c718725eb180",
+      "failedWorkerResult": "ff26c7d46ff18bde4550a244db51a977fa958c14e51e1e6c7acfc1f3e3b797fe"
+    },
+    "returnedDeploymentId": "f9737b9b-d15e-4ef3-b063-7948f22a2662",
+    "returnedVersionId": "c12bb05c-bf4e-408f-b96f-e4b65d13a07a"
+  },
+  "outcome": "passed",
+  "stages": {
+    "inspect": "passed",
+    "restore-worker": "passed",
+    "verify-pair": "passed"
+  }
+}

@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { assertExternalArtifactDirectory } from "./artifact-contract.ts";
+import { artifactHash } from "./artifact-contract.ts";
 import { readReleaseJson } from "./files.ts";
 import {
   createGitHubReleaseApi,
@@ -10,10 +10,11 @@ import {
   verifyStagingInvocation,
   type GitHubRuntimeEnvironment,
 } from "./github-release.ts";
-import { prepareRelease } from "./prepare.ts";
+import { preparedReleaseSchema } from "./prepare.ts";
 import { writeReleaseApproval } from "./production-approval.ts";
 import { runRehearsalCli } from "./rehearsal-cli.ts";
-import { releaseBaselineSchema } from "./schema.ts";
+import { rehearsalPreflightRecordSchema } from "./rehearsal-history.ts";
+import { verifyProductionWorkspace } from "./production-workspace.ts";
 
 export function parseRehearsalWorkflowArguments(args: readonly string[], cwd: string) {
   const { values, tokens } = parseArgs({
@@ -43,33 +44,32 @@ export function parseRehearsalWorkflowArguments(args: readonly string[], cwd: st
 }
 export async function runRehearsalWorkflow(argv: readonly string[], repositoryRoot: string) {
   const { calibrationOnly, workspace } = parseRehearsalWorkflowArguments(argv, process.cwd());
-  await assertExternalArtifactDirectory(repositoryRoot, workspace);
-  const api = createGitHubReleaseApi({ token: process.env.GITHUB_TOKEN ?? "" });
+  const token = process.env.GITHUB_TOKEN ?? "";
+  const api = createGitHubReleaseApi({ token });
   const invocation = await verifyStagingInvocation(api, process.env as GitHubRuntimeEnvironment);
-  const baselinePath = resolve(repositoryRoot, "docs/release-evidence/production-baseline.json");
-  if (!calibrationOnly) {
-    // This reviewed baseline is intentionally not synthesized from whichever
-    // commit happens to be checked out. Missing provenance blocks before quotas.
-    const baseline = await readReleaseJson(baselinePath, releaseBaselineSchema);
-    if (
-      baseline.environment !== "production" ||
-      !baseline.providers.netlify?.sourceCommit ||
-      !baseline.providers.cloudflare?.sourceCommit ||
-      baseline.providers.cloudflare.traffic.length !== 1 ||
-      baseline.providers.cloudflare.traffic[0].percentage !== 100
-    )
-      throw new Error("A known-source production baseline is required.");
-  }
-  await mkdir(workspace, { mode: 0o700 });
+  await verifyProductionWorkspace(repositoryRoot, workspace);
+  const preflight = await readReleaseJson(
+    resolve(workspace, "preflight/rehearsal.json"),
+    rehearsalPreflightRecordSchema,
+  );
   const artifacts = resolve(workspace, "artifacts"),
     reports = resolve(workspace, "reports"),
     approvalDirectory = resolve(workspace, "approval");
-  const prepared = await prepareRelease({
-    repositoryRoot,
-    artifactDirectory: artifacts,
-    candidate: invocation.headSha,
-    environment: "staging",
-  });
+  const prepared = await readReleaseJson(
+    resolve(artifacts, "prepared-release.json"),
+    preparedReleaseSchema,
+  );
+  if (
+    preflight.runId !== invocation.runId ||
+    preflight.workflowCommit !== invocation.headSha ||
+    preflight.calibrationOnly !== calibrationOnly ||
+    preflight.preparationSha256 !== artifactHash(JSON.stringify(prepared)) ||
+    prepared.source.environment !== "staging" ||
+    prepared.source.candidate !== invocation.headSha
+  ) {
+    throw new Error("Rehearsal preflight evidence differs.");
+  }
+  const baselinePath = resolve(repositoryRoot, "docs/release-evidence/production-baseline.json");
   const rehearsal = await runRehearsalCli(
     ["--artifacts", artifacts, "--output", reports, "--confirm-external-smoke", "--capture"],
     repositoryRoot,

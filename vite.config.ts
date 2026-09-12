@@ -4,7 +4,10 @@ export default defineConfig({
   staged: {
     "*": "vp check --fix",
   },
-  fmt: {},
+  fmt: {
+    // Release evidence binds exact bytes; formatting would invalidate retained hashes.
+    ignorePatterns: ["docs/release-evidence/**/*.json"],
+  },
   lint: { options: { typeAware: true, typeCheck: true } },
   test: {
     exclude: [
