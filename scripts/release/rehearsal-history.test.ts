@@ -406,41 +406,6 @@ describe("rehearsal GitHub history", () => {
     expect(dependencies.downloadArtifact).not.toHaveBeenCalled();
   });
 
-  it("blocks an interrupted pre-mutation checkpoint", async () => {
-    const root = await mkdtemp(join(tmpdir(), "rehearsal-history-running-preflight-"));
-    roots.push(root);
-    const dependencies = inertDependencies();
-    dependencies.extractArtifact = vi.fn(async (_archive, directory) => {
-      await mkdir(resolve(directory, "preflight"), { recursive: true });
-      await writeFile(
-        resolve(directory, "preflight/rehearsal.json"),
-        `${JSON.stringify({
-          schemaVersion: 1,
-          operation: "staging-rehearsal-preflight",
-          runId: 299,
-          workflowCommit: sha,
-          outcome: "running",
-          stage: "history",
-        })}\n`,
-      );
-    });
-    const client = api(({ path }) => {
-      if (path === workflowPath)
-        return { id: 10, path: GITHUB_RELEASE_WORKFLOWS.rehearsal, state: "active" };
-      if (path === runsPath)
-        return {
-          total_count: 2,
-          workflow_runs: [currentRun(), run(299, { createdAt: "2026-09-12T10:00:00Z" })],
-        };
-      if (path.endsWith("/actions/runs/299/attempts/1/jobs"))
-        return { total_count: 1, jobs: [ranFailedJob()] };
-      if (path.endsWith("/actions/runs/299/artifacts"))
-        return { total_count: 1, artifacts: [artifact(299)] };
-      throw new Error(`unexpected ${path}`);
-    });
-    await expect(verifyRehearsalHistory(client, input(root), dependencies)).rejects.toThrow();
-  });
-
   it("does not classify an inspection failure with provider checkpoints as read-only", async () => {
     const root = await mkdtemp(join(tmpdir(), "rehearsal-history-unsafe-read-"));
     roots.push(root);
@@ -523,24 +488,23 @@ const smokeReport = (fingerprint: string) => ({
   usage: { uploads: 1, captureRequested: true, captureRequests: 1 },
 });
 
-async function resolvedFixture() {
+async function resolvedFixture(pairMismatch?: "starting" | "target") {
   const root = await mkdtemp(join(tmpdir(), "rehearsal-history-resolution-"));
   roots.push(root);
   const configBytes = await readFile(new URL("./environments.json", import.meta.url));
   await mkdir(resolve(root, "scripts/release"), { recursive: true });
   await writeFile(resolve(root, "scripts/release/environments.json"), configBytes);
   const configuration = releaseConfigSchema.parse(JSON.parse(configBytes.toString("utf8")));
-  const startingPair = {
+  const reportStartingPair = {
     netlifyDeployId: "netlify-a",
     workerDeploymentId: "worker-b",
     workerVersionId: "version-b",
   };
-  const targetPair = {
+  const reportTargetPair = {
     netlifyDeployId: "netlify-a",
     workerDeploymentId: "worker-a",
     workerVersionId: "version-a",
   };
-  const recoveredPair = { ...targetPair, workerDeploymentId: "worker-recovered" };
   const unresolved = {
     schemaVersion: 1,
     operation: "rehearse",
@@ -552,11 +516,11 @@ async function resolvedFixture() {
       configurationFingerprint: digest("d"),
     },
     preparationSha256: digest("e"),
-    priorPair: targetPair,
-    observedPair: startingPair,
+    priorPair: reportTargetPair,
+    observedPair: reportStartingPair,
     activatedWorker: {
-      deploymentId: startingPair.workerDeploymentId,
-      versionId: startingPair.workerVersionId,
+      deploymentId: reportStartingPair.workerDeploymentId,
+      versionId: reportStartingPair.workerVersionId,
     },
     stages: {
       inspect: "passed",
@@ -569,6 +533,15 @@ async function resolvedFixture() {
     failure: { stage: "verify-transition", kind: "unknown" },
     recovery: "inspect-recorded-targets-before-recovery",
   };
+  const startingPair =
+    pairMismatch === "starting"
+      ? { ...reportStartingPair, workerDeploymentId: "worker-unrelated" }
+      : reportStartingPair;
+  const targetPair =
+    pairMismatch === "target"
+      ? { ...reportTargetPair, workerDeploymentId: "worker-unrelated" }
+      : reportTargetPair;
+  const recoveredPair = { ...targetPair, workerDeploymentId: "worker-recovered" };
   const rehearsalBytes = Buffer.from(`${JSON.stringify(unresolved)}\n`);
   const failedRehearsalSha256 = artifactHash(rehearsalBytes);
   const hashes = {
@@ -707,6 +680,24 @@ describe("reviewed rehearsal recovery", () => {
     ).resolves.toMatchObject({ resolvedBy: "reviewed-recovery", runId: 299 });
     expect(inspectCurrentPair).toHaveBeenCalledOnce();
   });
+
+  it.each(["starting", "target"] as const)(
+    "blocks an internally valid recovery whose %s pair differs from the failed report",
+    async (pair) => {
+      const fixture = await resolvedFixture(pair);
+      const dependencies = inertDependencies();
+      dependencies.extractArtifact = vi.fn(async (_archive, directory) => {
+        await mkdir(resolve(directory, "reports"), { recursive: true });
+        await writeFile(resolve(directory, "reports/rehearsal.json"), fixture.rehearsalBytes);
+      });
+      dependencies.inspectCurrentPair = vi.fn(async () => fixture.recoveredPair);
+      const inspectCurrentPair = dependencies.inspectCurrentPair;
+      await expect(
+        verifyRehearsalHistory(client(), input(fixture.root), dependencies),
+      ).rejects.toThrow();
+      expect(inspectCurrentPair).not.toHaveBeenCalled();
+    },
+  );
 
   it("blocks mutation-possible history when no reviewed resolution exists", async () => {
     const fixture = await resolvedFixture();

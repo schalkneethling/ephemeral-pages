@@ -576,6 +576,7 @@ const verifyResolution = async (
   run: z.infer<typeof runSchema>,
   artifact: VerifiedDiagnosticsArtifact,
   rehearsalBytes: Uint8Array,
+  rehearsal: z.infer<typeof unresolvedRehearsalSchema>,
   inspectCurrentPair: () => Promise<DeploymentPair>,
 ): Promise<void> => {
   const paths = resolutionPaths(run.id);
@@ -606,6 +607,9 @@ const verifyResolution = async (
     recovery.pairSmokeSha256 !== smokeSha256 ||
     recovery.configurationSha256 !== configurationFingerprint(configuration) ||
     smoke.configuration.fingerprint !== recovery.configurationSha256 ||
+    !samePair(recovery.targetPair, rehearsal.priorPair) ||
+    !rehearsal.observedPair ||
+    !samePair(recovery.startingPair, rehearsal.observedPair) ||
     !samePair(resolution.restoredPair, recovery.recoveredPair)
   ) {
     throw new RehearsalHistoryError();
@@ -662,8 +666,13 @@ const inspectFailedRun = async (
     if (!unresolved.success || unresolved.data.source.candidate !== input.run.head_sha) {
       throw new RehearsalHistoryError();
     }
-    await verifyResolution(input.repositoryRoot, input.run, artifact, rehearsalBytes, () =>
-      dependencies.inspectCurrentPair(),
+    await verifyResolution(
+      input.repositoryRoot,
+      input.run,
+      artifact,
+      rehearsalBytes,
+      unresolved.data,
+      () => dependencies.inspectCurrentPair(),
     );
     return "resolved";
   } finally {
