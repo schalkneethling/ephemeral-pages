@@ -28,3 +28,19 @@ Changing the protected release runner changes the candidate. Do not weaken same-
 The integrated repair passed 119 tests across six focused suites, Vite+ checks, release typecheck, and Gitleaks history/worktree scans. The extraction regression validates real archive extraction and rejects changed content before sealing. Separate copies of the actual failed source and adoption recovery-target artifacts passed restoration and strict Netlify/Worker verification. Independent review found no blocker. These checks validate the repair offline; they do not claim a successful production recovery or completed application release.
 
 Review follow-up adds explicit inventory-path containment before filesystem access and permits a recovered deployment ID for an unchanged adopted Worker version. Its integrated checks passed 101 tests; the path-escape regression fails without the fix, and both real retained bundles pass strict restoration. A local real-functions packaging fixture failure also reproduces on unchanged base `4eea778`; it is not attributed to this repair.
+
+## Recovery source and debug-rerun follow-up
+
+Recovery `34698033756` selected original run `34693466555`, but the history verifier
+requires the latest unresolved attempt, `34694123592`. A read-only replay of the
+original invocation reproduced the stale-source rejection; the complete preflight
+passed with `34694123592` and its actual retained artifacts. Only execution-time
+invocation metadata was simulated; no provider mutation was performed.
+
+The subsequent debug rerun made run `34698033756` attempt 2. The existing history
+check rejected any prior rerun before inspecting its steps. The repair skips such
+history only after every attempt proves that the sole production job completed
+unsuccessfully and all deployment steps were skipped. A read-only history check
+against the actual attempt-one and attempt-two jobs selected `34694123592` and
+skipped `34698033756`. Production recovery remains outstanding until its workflow
+passes. The generic preflight error remains a separate diagnostic improvement.
