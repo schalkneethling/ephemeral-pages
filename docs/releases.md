@@ -86,6 +86,19 @@ mutation step was skipped before a preflight failure can be ignored without arti
 runs require intact, digest-verified diagnostics. A proven read-only failure cannot hide an older partial
 mutation. Missing evidence, uncertain writes, or unresolved partial deployment stop execution.
 
+After staging publication returns, the runner observes the exact expected pair for at most two
+minutes and 30 attempts. Only read-only inspection repeats; publication is not repeated. Each
+subprocess shares the remaining deadline, and both provider reads settle before another attempt.
+`reports/postpublish-observation.json` retains failed attempts even when a later inspection succeeds.
+A deadline, mismatch, or inspection failure cannot advance to final smoke without exact verification.
+
+Operational errors must remain diagnosable. A concise user-facing message must not discard the
+underlying cause: preserve error chains for debugging and retain structured diagnostic details in
+release reports. Identify the provider, operation, failed assertion, and timeout or exit status where
+available. Project safe fields into retained evidence; do not serialize arbitrary upstream messages,
+credentials, response payloads, page contents, or browser traces. Tests must show that distinct
+underlying failures remain distinguishable after wrapping and redaction.
+
 Retained JSON evidence is excluded from automatic formatting because references bind its exact bytes.
 Validate it through its release schema and secret scanning; do not reformat a signed-off record.
 

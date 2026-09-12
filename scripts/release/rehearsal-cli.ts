@@ -9,7 +9,7 @@ import {
 } from "./artifact-contract.ts";
 import { createAtomicJsonStore, readBoundedJson } from "./bootstrap-safety.ts";
 import { withRehearsalGuard } from "./rehearsal-guard.ts";
-import { runCommand } from "./command.ts";
+import { runCommand, SafeCommandError } from "./command.ts";
 import { readReleaseJson } from "./files.ts";
 import { verifyNetlifyArtifacts, type NetlifyArtifactInventory } from "./netlify-artifacts.ts";
 import {
@@ -19,7 +19,13 @@ import {
   type HeldNetlifyDeployment,
 } from "./netlify-deployment.ts";
 import { preparedReleaseSchema } from "./prepare.ts";
-import { inspectCloudflare, inspectNetlify, type ProviderCommandRunner } from "./providers.ts";
+import {
+  inspectCloudflare,
+  inspectNetlify,
+  ProviderInspectionError,
+  type ProviderCommandRunner,
+  type ProviderInspectionDiagnostic,
+} from "./providers.ts";
 import { rehearsePreparedRelease, type DeploymentPair } from "./rehearsal.ts";
 import { releaseConfigSchema, type ReleaseConfig } from "./schema.ts";
 import { runCollaborationSmoke } from "./smoke.ts";
@@ -42,6 +48,60 @@ class RehearsalInspectionError extends Error {
     super("Provider inspection failed.");
     this.name = "RehearsalInspectionError";
   }
+}
+
+class RehearsalObservationCheckpointError extends Error {
+  readonly kind = "checkpoint";
+
+  constructor(cause: unknown) {
+    super(
+      "Cannot persist postpublication observation evidence.",
+      cause instanceof Error ? { cause } : undefined,
+    );
+    this.name = "RehearsalObservationCheckpointError";
+  }
+}
+
+export function rehearsalInspectionCommandFailure(
+  executable: string,
+  argv: readonly string[],
+  exitCode: number | null,
+): ProviderInspectionError {
+  const netlify = executable === NETLIFY_INSPECTION_EXECUTABLE;
+  const cloudflare = executable === CLOUDFLARE_INSPECTION_EXECUTABLE;
+  const operation = netlify
+    ? argv[0] === "api" && argv[1] === "getSite"
+      ? "getSite"
+      : argv[0] === "api" && argv[1] === "getSiteDeploy"
+        ? "getSiteDeploy"
+        : argv[0] === "api" && argv[1] === "getEnvVars"
+          ? "getEnvVars"
+          : undefined
+    : cloudflare
+      ? argv[0] === "deployments" && argv[1] === "status"
+        ? "deploymentsStatus"
+        : argv[0] === "versions" && argv[1] === "view"
+          ? "versionView"
+          : argv[0] === "secret" && argv[1] === "list"
+            ? "secretList"
+            : undefined
+      : undefined;
+  if (
+    !operation ||
+    (exitCode !== null && (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255))
+  ) {
+    throw new RehearsalInspectionError();
+  }
+  return new ProviderInspectionError(
+    {
+      provider: netlify ? "netlify" : "cloudflare",
+      operation,
+      classification: "command",
+      commandKind: "failed",
+      exitCode,
+    },
+    new SafeCommandError("failed"),
+  );
 }
 
 export function rehearsalInspectionEnvironment(
@@ -74,7 +134,9 @@ export function rehearsalInspectionEnvironment(
 export async function inspectStagingDeploymentPair(
   repositoryRoot: string,
   providedConfiguration?: ReleaseConfig,
+  options: { deadlineAt?: number; now?: () => number } = {},
 ): Promise<DeploymentPair> {
+  const now = options.now ?? (() => performance.now());
   const configuration = providedConfiguration
     ? releaseConfigSchema.parse(providedConfiguration)
     : await readReleaseJson(
@@ -92,9 +154,16 @@ export async function inspectStagingDeploymentPair(
     appTarget.siteId === production.netlify.siteId ||
     workerTarget.workerName === production.cloudflare.workerName
   ) {
-    throw new RehearsalInspectionError();
+    throw new ProviderInspectionError({
+      provider: "pair",
+      operation: "expectedPair",
+      classification: "assertion",
+      assertion: "provider-policy",
+    });
   }
   const run: ProviderCommandRunner = async (executable, argv, extra) => {
+    const remaining = (options.deadlineAt ?? Number.POSITIVE_INFINITY) - now();
+    if (remaining <= 0) throw new SafeCommandError("timeout");
     const result = await runCommand(executable, argv, {
       cwd: repositoryRoot,
       inheritEnv: false,
@@ -103,45 +172,184 @@ export async function inspectStagingDeploymentPair(
         appTarget.expectedNonSecretVariables.COLLABORATION_WEBSOCKET_URL,
         extra,
       ),
-      timeoutMs: 60_000,
+      timeoutMs: Math.min(60_000, Math.max(1, Math.floor(remaining))),
     });
-    if (result.exitCode !== 0) throw new RehearsalInspectionError();
+    if (result.exitCode !== 0) {
+      throw rehearsalInspectionCommandFailure(executable, argv, result.exitCode);
+    }
     return result.stdout;
   };
-  try {
-    const [app, workerState] = await Promise.all([
-      inspectNetlify(appTarget, run),
-      inspectCloudflare(
-        {
-          ...workerTarget,
-          wranglerConfigPath: resolve(repositoryRoot, workerTarget.wranglerConfigPath),
-        },
-        run,
-      ),
-    ]);
-    if (
-      !app.variableScopesMatch ||
-      Object.values(app.nonSecretVariables).some(
-        (value) => !value.present || !value.matchesExpected,
-      ) ||
-      Object.values(app.requiredSecrets).some((value) => !value) ||
-      Object.values(workerState.nonSecretVariables).some(
-        (value) => !value.present || !value.matchesExpected,
-      ) ||
-      Object.values(workerState.requiredSecrets).some((value) => !value) ||
-      workerState.traffic.length !== 1 ||
-      workerState.traffic[0].percentage !== 100
-    ) {
-      throw new RehearsalInspectionError();
-    }
-    return {
-      netlifyDeployId: app.publishedDeployId,
-      workerDeploymentId: workerState.deploymentId,
-      workerVersionId: workerState.traffic[0].versionId,
-    };
-  } catch {
-    throw new RehearsalInspectionError();
+  const [appResult, workerResult] = await Promise.allSettled([
+    inspectNetlify(appTarget, run),
+    inspectCloudflare(
+      {
+        ...workerTarget,
+        wranglerConfigPath: resolve(repositoryRoot, workerTarget.wranglerConfigPath),
+      },
+      run,
+    ),
+  ]);
+  if (appResult.status === "rejected") throw appResult.reason;
+  if (workerResult.status === "rejected") throw workerResult.reason;
+  const app = appResult.value;
+  const workerState = workerResult.value;
+  if (
+    !app.variableScopesMatch ||
+    Object.values(app.nonSecretVariables).some(
+      (value) => !value.present || !value.matchesExpected,
+    ) ||
+    Object.values(app.requiredSecrets).some((value) => !value)
+  ) {
+    throw new ProviderInspectionError({
+      provider: "netlify",
+      operation: "getEnvVars",
+      classification: "assertion",
+      assertion: "provider-policy",
+    });
   }
+  if (
+    Object.values(workerState.nonSecretVariables).some(
+      (value) => !value.present || !value.matchesExpected,
+    ) ||
+    Object.values(workerState.requiredSecrets).some((value) => !value) ||
+    workerState.traffic.length !== 1 ||
+    workerState.traffic[0].percentage !== 100
+  ) {
+    throw new ProviderInspectionError({
+      provider: "cloudflare",
+      operation: "deploymentsStatus",
+      classification: "assertion",
+      assertion: "provider-policy",
+    });
+  }
+  return {
+    netlifyDeployId: app.publishedDeployId,
+    workerDeploymentId: workerState.deploymentId,
+    workerVersionId: workerState.traffic[0].versionId,
+  };
+}
+
+export type PostPublicationObservation = {
+  schemaVersion: 1;
+  operation: "observe-staging-published-pair";
+  expectedPair: DeploymentPair;
+  outcome: "running" | "passed" | "failed";
+  attempts: Array<
+    | {
+        attempt: number;
+        elapsedMs: number;
+        outcome: "failed";
+        diagnostic: ProviderInspectionDiagnostic;
+      }
+    | { attempt: number; elapsedMs: number; outcome: "passed"; pair: DeploymentPair }
+  >;
+};
+
+const samePair = (left: DeploymentPair, right: DeploymentPair): boolean =>
+  left.netlifyDeployId === right.netlifyDeployId &&
+  left.workerDeploymentId === right.workerDeploymentId &&
+  left.workerVersionId === right.workerVersionId;
+
+export async function observePublishedStagingPair(
+  expectedPair: DeploymentPair,
+  inspect: (deadlineAt: number) => Promise<DeploymentPair>,
+  save: (record: PostPublicationObservation) => Promise<void>,
+  dependencies: {
+    now?: () => number;
+    wait?: (milliseconds: number) => Promise<void>;
+    budgetMs?: number;
+    maxAttempts?: number;
+  } = {},
+): Promise<DeploymentPair> {
+  const now = dependencies.now ?? (() => performance.now());
+  const wait =
+    dependencies.wait ??
+    ((milliseconds: number) => new Promise<void>((done) => setTimeout(done, milliseconds)));
+  const budgetMs = dependencies.budgetMs ?? 120_000;
+  const maxAttempts = dependencies.maxAttempts ?? 30;
+  if (
+    !Number.isSafeInteger(budgetMs) ||
+    budgetMs < 1 ||
+    !Number.isSafeInteger(maxAttempts) ||
+    maxAttempts < 1 ||
+    maxAttempts > 60
+  ) {
+    throw new Error("Postpublication observation options are invalid.");
+  }
+  const startedAt = now();
+  const deadlineAt = startedAt + budgetMs;
+  const record: PostPublicationObservation = {
+    schemaVersion: 1,
+    operation: "observe-staging-published-pair",
+    expectedPair,
+    outcome: "running",
+    attempts: [],
+  };
+  let lastError: ProviderInspectionError | undefined;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const pair = await inspect(deadlineAt);
+      if (!samePair(pair, expectedPair)) {
+        throw new ProviderInspectionError({
+          provider: "pair",
+          operation: "expectedPair",
+          classification: "mismatch",
+        });
+      }
+      if (now() > deadlineAt) {
+        throw new ProviderInspectionError({
+          provider: "pair",
+          operation: "expectedPair",
+          classification: "assertion",
+          assertion: "observation-deadline",
+        });
+      }
+      record.outcome = "passed";
+      record.attempts.push({
+        attempt,
+        elapsedMs: Math.max(0, Math.floor(now() - startedAt)),
+        outcome: "passed",
+        pair,
+      });
+      try {
+        await save(record);
+      } catch (error) {
+        throw new RehearsalObservationCheckpointError(error);
+      }
+      return pair;
+    } catch (error) {
+      if (error instanceof RehearsalObservationCheckpointError) throw error;
+      lastError =
+        error instanceof ProviderInspectionError
+          ? error
+          : new ProviderInspectionError(
+              {
+                provider: "pair",
+                operation: "expectedPair",
+                classification: "assertion",
+                assertion: "provider-policy",
+              },
+              error,
+            );
+      const elapsedMs = Math.max(0, Math.floor(now() - startedAt));
+      const exhausted = now() >= deadlineAt || attempt === maxAttempts;
+      record.outcome = exhausted ? "failed" : "running";
+      record.attempts.push({
+        attempt,
+        elapsedMs,
+        outcome: "failed",
+        diagnostic: lastError.diagnostic,
+      });
+      try {
+        await save(record);
+      } catch (saveError) {
+        throw new RehearsalObservationCheckpointError(saveError);
+      }
+      if (exhausted) throw new ProviderInspectionError(lastError.diagnostic, lastError);
+      await wait(Math.min(2_000, Math.max(0, deadlineAt - now())));
+    }
+  }
+  throw new ProviderInspectionError(lastError!.diagnostic, lastError);
 }
 
 // The parser intentionally has no production or configuration override.
@@ -244,6 +452,11 @@ export async function runRehearsalCli(args: readonly string[], repositoryRoot: s
       () => new Error("Cannot persist provider checkpoint."),
     ).save(value);
   };
+  const observationStore = createAtomicJsonStore<PostPublicationObservation>(
+    resolve(input.reportDirectory, "postpublish-observation.json"),
+    1024 * 1024,
+    () => new Error("Cannot persist postpublication observation evidence."),
+  );
   const netlifyDependencies = {
     client: await createAuthenticatedNetlifyDeploymentClient(repositoryRoot),
     checkpoint,
@@ -321,6 +534,13 @@ export async function runRehearsalCli(args: readonly string[], repositoryRoot: s
           baseline ??= pair;
           return pair;
         },
+        observePublishedPair: (expectedPair) =>
+          observePublishedStagingPair(
+            expectedPair,
+            (deadlineAt) =>
+              inspectStagingDeploymentPair(repositoryRoot, configuration, { deadlineAt }),
+            (observation) => observationStore.save(observation),
+          ),
         holdNetlify: async () => {
           held = await uploadHeldNetlifyDeployment(
             netlifyInput(),

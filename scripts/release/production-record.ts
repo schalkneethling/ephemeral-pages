@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { providerInspectionDiagnosticSchema } from "./providers.ts";
 import { fullCommitSchema, releaseBaselineSchema } from "./schema.ts";
 
 export const digestSchema = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -157,6 +158,7 @@ export const productionRecordSchema = z.strictObject({
     .strictObject({
       stage: productionStepSchema,
       kind: z.enum(["verification", "ambiguous", "checkpoint", "preflight", "unknown"]),
+      diagnostic: providerInspectionDiagnosticSchema.optional(),
     })
     .optional(),
   recovery: z.enum(["none", "inspect-recorded-targets-before-recovery"]),

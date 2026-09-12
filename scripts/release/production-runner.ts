@@ -4,6 +4,7 @@ import { createAtomicJsonStore } from "./bootstrap-safety.ts";
 import { artifactHash, assertExternalArtifactDirectory } from "./artifact-contract.ts";
 import { approvalBytes } from "./production-approval.ts";
 import { preparedReleaseSchema, type PreparedRelease } from "./prepare.ts";
+import { providerInspectionDiagnosticSchema } from "./providers.ts";
 import {
   approvalSchema,
   pairSchema,
@@ -329,6 +330,10 @@ export async function runProductionRelease(
     record.outcome = record.stages[active];
     const kind =
       typeof error === "object" && error !== null && "kind" in error ? error.kind : "unknown";
+    const diagnostic =
+      typeof error === "object" && error !== null && "diagnostic" in error
+        ? providerInspectionDiagnosticSchema.safeParse(error.diagnostic)
+        : undefined;
     record.failure = {
       stage: active,
       kind:
@@ -336,6 +341,7 @@ export async function runProductionRelease(
         ["verification", "ambiguous", "checkpoint", "preflight"].includes(kind)
           ? (kind as "verification" | "ambiguous" | "checkpoint" | "preflight")
           : "unknown",
+      ...(diagnostic?.success ? { diagnostic: diagnostic.data } : {}),
     };
   }
   await save();
