@@ -12,6 +12,10 @@ import {
 import { createGitClient } from "./git.ts";
 
 const SECRET = "raw-provider-secret-must-not-escape";
+const DESCENDANT_PROGRAM =
+  'const fs = require("node:fs"); const [launched, marker] = process.argv.slice(1); fs.writeFileSync(launched, "launched"); setTimeout(() => fs.writeFileSync(marker, "alive"), 2500);';
+const PARENT_PROGRAM =
+  'const { spawn } = require("node:child_process"); const [executable, program, launched, marker] = process.argv.slice(1); spawn(executable, ["-e", program, launched, marker], { stdio: "ignore" }); setTimeout(() => {}, 10_000);';
 
 describe("bounded command execution", () => {
   it("can exclude inherited secrets from build subprocesses", async () => {
@@ -81,12 +85,14 @@ describe("bounded command execution", () => {
       const launched = join(directory, "descendant-launched");
       const marker = join(directory, "descendant-survived");
       try {
-        const descendant = `require("node:fs").writeFileSync(${JSON.stringify(launched)}, "launched"); setTimeout(() => require("node:fs").writeFileSync(${JSON.stringify(marker)}, "alive"), 2500)`;
-        const parent = `require("node:child_process").spawn(process.execPath, ["-e", ${JSON.stringify(descendant)}], { stdio: "ignore" }); setTimeout(() => {}, 10_000)`;
-        const result = runCommand(process.execPath, ["-e", parent], {
-          cwd: directory,
-          timeoutMs: 1_500,
-        });
+        const result = runCommand(
+          process.execPath,
+          ["-e", PARENT_PROGRAM, process.execPath, DESCENDANT_PROGRAM, launched, marker],
+          {
+            cwd: directory,
+            timeoutMs: 1_500,
+          },
+        );
         const completion = expect(result).rejects.toThrow("Command timeout.");
         const launchDeadline = Date.now() + 1_000;
         while (!existsSync(launched) && Date.now() < launchDeadline) {

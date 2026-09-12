@@ -26,11 +26,26 @@ export const readBoundedJson = async (
 ): Promise<unknown> => {
   let handle;
   try {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new Error();
     handle = await open(path, constants.O_RDONLY);
-    const stat = await handle.stat();
-    if (!stat.isFile() || stat.size > maxBytes) throw new Error();
-    const contents = await handle.readFile("utf8");
-    if (Buffer.byteLength(contents, "utf8") > maxBytes) throw new Error();
+    const initial = await handle.stat();
+    if (!initial.isFile() || initial.size > maxBytes) throw new Error();
+    const bytes = Buffer.alloc(Math.min(initial.size + 1, maxBytes + 1));
+    let length = 0;
+    while (length < bytes.length) {
+      const { bytesRead } = await handle.read(bytes, length, bytes.length - length, length);
+      if (bytesRead === 0) break;
+      length += bytesRead;
+    }
+    const final = await handle.stat();
+    if (
+      !final.isFile() ||
+      final.size !== initial.size ||
+      final.size !== length ||
+      length > maxBytes
+    )
+      throw new Error();
+    const contents = bytes.subarray(0, length).toString("utf8");
     return JSON.parse(contents) as unknown;
   } catch {
     throw createError();

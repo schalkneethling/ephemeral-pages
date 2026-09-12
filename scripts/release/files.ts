@@ -1,6 +1,6 @@
-import { readFile, stat } from "node:fs/promises";
-
 import type { z } from "zod/v4";
+
+import { readBoundedJson } from "./bootstrap-safety.ts";
 
 const MAX_JSON_BYTES = 1024 * 1024;
 
@@ -13,9 +13,7 @@ export class ReleaseFileError extends Error {
 
 export async function readReleaseJson<T>(path: string, schema: z.ZodType<T>): Promise<T> {
   try {
-    const metadata = await stat(path);
-    if (!metadata.isFile() || metadata.size > MAX_JSON_BYTES) throw new ReleaseFileError();
-    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+    const parsed = await readBoundedJson(path, MAX_JSON_BYTES, () => new ReleaseFileError());
     const result = schema.safeParse(parsed);
     if (!result.success) throw new ReleaseFileError();
     return result.data;
