@@ -953,6 +953,40 @@ describe("production resumption", () => {
       throw new Error(`unexpected test request: ${path}`);
     });
 
+  const completedAdoption = () => ({
+    outcome: "passed" as const,
+    adoptionRunIds: [99],
+    promotionCommit: promotion,
+    configurationSha256: "a".repeat(64),
+    preparationSha256: "b".repeat(64),
+    workerArtifactSha256: "c".repeat(64),
+    workerScriptEtag: "d".repeat(32),
+    adoptedPair: {
+      netlifyDeployId: "netlify",
+      workerDeploymentId: "worker-deployment",
+      workerVersionId: "worker-version",
+    },
+    proposedBaseline: {
+      version: 1 as const,
+      environment: "production" as const,
+      providers: {
+        netlify: {
+          siteId: "site",
+          sourceCommit: candidate,
+          publishedDeployId: "netlify",
+          publishLocked: true,
+        },
+        cloudflare: {
+          accountId: "account",
+          workerName: "worker",
+          sourceCommit: promotion,
+          deploymentId: "worker-deployment",
+          traffic: [{ versionId: "worker-version", percentage: 100 }],
+        },
+      },
+    },
+  });
+
   it("permits a fresh run after success or a verified skipped activation step", async () => {
     await expect(
       inspectPreviousProductionRun(historyApi("success"), { current: productionInvocation }),
@@ -1054,45 +1088,37 @@ describe("production resumption", () => {
       inspectPreviousProductionRun(api, {
         current: productionInvocation,
         now,
-        verifyCompletedAdoption: async () => ({
-          outcome: "passed",
-          adoptionRunIds: [99],
-          promotionCommit: promotion,
-          configurationSha256: "a".repeat(64),
-          preparationSha256: "b".repeat(64),
-          workerArtifactSha256: "c".repeat(64),
-          workerScriptEtag: "d".repeat(32),
-          adoptedPair: {
-            netlifyDeployId: "netlify",
-            workerDeploymentId: "worker-deployment",
-            workerVersionId: "worker-version",
-          },
-          proposedBaseline: {
-            version: 1,
-            environment: "production",
-            providers: {
-              netlify: {
-                siteId: "site",
-                sourceCommit: candidate,
-                publishedDeployId: "netlify",
-                publishLocked: true,
-              },
-              cloudflare: {
-                accountId: "account",
-                workerName: "worker",
-                sourceCommit: promotion,
-                deploymentId: "worker-deployment",
-                traffic: [{ versionId: "worker-version", percentage: 100 }],
-              },
-            },
-          },
-        }),
+        verifyCompletedAdoption: async () => completedAdoption(),
       }),
     ).resolves.toMatchObject({
       previousOperation: "adoption",
       requiredOperation: "none",
       completedAdoption: { adoptionRunIds: [99], promotionCommit: promotion },
     });
+  });
+
+  it.each([
+    ["a different promotion commit", { ...completedAdoption(), promotionCommit: candidate }],
+    ["duplicate run IDs", { ...completedAdoption(), adoptionRunIds: [99, 99] }],
+    [
+      "a last run ID different from the workflow run",
+      { ...completedAdoption(), adoptionRunIds: [98] },
+    ],
+    ["non-increasing run IDs", { ...completedAdoption(), adoptionRunIds: [98, 97, 99] }],
+  ])("rejects completed adoption evidence with %s", async (_description, evidence) => {
+    const adoptionJob = productionJob({
+      conclusion: "success",
+      activationConclusion: "skipped",
+      recoveryConclusion: "skipped",
+      adoptionConclusion: "success",
+    });
+    await expect(
+      inspectPreviousProductionRun(historyApi("success", adoptionJob), {
+        current: productionInvocation,
+        now,
+        verifyCompletedAdoption: async () => evidence,
+      }),
+    ).rejects.toMatchObject({ kind: "resume" });
   });
 
   it("requires the exact unresolved adoption run for same-plan resume", async () => {

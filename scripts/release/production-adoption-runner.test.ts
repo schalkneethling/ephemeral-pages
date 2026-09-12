@@ -22,8 +22,11 @@ afterEach(async () => {
 });
 
 const fixture = async () => {
-  const root = await mkdtemp(join(tmpdir(), "production-adoption-runner-"));
-  roots.push(root);
+  const [root, reportRoot] = await Promise.all([
+    mkdtemp(join(tmpdir(), "production-adoption-runner-")),
+    mkdtemp(join(tmpdir(), "production-adoption-report-")),
+  ]);
+  roots.push(root, reportRoot);
   const promotionCommit = "a".repeat(40);
   const prepared: PreparedRelease = {
     schemaVersion: 1,
@@ -153,7 +156,7 @@ const fixture = async () => {
   };
   const input: ProductionAdoptionRunInput = {
     repositoryRoot: root,
-    reportDirectory: join(root, "..", `adoption-report-${Date.now()}`),
+    reportDirectory: join(reportRoot, "initial"),
     prepared,
     source,
     currentRunId: 40,
@@ -212,7 +215,7 @@ it("reconciles a retained activation result instead of rejecting or repeating it
     {
       ...value.input,
       currentRunId: 41,
-      reportDirectory: join(value.input.reportDirectory, "resume"),
+      reportDirectory: join(value.input.reportDirectory, "..", "resume"),
       previous,
     },
     value.dependencies,
