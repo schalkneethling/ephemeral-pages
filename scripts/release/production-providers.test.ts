@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { artifactHash } from "./artifact-contract.ts";
+import { NetlifyArtifactError } from "./netlify-artifacts.ts";
 import type { HeldNetlifyDeployment } from "./netlify-deployment.ts";
 import { preparedReleaseSchema } from "./prepare.ts";
 import {
@@ -330,6 +331,34 @@ it("retains a safe nonzero inspection exit code", async () => {
   expect(JSON.stringify((observed as ProviderInspectionError).diagnostic)).not.toContain(
     "secret-bearing-command-output",
   );
+});
+
+it("classifies a known artifact failure while preserving its native cause in memory", async () => {
+  const value = await fixture();
+  const overrides = createOverrides(value);
+  const underlying = new NetlifyArtifactError("state");
+  Object.defineProperty(underlying, "cause", {
+    value: new Error("secret-bearing-artifact-cause"),
+  });
+  overrides.verifyNetlifyArtifacts = vi.fn(async () => {
+    throw underlying;
+  });
+
+  let observed: unknown;
+  try {
+    await createProductionProviderDependencies(value.input, overrides);
+  } catch (error) {
+    observed = error;
+  }
+  expect(observed).toBeInstanceOf(ProviderInspectionError);
+  expect((observed as Error).cause).toBe(underlying);
+  expect((observed as ProviderInspectionError).diagnostic).toEqual({
+    provider: "netlify",
+    operation: "verifyArtifacts",
+    classification: "assertion",
+    assertion: "artifact-state",
+  });
+  expect(JSON.stringify(observed)).not.toContain("secret-bearing-artifact-cause");
 });
 
 it("selects only the exact activation response checkpoint before a later inspection", async () => {

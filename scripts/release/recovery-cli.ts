@@ -43,6 +43,7 @@ import { createRecoveryProviderDependencies } from "./recovery-providers.ts";
 import type { RecoveryProviderPlan } from "./recovery-provider-adapters.ts";
 import { workerArtifactManifestSchema } from "./worker-artifacts.ts";
 import { verifyProductionWorkspace } from "./production-workspace.ts";
+import { restoreExtractedReleaseArtifacts } from "./restore-release-artifacts.ts";
 
 import {
   recoveryPreflightArtifactSchema,
@@ -257,6 +258,16 @@ export async function runRecoveryCli(argv: readonly string[], repositoryRoot: st
       );
       await rm(previousDirectory, { recursive: true });
     }
+    await restoreExtractedReleaseArtifacts(
+      repositoryRoot,
+      resolve(sourceDirectory, "artifacts"),
+      configuration,
+    );
+    await restoreExtractedReleaseArtifacts(
+      repositoryRoot,
+      resolve(targetDirectory, "artifacts"),
+      configuration,
+    );
     const local = await readLocal();
     if (
       (args.resumeRecoveryRunId === undefined &&

@@ -133,8 +133,11 @@ export type PreparedNetlifyArtifacts = {
 export class NetlifyArtifactError extends Error {
   readonly kind: "bounds" | "invalid-input" | "invalid-output" | "state";
 
-  constructor(kind: NetlifyArtifactError["kind"]) {
-    super("Netlify artifacts could not be prepared or verified safely.");
+  constructor(kind: NetlifyArtifactError["kind"], cause?: unknown) {
+    super(
+      "Netlify artifacts could not be prepared or verified safely.",
+      cause instanceof Error ? { cause } : undefined,
+    );
     this.name = "NetlifyArtifactError";
     this.kind = kind;
   }
@@ -167,6 +170,80 @@ const normalizeRelativePath = (path: string): string => {
     throw new NetlifyArtifactError("invalid-output");
   }
   return normalized;
+};
+
+const isSafeInventoryPath = (value: unknown, prefix: string): value is string => {
+  if (
+    typeof value !== "string" ||
+    isAbsolute(value) ||
+    /^[A-Za-z]:/u.test(value) ||
+    !value.startsWith(`${prefix}/`)
+  ) {
+    return false;
+  }
+  try {
+    return normalizeRelativePath(value) === value;
+  } catch {
+    return false;
+  }
+};
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isInventoryFile = (
+  value: unknown,
+  prefix: "publish" | "functions" | "deploy",
+  limits: NetlifyArtifactLimits,
+): value is NetlifyArtifactFile =>
+  isObject(value) &&
+  isSafeInventoryPath(value.relativePath, prefix) &&
+  Number.isSafeInteger(value.bytes) &&
+  typeof value.bytes === "number" &&
+  value.bytes >= 0 &&
+  value.bytes <= limits.maxFileBytes &&
+  typeof value.sha256 === "string" &&
+  SHA256.test(value.sha256);
+
+const isInventoryFunction = (
+  value: unknown,
+  limits: NetlifyArtifactLimits,
+): value is NetlifyFunctionArtifact => {
+  if (!isObject(value) || typeof value.name !== "string" || !FUNCTION_NAME.test(value.name)) {
+    return false;
+  }
+  const name = value.name;
+  return (
+    isInventoryFile(value, "functions", limits) && value.relativePath === `functions/${name}.zip`
+  );
+};
+
+const validateInventoryPaths = (
+  inventory: NetlifyArtifactInventory,
+  limits: NetlifyArtifactLimits,
+): void => {
+  const value = inventory as unknown;
+  if (
+    !isObject(value) ||
+    value.schemaVersion !== 1 ||
+    value.netlifyCliVersion !== NETLIFY_CLI_VERSION ||
+    value.zipItAndShipItVersion !== ZIP_IT_AND_SHIP_IT_VERSION ||
+    !isInventoryFile(value.headers, "publish", limits) ||
+    value.headers.relativePath !== `publish/${HEADERS_PATH}` ||
+    !isObject(value.deployConfiguration) ||
+    !isInventoryFile(value.deployConfiguration.file, "deploy", limits) ||
+    value.deployConfiguration.file.relativePath !== "deploy/netlify.toml" ||
+    typeof value.deployConfiguration.sha1 !== "string" ||
+    !/^[a-f0-9]{40}$/u.test(value.deployConfiguration.sha1) ||
+    !Array.isArray(value.staticFiles) ||
+    !value.staticFiles.every((file) => isInventoryFile(file, "publish", limits)) ||
+    !Array.isArray(value.functions) ||
+    !value.functions.every((file) => isInventoryFunction(file, limits)) ||
+    !isInventoryFile(value.functionsManifest, "functions", limits) ||
+    value.functionsManifest.relativePath !== FUNCTIONS_MANIFEST_PATH
+  ) {
+    throw new NetlifyArtifactError("state");
+  }
 };
 
 const boundedInteger = (value: number): boolean =>
@@ -889,12 +966,14 @@ export async function prepareNetlifyArtifacts(
 const verifyNetlifyArtifactsUnsafe = async (
   prepared: PreparedNetlifyArtifacts,
   requestedLimits?: Partial<NetlifyArtifactLimits>,
+  requireImmutableModes = true,
 ): Promise<void> => {
   const limits = resolveLimits(requestedLimits);
   const artifactDirectory = resolve(prepared.artifactDirectory);
+  validateInventoryPaths(prepared.inventory, limits);
   const inventoryPath = resolve(artifactDirectory, INVENTORY_PATH);
-  const rootEntries = await readdir(artifactDirectory, { withFileTypes: true }).catch(() => {
-    throw new NetlifyArtifactError("state");
+  const rootEntries = await readdir(artifactDirectory, { withFileTypes: true }).catch((error) => {
+    throw new NetlifyArtifactError("state", error);
   });
   if (
     rootEntries.length !== 4 ||
@@ -977,9 +1056,11 @@ const verifyNetlifyArtifactsUnsafe = async (
     resolve(artifactDirectory, prepared.inventory.deployConfiguration.file.relativePath),
     ...[...expectedFunctionPaths].map((path) => resolve(artifactDirectory, path)),
   ];
-  for (const path of paths) {
-    const metadata = await stat(path);
-    if ((metadata.mode & 0o222) !== 0) throw new NetlifyArtifactError("state");
+  if (requireImmutableModes) {
+    for (const path of paths) {
+      const metadata = await stat(path);
+      if ((metadata.mode & 0o222) !== 0) throw new NetlifyArtifactError("state");
+    }
   }
   for (const path of [
     artifactDirectory,
@@ -988,7 +1069,11 @@ const verifyNetlifyArtifactsUnsafe = async (
     resolve(artifactDirectory, "functions"),
   ]) {
     const metadata = await lstat(path);
-    if (!metadata.isDirectory() || metadata.isSymbolicLink() || (metadata.mode & 0o222) !== 0) {
+    if (
+      !metadata.isDirectory() ||
+      metadata.isSymbolicLink() ||
+      (requireImmutableModes && (metadata.mode & 0o222) !== 0)
+    ) {
       throw new NetlifyArtifactError("state");
     }
   }
@@ -1012,6 +1097,22 @@ export async function verifyNetlifyArtifacts(
     await verifyNetlifyArtifactsUnsafe(prepared, requestedLimits);
   } catch (error) {
     if (error instanceof NetlifyArtifactError) throw error;
-    throw new NetlifyArtifactError("state");
+    throw new NetlifyArtifactError("state", error);
+  }
+}
+
+export async function restoreExtractedNetlifyArtifacts(
+  prepared: PreparedNetlifyArtifacts,
+  requestedLimits?: Partial<NetlifyArtifactLimits>,
+): Promise<void> {
+  try {
+    // GitHub artifact extraction deliberately creates private writable files.
+    // Validate every retained path and byte before restoring immutable modes.
+    await verifyNetlifyArtifactsUnsafe(prepared, requestedLimits, false);
+    await freezeTree(resolve(prepared.artifactDirectory));
+    await verifyNetlifyArtifactsUnsafe(prepared, requestedLimits);
+  } catch (error) {
+    if (error instanceof NetlifyArtifactError) throw error;
+    throw new NetlifyArtifactError("state", error);
   }
 }

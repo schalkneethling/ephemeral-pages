@@ -16,8 +16,8 @@ export type CommandOptions = {
 export class SafeCommandError extends Error {
   readonly kind: "failed" | "spawn" | "timeout" | "output-limit";
 
-  constructor(kind: SafeCommandError["kind"]) {
-    super(`Command ${kind}.`);
+  constructor(kind: SafeCommandError["kind"], cause?: unknown) {
+    super(`Command ${kind}.`, cause instanceof Error ? { cause } : undefined);
     this.name = "SafeCommandError";
     this.kind = kind;
   }
@@ -36,13 +36,21 @@ export async function runCommand(
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const detached = process.platform !== "win32";
-    const child = spawn(executable, args, {
-      cwd,
-      detached,
-      env: { ...(inheritEnv ? process.env : {}), ...env },
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = (() => {
+      try {
+        return spawn(executable, args, {
+          cwd,
+          detached,
+          env: { ...(inheritEnv ? process.env : {}), ...env },
+          shell: false,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      } catch (error) {
+        reject(new SafeCommandError("spawn", error));
+        return undefined;
+      }
+    })();
+    if (!child) return;
     const output = { stdout: [] as Buffer[], stderr: [] as Buffer[] };
     let capturedBytes = 0;
     let settled = false;
@@ -78,7 +86,7 @@ export async function runCommand(
 
     child.stdout.on("data", (chunk: Buffer) => capture(chunk, "stdout"));
     child.stderr.on("data", (chunk: Buffer) => capture(chunk, "stderr"));
-    child.once("error", () => finish(new SafeCommandError("spawn")));
+    child.once("error", (error) => finish(new SafeCommandError("spawn", error)));
     child.once("close", (exitCode) =>
       finish({ exitCode, stdout: Buffer.concat(output.stdout).toString("utf8") }),
     );

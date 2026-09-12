@@ -466,11 +466,17 @@
       </p>
       <div class="snapshot">
         Documentation checkpoint · 12 September 2026 UTC · Production Worker adopted; baseline
-        verified; ordinary application release pending
+        verified; application publication blocked by resume artifact permissions
       </div>
       <div class="notice">
-        <strong>Current checkpoint.</strong> Staging rehearsal and production Worker adoption
-        passed. Netlify publication remains locked; the existing app was preserved. The
+        <strong>Current checkpoint.</strong> The first ordinary production run activated the Worker
+        and passed transition verification, then a Cloudflare inspection timed out before Netlify
+        publication. Resume failed before mutation because downloaded artifacts were writable. See
+        the
+        <a href="release-evidence/2026-09-12-production-resume-investigation/README.md"
+          >verified investigation</a
+        >. The following describes the preceding checkpoint. Staging rehearsal and production Worker
+        adoption passed. Netlify publication remains locked; the existing app was preserved. The
         source-attributed production baseline and recovery target are recorded. Adoption is disabled
         and ordinary releases enabled in policy. Two approval rehearsals completed both staging
         writes but failed at immediate readback; subsequent inspection and all six smoke checks

@@ -8,6 +8,7 @@ import {
   createDeadlineProviderCommandRunner,
   createProviderCommandRunner,
   runCommand,
+  SafeCommandError,
 } from "./command.ts";
 import { createGitClient } from "./git.ts";
 
@@ -57,6 +58,39 @@ describe("bounded command execution", () => {
     ]);
     await expect(result).rejects.toThrow("Command failed.");
     await expect(result).rejects.not.toThrow(SECRET);
+  });
+
+  it("retains a native spawn cause in memory without serializing it", async () => {
+    const executable = join(tmpdir(), `${SECRET}-missing-executable`);
+    let observed: unknown;
+    try {
+      await runCommand(executable, [], { cwd: process.cwd() });
+    } catch (error) {
+      observed = error;
+    }
+
+    expect(observed).toBeInstanceOf(SafeCommandError);
+    expect(observed).toMatchObject({ kind: "spawn", message: "Command spawn." });
+    expect((observed as Error).cause).toBeInstanceOf(Error);
+    expect(((observed as Error).cause as Error).message).toContain(SECRET);
+    expect(JSON.stringify(observed)).not.toContain(SECRET);
+    expect(JSON.stringify(observed)).not.toContain(executable);
+  });
+
+  it("wraps a synchronous native spawn error with the same safe boundary", async () => {
+    const executable = `${SECRET}\0`;
+    let observed: unknown;
+    try {
+      await runCommand(executable, [], { cwd: process.cwd() });
+    } catch (error) {
+      observed = error;
+    }
+
+    expect(observed).toBeInstanceOf(SafeCommandError);
+    expect(observed).toMatchObject({ kind: "spawn", message: "Command spawn." });
+    expect((observed as Error).cause).toBeInstanceOf(Error);
+    expect(((observed as Error).cause as Error).message).toContain(SECRET);
+    expect(JSON.stringify(observed)).not.toContain(SECRET);
   });
 
   it("stops capturing and fails safely at the output limit", async () => {
