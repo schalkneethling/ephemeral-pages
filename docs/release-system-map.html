@@ -465,14 +465,15 @@
         storage make coordination necessary.
       </p>
       <div class="snapshot">
-        Documentation checkpoint · 12 September 2026 UTC · Adoption reviewed; staging recovery,
-        resume and forward deployment verified
+        Documentation checkpoint · 12 September 2026 UTC · Adoption reviewed; latest staging
+        calibration requires Worker-only recovery
       </div>
       <div class="notice">
         <strong>Current control gap.</strong> Netlify still publishes production automatically from
         main. Cloudflare Git deployment is not enabled. Protected staging calibration, recovery and
-        resume passed. Production cutover and the attributable initial production baseline remain
-        outstanding.
+        resume passed for the earlier candidate. The latest calibration stopped after Worker
+        activation; Netlify remained unchanged. Worker-only recovery and fresh rehearsal are
+        required before production cutover and the attributable initial production baseline.
       </div>
     </header>
     <main id="explorer">
@@ -725,10 +726,12 @@
           "Checkpoint → mutation → observation",
           "built",
           "Retain IDs; ambiguity blocks retries",
-          "Bootstrap and rehearsal persist checkpoints before mutation. Rehearsal records activation results separately from readback, so an inspection failure cannot erase a returned deployment ID. A repository-wide local guard blocks a fresh run after possible mutation; completed read-only failures permit another attempt. Production resume and serialized recovery are implemented; live workflow validation remains outstanding.",
+          "Bootstrap and rehearsal persist checkpoints before mutation. Rehearsal records activation results separately from readback, so an inspection failure cannot erase a returned deployment ID. A repository-wide local guard and protected-workflow history check block a fresh run after possible mutation. A separate preflight step allows native GitHub evidence to prove that the mutation step was skipped. Other failed runs require verified diagnostics; a reviewed recovery resolution must match fresh provider observations. Completed read-only failures cannot hide older partial writes. Production resume and serialized recovery are implemented; live workflow validation remains outstanding.",
           [
             ["scripts/release/rehearsal.ts"],
             ["scripts/release/rehearsal-guard.ts"],
+            ["scripts/release/rehearsal-history.ts"],
+            ["scripts/release/rehearsal-preflight-cli.ts"],
             ["docs/releases.md"],
           ],
         ],
@@ -750,7 +753,7 @@
           "4 · Rehearse exact candidate",
           "live",
           "Held upload → Worker → app → smoke",
-          "Protected calibrations A and B passed with identical configuration and distinct reviewed commits and provider IDs. Netlify held the previous app while the Worker activated, followed by transition smoke, publication of the held Netlify deployment and final smoke. Explicit B-to-A recovery and resume also passed, followed by a forward calibration of 293f5ed with the recovered pair as its prior pair. Final staging Netlify deployment: 6aa47c40f0b74e3ac28b75ea. Worker version: c12bb05c-bf4e-408f-b96f-e4b65d13a07a. Calibration never issues production approval; a changed candidate requires fresh rehearsal.",
+          "Protected calibrations A and B passed with identical configuration and distinct reviewed commits and provider IDs. Netlify held the previous app while the Worker activated, followed by transition smoke, publication of the held Netlify deployment and final smoke. Explicit B-to-A recovery and resume also passed, followed by a forward calibration of 293f5ed with the recovered pair as its prior pair. That successful checkpoint used Netlify deployment 6aa47c40f0b74e3ac28b75ea and Worker version c12bb05c-bf4e-408f-b96f-e4b65d13a07a. The later calibration 34678563923 for 93a8c08 stopped during transition synchronization after activating Worker version 3bd41af3-70a2-42d2-a7e0-f087af16d3a9, retaining the prior Netlify app. A subsequent explicit Worker-only recovery restored version c12bb05c-bf4e-408f-b96f-e4b65d13a07a under deployment f9737b9b-d15e-4ef3-b063-7948f22a2662 and passed the full smoke. Resolution review and fresh exact-candidate rehearsal remain required; earlier diagnostic smokes alone did not clear the interrupted workflow. Calibration never issues production approval; a changed candidate requires fresh rehearsal.",
           [
             ["scripts/release/rehearsal-cli.ts"],
             [

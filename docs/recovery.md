@@ -3,10 +3,18 @@
 Status: protected staging calibrations A/B and explicit B-to-A recovery passed. The recovery
 resumed from its retained checkpoint, preserved the completed Netlify restore, and passed both
 transition and final-pair browser smokes. A subsequent forward calibration passed and left staging
-on the latest exercised candidate. See [the verified checkpoint](release-evidence/2026-09-11-staging-recovery-34652303609/README.md).
+on candidate `293f5ed`. See [the verified checkpoint](release-evidence/2026-09-11-staging-recovery-34652303609/README.md).
 Ordinary production releases remain disabled in `production-policy.json`; the separate one-time
 adoption gate is enabled for the initial cutover candidate. Production publishing cutover, the
 attributable initial baseline, and the first coordinated production release remain outstanding.
+
+The later calibration [34678563923](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34678563923)
+for candidate `93a8c08` stopped during transition synchronization after activating the Worker.
+The previous Netlify deployment remained published; the prepared draft was never published.
+Two subsequent local smokes passed, but they do not turn the interrupted workflow into a successful
+rehearsal. The subsequent [Worker-only recovery and full smoke](release-evidence/2026-09-12-staging-worker-resolution-34678563923/README.md)
+passed without changing Netlify. Its reviewed resolution and a fresh exact-candidate rehearsal are
+still required before cutover. Production is unchanged.
 
 ## Recovery operation
 
@@ -81,6 +89,28 @@ See [the staging recovery workflow](../.github/workflows/release-staging-recover
 [CLI](../scripts/release/staging-recovery-cli.ts),
 [source contract](../scripts/release/staging-recovery-source.ts), and
 [runner](../scripts/release/staging-recovery-runner.ts).
+
+## Interrupted staging rehearsals
+
+A failed calibration is not a successful recovery source. Inspect its retained provider checkpoints
+and current pair before choosing recovery; a later local smoke cannot replace missing workflow
+completion evidence. The hosted history check in
+[rehearsal-history.ts](../scripts/release/rehearsal-history.ts) blocks a new candidate after possible
+mutation. A separate preflight step lets GitHub prove that a failure happened before the mutation
+step ran; a preflight marker by itself is insufficient proof.
+
+The current reviewed resolution format supports restoring only the staging Worker while retaining
+the already-correct Netlify deployment. It requires verified artifact and recovery-target evidence,
+the original sanitized operator record with the returned Worker deployment ID, fresh pair readback,
+and a subsequent full collaboration/screenshot smoke. Other partial-deployment shapes remain blocked
+until their recovery path and evidence are explicitly supported; do not recast them as Worker-only.
+
+Commit the resolution under `docs/release-evidence/rehearsal-resolutions/<failedRunId>.json`,
+with matching `<failedRunId>-recovery.json` and `<failedRunId>-smoke.json` sidecars. Generate and validate
+these through the exported schemas in the history module after recovery succeeds. The references
+bind exact bytes, the failed diagnostics digest, configuration, and restored pair. Never manufacture
+passed outcomes to unblock rehearsal. The next protected run verifies the reviewed resolution and
+fresh live pair before preparing or activating another candidate.
 
 ## Initial production baseline adoption
 

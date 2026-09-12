@@ -172,6 +172,16 @@ export async function writeReleaseApproval(
     releaseConfigSchema,
   );
   const baseline = await readReleaseJson(baselinePath, releaseBaselineSchema);
+  const { netlify, cloudflare } = baseline.providers;
+  if (
+    baseline.environment !== "production" ||
+    !netlify?.sourceCommit ||
+    !cloudflare?.sourceCommit ||
+    cloudflare.traffic.length !== 1 ||
+    cloudflare.traffic[0].percentage !== 100
+  ) {
+    throw new Error("Production approval requires a known-source, single-version baseline.");
+  }
   const prepared = await readReleaseJson(
     resolve(evidenceDirectory, "staging-preparation.json"),
     preparedReleaseSchema,

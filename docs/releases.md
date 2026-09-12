@@ -74,9 +74,26 @@ A local lock serializes rehearsals across worktrees sharing the Git repository. 
 blocks new runs after an unresolved operation, including runs using a different output directory.
 A completed failure confined to read-only inspection permits a fresh attempt. Incomplete guard
 evidence blocks execution. Inspect the referenced checkpoints and live provider IDs before explicitly resolving that guard. Coordinate operators
-on separate machines; this is not a distributed staging lock. Production serialization will be owned
+on separate machines; this is not a distributed staging lock. Production serialization is owned
 by the protected GitHub Actions workflow. Do not unlock the held staging deployment merely because
 an upload failed; inspect recorded IDs before a separate recovery action.
+
+The protected staging workflow also checks prior GitHub run evidence before preparation or provider
+writes. It verifies the completed rehearsal job and its critical steps before treating a successful
+run as settled; expired bundles from that completed run do not prevent a fresh rehearsal. History
+inspection and preparation run in a separate preflight step. GitHub must prove that the later
+mutation step was skipped before a preflight failure can be ignored without artifacts. Other failed
+runs require intact, digest-verified diagnostics. A proven read-only failure cannot hide an older partial
+mutation. Missing evidence, uncertain writes, or unresolved partial deployment stop execution.
+
+Retained JSON evidence is excluded from automatic formatting because references bind its exact bytes.
+Validate it through its release schema and secret scanning; do not reformat a signed-off record.
+
+An explicit staging recovery can clear that boundary through a reviewed resolution committed to
+protected `stage`. The resolution binds the failed run and report, the recovery record, a subsequent
+passed smoke report, and the actually restored pair. Fresh provider inspection must match that pair
+before another rehearsal can write. A local smoke alone is diagnostic evidence, not permission to
+ignore a partially completed workflow. See [recovery](recovery.md) for the operator boundary.
 
 The ordinary Worker path supports the reviewed `v1` SQLite Durable Object lifecycle with no migration
 change. Different migration state blocks this path. Netlify upload acknowledgements and Cloudflare

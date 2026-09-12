@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import {
   approvalBytes,
   successfulRehearsalSchema,
   validateApprovalBundle,
+  writeReleaseApproval,
 } from "./production-approval.ts";
 import { approvalSchema } from "./production-record.ts";
 const { run } = vi.hoisted(() => ({ run: vi.fn() }));
@@ -177,4 +178,61 @@ it("rejects a worktree configuration absent from the approved Git tree", async (
   await expect(
     validateApprovalBundle("/repository", f.directory, await f.save(), f.config),
   ).rejects.toThrow("Candidate configuration differs");
+});
+
+async function writerFixture() {
+  const f = await fixture();
+  const repository = join(f.directory, "repository");
+  const evidence = join(f.directory, "writer-evidence");
+  const baselinePath = join(f.directory, "baseline.json");
+  await mkdir(join(repository, "scripts/release"), { recursive: true });
+  await mkdir(evidence);
+  await Promise.all([
+    writeFile(
+      join(repository, "scripts/release/environments.json"),
+      `${JSON.stringify(f.config)}\n`,
+    ),
+    writeFile(join(evidence, "staging-preparation.json"), JSON.stringify(f.prepared)),
+    writeFile(join(evidence, "rehearsal.json"), JSON.stringify(f.rehearsal)),
+  ]);
+  return { ...f, baselinePath, evidence, repository };
+}
+
+it.each(["staging", "split-traffic", "missing-netlify-source", "missing-worker-source"])(
+  "does not write approval for a %s baseline",
+  async (kind) => {
+    const f = await writerFixture();
+    const baseline = structuredClone(f.approval.baseline);
+    if (kind === "staging") baseline.environment = "staging";
+    if (kind === "split-traffic") {
+      baseline.providers.cloudflare!.traffic = [
+        { versionId: "old-version", percentage: 50 },
+        { versionId: "other-version", percentage: 50 },
+      ];
+    }
+    if (kind === "missing-netlify-source") baseline.providers.netlify!.sourceCommit = null;
+    if (kind === "missing-worker-source") baseline.providers.cloudflare!.sourceCommit = null;
+    await writeFile(f.baselinePath, JSON.stringify(baseline));
+
+    await expect(writeReleaseApproval(f.repository, f.evidence, f.baselinePath)).rejects.toThrow(
+      "Production approval requires a known-source, single-version baseline.",
+    );
+    await expect(readFile(join(f.evidence, "approval.json"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  },
+);
+
+it("writes approval for a known-source single-version production baseline", async () => {
+  const f = await writerFixture();
+  await writeFile(f.baselinePath, JSON.stringify(f.approval.baseline));
+
+  const result = await writeReleaseApproval(f.repository, f.evidence, f.baselinePath);
+
+  expect(result).toMatchObject({ candidate: f.prepared.source.candidate });
+  expect(result.approvalSha256).toMatch(/^[a-f0-9]{64}$/u);
+  expect(
+    approvalSchema.parse(JSON.parse(await readFile(join(f.evidence, "approval.json"), "utf8")))
+      .baseline,
+  ).toEqual(f.approval.baseline);
 });

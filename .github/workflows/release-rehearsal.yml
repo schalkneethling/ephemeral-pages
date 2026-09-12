@@ -51,6 +51,23 @@ jobs:
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
 
+      - name: Establish rehearsal pre-mutation checkpoint
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          REHEARSAL_MODE: ${{ inputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          preflight_args=(--workspace "$RELEASE_WORKSPACE")
+          case "$REHEARSAL_MODE" in
+            approval) ;;
+            calibration) preflight_args+=(--calibration-only) ;;
+            *) exit 1 ;;
+          esac
+          bun scripts/release/rehearsal-preflight-cli.ts "${preflight_args[@]}"
+
       - name: Rehearse the staging release
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -88,6 +105,7 @@ jobs:
           name: release-rehearsal-diagnostics
           path: |
             ${{ env.RELEASE_WORKSPACE }}/artifacts
+            ${{ env.RELEASE_WORKSPACE }}/preflight
             ${{ env.RELEASE_WORKSPACE }}/reports
           if-no-files-found: warn
           retention-days: 7

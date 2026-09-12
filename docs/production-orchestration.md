@@ -6,6 +6,10 @@ recovery, interrupted recovery, and forward deployment passed the
 Production adoption, publication cutover, and the first coordinated production release remain
 live-unverified. The one-time adoption gate is enabled for the reviewed cutover candidate; ordinary
 production releases remain disabled. Automatic publication settings have not changed.
+The newer calibration [34678563923](https://github.com/schalkneethling/ephemeral-pages/actions/runs/34678563923)
+stopped after Worker activation and before Netlify publication. The subsequent
+[Worker-only recovery and full smoke](release-evidence/2026-09-12-staging-worker-resolution-34678563923/README.md)
+passed. Cutover still requires review of the resolution and a fresh exact-candidate rehearsal.
 
 The implementation references for this checkpoint are the [production CLI](../scripts/release/production-cli.ts),
 [GitHub release verifier](../scripts/release/github-release.ts), [production context](../scripts/release/production-context.ts),
