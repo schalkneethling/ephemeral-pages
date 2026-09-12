@@ -97,6 +97,12 @@ const github = (runs: readonly PriorRun[], expiredRunId?: number): GitHubRelease
                 conclusion: prior.recovery,
                 number: 9,
               },
+              {
+                name: GITHUB_RELEASE_ADOPTION_STEP_NAME,
+                status: "completed",
+                conclusion: "skipped",
+                number: 10,
+              },
             ],
           },
         ],
@@ -132,6 +138,40 @@ const github = (runs: readonly PriorRun[], expiredRunId?: number): GitHubRelease
 });
 
 describe("recovery GitHub history", () => {
+  it("rejects rerun history with missing adoption evidence", async () => {
+    const base = github([
+      {
+        id: 100,
+        attempt: 2,
+        conclusion: "failure",
+        activation: "skipped",
+        recovery: "skipped",
+        createdAt: "2026-09-11T10:00:00.000Z",
+      },
+      {
+        id: 99,
+        conclusion: "failure",
+        activation: "failure",
+        recovery: "skipped",
+        createdAt: "2026-09-11T09:00:00.000Z",
+      },
+    ]);
+    const api: GitHubReleaseApi = {
+      get: async (request) => {
+        const result = await base.get(request);
+        if (request.path.endsWith("/runs/100/attempts/1/jobs")) {
+          const jobs = result as { jobs: { steps: { name: string }[] }[] };
+          jobs.jobs[0]!.steps = jobs.jobs[0]!.steps.filter(
+            (step) => step.name !== GITHUB_RELEASE_ADOPTION_STEP_NAME,
+          );
+        }
+        return result;
+      },
+    };
+    await expect(
+      verifyRecoveryHistory(api, { current, recoverySourceRunId: 99, now }),
+    ).rejects.toMatchObject({ kind: "resume" });
+  });
   it.each([GITHUB_RELEASE_RECOVERY_STEP_NAME, GITHUB_RELEASE_ADOPTION_STEP_NAME])(
     "rejects a rerun when an earlier attempt reached %s",
     async (name) => {

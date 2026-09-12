@@ -1419,7 +1419,7 @@ export async function inspectPreviousProductionRun(
           if (
             activation.length !== 1 ||
             recovery.length !== 1 ||
-            adoption.length > 1 ||
+            adoption.length !== 1 ||
             [...activation, ...recovery, ...adoption].some(
               (step) => step.status !== "completed" || step.conclusion !== "skipped",
             )
