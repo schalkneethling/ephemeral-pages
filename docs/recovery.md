@@ -97,8 +97,9 @@ authorize production cutover.
 
 The operator accepted a one-time fail-forward adoption on 11 September, given the current product
 usage and the cost of a temporary legacy restore subsystem. No legacy restore path will be built.
-The minimal adoption operation remains to be implemented and verified; the accepted failure policy
-does not bypass staging, artifact, configuration, or source checks. The protected staging
+The separate adoption operation is described in [production orchestration](production-orchestration.md#first-worker-adoption).
+Its live verification remains outstanding; the accepted failure policy does not bypass staging,
+artifact, configuration, or source checks. The protected staging
 recovery drill has passed. The adoption operation must:
 
 1. Require an absent baseline and an exact reviewed production candidate with retained staging evidence.
@@ -192,8 +193,9 @@ scopes, matching the installed Netlify CLI default; a selected-scope request was
 
 Read-only staging and production inspection with the new deployment tokens passed both platforms' non-secret
 configuration, required secret-name and scope checks. This proves read access and configuration
-presence, not successful deployment or cross-platform secret equality. Live calibration and recovery
-smoke remain required before production cutover.
+presence, not successful deployment or cross-platform secret equality. Protected staging calibration
+and recovery subsequently passed their real ticket and screenshot smokes. Production verification
+remains required before declaring the cutover complete.
 
 ## Cutover gates
 

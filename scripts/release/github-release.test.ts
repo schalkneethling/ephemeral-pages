@@ -11,6 +11,7 @@ import {
   downloadGitHubArtifact,
   extractVerifiedGitHubArtifact,
   GITHUB_RELEASE_ACTIVATION_STEP_NAME,
+  GITHUB_RELEASE_ADOPTION_STEP_NAME,
   GITHUB_RELEASE_PRODUCTION_JOB_NAME,
   GITHUB_RELEASE_RECOVERY_STEP_NAME,
   GITHUB_RELEASE_REPOSITORY,
@@ -124,6 +125,8 @@ const productionJob = (
     name?: string;
     recoveryConclusion?: string | null;
     recoveryName?: string;
+    adoptionConclusion?: string | null;
+    adoptionName?: string;
   } = {},
 ) => ({
   id: 701,
@@ -143,6 +146,12 @@ const productionJob = (
       status: "completed",
       conclusion: options.recoveryConclusion ?? "skipped",
       number: 9,
+    },
+    {
+      name: options.adoptionName ?? GITHUB_RELEASE_ADOPTION_STEP_NAME,
+      status: "completed",
+      conclusion: options.adoptionConclusion ?? "skipped",
+      number: 10,
     },
   ],
 });
@@ -944,6 +953,40 @@ describe("production resumption", () => {
       throw new Error(`unexpected test request: ${path}`);
     });
 
+  const completedAdoption = () => ({
+    outcome: "passed" as const,
+    adoptionRunIds: [99],
+    promotionCommit: promotion,
+    configurationSha256: "a".repeat(64),
+    preparationSha256: "b".repeat(64),
+    workerArtifactSha256: "c".repeat(64),
+    workerScriptEtag: "d".repeat(32),
+    adoptedPair: {
+      netlifyDeployId: "netlify",
+      workerDeploymentId: "worker-deployment",
+      workerVersionId: "worker-version",
+    },
+    proposedBaseline: {
+      version: 1 as const,
+      environment: "production" as const,
+      providers: {
+        netlify: {
+          siteId: "site",
+          sourceCommit: candidate,
+          publishedDeployId: "netlify",
+          publishLocked: true,
+        },
+        cloudflare: {
+          accountId: "account",
+          workerName: "worker",
+          sourceCommit: promotion,
+          deploymentId: "worker-deployment",
+          traffic: [{ versionId: "worker-version", percentage: 100 }],
+        },
+      },
+    },
+  });
+
   it("permits a fresh run after success or a verified skipped activation step", async () => {
     await expect(
       inspectPreviousProductionRun(historyApi("success"), { current: productionInvocation }),
@@ -1001,6 +1044,111 @@ describe("production resumption", () => {
         { runId: 99, promotionCommit: promotion, now },
       ),
     ).rejects.toMatchObject({ kind: "resume" });
+  });
+
+  it("verifies an adoption artifact only through the exact adoption step", async () => {
+    const adoptionJob = productionJob({
+      conclusion: "success",
+      activationConclusion: "skipped",
+      recoveryConclusion: "skipped",
+      adoptionConclusion: "success",
+    });
+    await expect(
+      verifyRecoveryTargetArtifact(historyApi("success", adoptionJob), {
+        runId: 99,
+        promotionCommit: promotion,
+        operation: "production-adoption",
+        now,
+      }),
+    ).resolves.toMatchObject({
+      run: { runId: 99 },
+      artifact: { artifactId: 91 },
+    });
+    await expect(
+      verifyRecoveryTargetArtifact(historyApi("success", adoptionJob), {
+        runId: 99,
+        promotionCommit: promotion,
+        now,
+      }),
+    ).rejects.toMatchObject({ kind: "resume" });
+  });
+
+  it("requires verified adoption completion evidence before clearing history", async () => {
+    const adoptionJob = productionJob({
+      conclusion: "success",
+      activationConclusion: "skipped",
+      recoveryConclusion: "skipped",
+      adoptionConclusion: "success",
+    });
+    const api = historyApi("success", adoptionJob);
+    await expect(
+      inspectPreviousProductionRun(api, { current: productionInvocation, now }),
+    ).rejects.toMatchObject({ kind: "resume" });
+    await expect(
+      inspectPreviousProductionRun(api, {
+        current: productionInvocation,
+        now,
+        verifyCompletedAdoption: async () => completedAdoption(),
+      }),
+    ).resolves.toMatchObject({
+      previousOperation: "adoption",
+      requiredOperation: "none",
+      completedAdoption: { adoptionRunIds: [99], promotionCommit: promotion },
+    });
+  });
+
+  it.each([
+    ["a different promotion commit", { ...completedAdoption(), promotionCommit: candidate }],
+    ["duplicate run IDs", { ...completedAdoption(), adoptionRunIds: [99, 99] }],
+    [
+      "a last run ID different from the workflow run",
+      { ...completedAdoption(), adoptionRunIds: [98] },
+    ],
+    ["non-increasing run IDs", { ...completedAdoption(), adoptionRunIds: [98, 97, 99] }],
+  ])("rejects completed adoption evidence with %s", async (_description, evidence) => {
+    const adoptionJob = productionJob({
+      conclusion: "success",
+      activationConclusion: "skipped",
+      recoveryConclusion: "skipped",
+      adoptionConclusion: "success",
+    });
+    await expect(
+      inspectPreviousProductionRun(historyApi("success", adoptionJob), {
+        current: productionInvocation,
+        now,
+        verifyCompletedAdoption: async () => evidence,
+      }),
+    ).rejects.toMatchObject({ kind: "resume" });
+  });
+
+  it("requires the exact unresolved adoption run for same-plan resume", async () => {
+    const api = historyApi(
+      "failure",
+      productionJob({
+        activationConclusion: "skipped",
+        recoveryConclusion: "skipped",
+        adoptionConclusion: "failure",
+      }),
+    );
+    await expect(
+      inspectPreviousProductionRun(api, {
+        current: productionInvocation,
+        adoption: {},
+        now,
+      }),
+    ).rejects.toMatchObject({ kind: "resume" });
+    await expect(
+      inspectPreviousProductionRun(api, {
+        current: productionInvocation,
+        adoption: { resumeAdoptionRunId: 99 },
+        now,
+      }),
+    ).resolves.toMatchObject({
+      previousOperation: "adoption",
+      requiresResume: true,
+      requiredOperation: "resume-adoption",
+      artifact: { artifactId: 91 },
+    });
   });
 
   it.each([

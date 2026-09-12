@@ -22,10 +22,12 @@ import {
   type ProductionResults,
 } from "./production-record.ts";
 import { preparedReleaseSchema } from "./prepare.ts";
+import { productionAdoptionRecordSchema } from "./production-adoption-record.ts";
 import { recoveryRecordSchema, type RecoveryRecord } from "./recovery-record.ts";
 import {
   recoveryTargetSchema,
   validateRecoveryArtifact,
+  validateAdoptionRecoveryArtifact,
   validateRecoveryTarget,
   type RecoveryTarget,
 } from "./recovery-target.ts";
@@ -162,17 +164,25 @@ export async function runRecoveryCli(argv: readonly string[], repositoryRoot: st
       resolve(sourceDirectory, "artifacts/prepared-release.json"),
       preparedReleaseSchema,
     );
-    const targetRecord = await readReleaseJson(
-      resolve(targetDirectory, "run/production.json"),
-      productionRecordSchema,
-    );
     const targetPrepared = await readReleaseJson(
       resolve(targetDirectory, "artifacts/prepared-release.json"),
       preparedReleaseSchema,
     );
     verifyRecoverySourceRecords(source, approval, prepared, configuration);
     validateRecoveryTarget(target, source, approval);
-    validateRecoveryArtifact(target, targetRecord, targetPrepared);
+    if (target.workerArtifactKind === "production-adoption") {
+      const record = await readReleaseJson(
+        resolve(targetDirectory, "run/adoption.json"),
+        productionAdoptionRecordSchema,
+      );
+      validateAdoptionRecoveryArtifact(target, record, targetPrepared);
+    } else {
+      const record = await readReleaseJson(
+        resolve(targetDirectory, "run/production.json"),
+        productionRecordSchema,
+      );
+      validateRecoveryArtifact(target, record, targetPrepared);
+    }
     if (source.runIds.at(-1) !== args.recoverySourceRunId)
       throw Error("Recovery source run differs.");
     const previous =
@@ -212,6 +222,7 @@ export async function runRecoveryCli(argv: readonly string[], repositoryRoot: st
       await download(verified.history.artifact, sourceDirectory);
       const artifact = await verifyRecoveryTargetArtifact(verified.api, {
         runId: target.workerArtifactRunId,
+        operation: target.workerArtifactKind,
         promotionCommit: target.workerSourceCommit,
       });
       targetArtifact = artifactMetadata(artifact.artifact);
@@ -321,6 +332,7 @@ export async function runRecoveryCli(argv: readonly string[], repositoryRoot: st
     if (!local.previous) {
       const targetRun = await verifyRecoveryTargetArtifact(verified.api, {
         runId: target.workerArtifactRunId,
+        operation: target.workerArtifactKind,
         promotionCommit: target.workerSourceCommit,
       });
       if (!same(artifactMetadata(targetRun.artifact), preflight.targetArtifact))

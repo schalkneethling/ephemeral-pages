@@ -43,14 +43,19 @@ export const successfulRehearsalSchema = z.strictObject({
   stages: z.record(z.enum(successfulStages), z.literal("passed")),
   recovery: z.literal("none"),
 });
-export const productionPolicySchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  productionEnabled: z.boolean(),
-  repository: z.literal("schalkneethling/ephemeral-pages"),
-  productionWorkflow: z.literal(".github/workflows/release-production.yml"),
-  rehearsalWorkflow: z.literal(".github/workflows/release-rehearsal.yml"),
-  maximumEvidenceAgeHours: z.number().int().min(1).max(168),
-});
+export const productionPolicySchema = z
+  .strictObject({
+    schemaVersion: z.literal(1),
+    productionEnabled: z.boolean(),
+    adoptionEnabled: z.boolean(),
+    repository: z.literal("schalkneethling/ephemeral-pages"),
+    productionWorkflow: z.literal(".github/workflows/release-production.yml"),
+    rehearsalWorkflow: z.literal(".github/workflows/release-rehearsal.yml"),
+    maximumEvidenceAgeHours: z.number().int().min(1).max(168),
+  })
+  .refine((value) => !(value.productionEnabled && value.adoptionEnabled), {
+    message: "Production release and adoption cannot be enabled together.",
+  });
 export const approvalBytes = (approval: ReleaseApproval) =>
   `${JSON.stringify(approvalSchema.parse(approval), null, 2)}\n`;
 export async function gitReleaseValue(

@@ -6,7 +6,9 @@ transition and final-pair browser smokes. See [the verified checkpoint](release-
 and [earlier findings](release-evidence/2026-09-11-staging/README.md). Native branch protections
 and branch-restricted deployment credentials are configured. Production orchestration and recovery
 are implemented but remain live-unverified. Publishing cutover, the attributable production
-baseline, and the first coordinated production release remain gates. Production publishing settings
+baseline, and the first coordinated production release remain gates. The separate default-off
+[one-time Worker adoption](production-orchestration.md#first-worker-adoption) preserves Netlify and
+records the accepted fail-forward policy; it does not establish a historical Worker rollback target. Production publishing settings
 have not been changed by this exercise.
 
 This design applies the principles in

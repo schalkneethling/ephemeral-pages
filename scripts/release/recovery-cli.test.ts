@@ -277,6 +277,7 @@ async function fixture(resume = false) {
   await writeJson(join(repository, "scripts/release/production-policy.json"), {
     schemaVersion: 1,
     productionEnabled: true,
+    adoptionEnabled: false,
     repository: "schalkneethling/ephemeral-pages",
     productionWorkflow: ".github/workflows/release-production.yml",
     rehearsalWorkflow: ".github/workflows/release-rehearsal.yml",
@@ -360,6 +361,28 @@ afterEach(async () => {
 });
 
 describe("recovery CLI evidence boundaries", () => {
+  it("requires distinct adoption evidence and verifies its workflow operation", async () => {
+    const data = await fixture();
+    await writeJson(join(data.repository, "docs/release-evidence/recovery-target.json"), {
+      ...data.target,
+      workerArtifactKind: "production-adoption",
+    });
+    // The archive contains a successful ordinary release, not an adoption record.
+    // An explicitly adopted target must never silently fall back to that record.
+    await expect(runRecoveryCli(["preflight", ...data.flags], data.repository)).rejects.toThrow();
+    expect(mocks.targetArtifact).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        runId: data.target.workerArtifactRunId,
+        operation: "production-adoption",
+        promotionCommit: data.target.workerSourceCommit,
+      }),
+    );
+    expect(mocks.productionFactory).not.toHaveBeenCalled();
+    expect(mocks.recoveryFactory).not.toHaveBeenCalled();
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+
   it("seals the API artifact identities and observed starting pair during preflight", async () => {
     const data = await fixture();
     await expect(runRecoveryCli(["preflight", ...data.flags], data.repository)).resolves.toEqual({

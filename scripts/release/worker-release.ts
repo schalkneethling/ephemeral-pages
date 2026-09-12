@@ -83,6 +83,16 @@ export type PreparedProductionWorkerRelease = PreparedWorkerRelease & {
   authorization: ProductionProviderAuthorization;
 };
 
+export type InspectedProductionWorkerBaseline = {
+  accountId: string;
+  deploymentId: string;
+  migrationTag: "v1";
+  requiredSecretBindingNames: readonly string[];
+  secretValuesObservable: false;
+  versionId: string;
+  workerName: string;
+};
+
 export type UploadedWorkerVersion = {
   accountId: string;
   artifactManifestSha256: string;
@@ -674,10 +684,10 @@ const inspectBaseline = async (
   input: PreparedWorkerRelease,
   manifest: WorkerArtifactManifest,
   dependencies: WorkerReleaseDependencies,
-): Promise<void> => {
+): Promise<{ deploymentId: string; migrationTag: "v1"; scriptEtag: string; versionId: string }> => {
   const { accountId, workerName } = input.artifactInput.target;
   try {
-    parseCurrentServicePolicy(
+    const migrationTag = parseCurrentServicePolicy(
       await readProvider(dependencies, servicePath(accountId, workerName), "preflight"),
       manifest,
     );
@@ -689,7 +699,7 @@ const inspectBaseline = async (
       ),
     );
     if (deployment.id !== input.expectedBaselineDeploymentId) throw new Error();
-    parseVersionAgainstInput(
+    const scriptEtag = parseVersionAgainstInput(
       await readProvider(
         dependencies,
         workerPath(accountId, workerName, `/versions/${encodeURIComponent(deployment.versionId)}`),
@@ -699,6 +709,12 @@ const inspectBaseline = async (
       manifest,
       input,
     );
+    return {
+      deploymentId: deployment.id,
+      migrationTag,
+      scriptEtag,
+      versionId: deployment.versionId,
+    };
   } catch {
     throw new WorkerReleaseError("preflight");
   }
@@ -1009,6 +1025,24 @@ const authorizeProductionWorker = (input: PreparedProductionWorkerRelease): void
   } catch {
     throw new WorkerReleaseError("preflight");
   }
+};
+
+export const inspectPreparedProductionWorkerBaseline = async (
+  input: PreparedProductionWorkerRelease,
+  dependencies: WorkerReleaseDependencies,
+): Promise<InspectedProductionWorkerBaseline> => {
+  authorizeProductionWorker(input);
+  const manifest = await verifyPrepared(input, dependencies, "production");
+  const inspected = await inspectBaseline(input, manifest, dependencies);
+  return {
+    accountId: input.artifactInput.target.accountId,
+    deploymentId: inspected.deploymentId,
+    migrationTag: inspected.migrationTag,
+    requiredSecretBindingNames: [...manifest.policy.requiredSecretNames].sort(),
+    secretValuesObservable: false,
+    versionId: inspected.versionId,
+    workerName: input.artifactInput.target.workerName,
+  };
 };
 
 export const uploadPreparedProductionWorker = async (

@@ -1,5 +1,9 @@
 import { z } from "zod/v4";
 import {
+  validateCompletedAdoption,
+  type ProductionAdoptionRecord,
+} from "./production-adoption-record.ts";
+import {
   digestSchema,
   pairSchema,
   productionRecordSchema,
@@ -21,6 +25,7 @@ export const recoveryTargetSchema = z.strictObject({
   netlifyArtifactSha256: digestSchema.optional(),
   workerSourceCommit: fullCommitSchema,
   workerArtifactRunId: z.number().int().positive(),
+  workerArtifactKind: z.literal("production-adoption").optional(),
   workerArtifactSha256: digestSchema,
   workerScriptEtag: z.string().regex(/^[a-f0-9]{32,128}$/u),
 });
@@ -56,6 +61,7 @@ export function validateRecoveryArtifact(
   preparedReleaseSchema.parse(prepared);
   const upload = record.results.uploadedWorker;
   if (
+    target.workerArtifactKind !== undefined ||
     (target.netlifyArtifactSha256 !== undefined &&
       (target.netlifyArtifactSha256 !== prepared.artifacts.netlify.sha256 ||
         record.results.publishedNetlify?.publishedDeployId !== target.pair.netlifyDeployId ||
@@ -76,4 +82,29 @@ export function validateRecoveryArtifact(
     upload.scriptEtag !== target.workerScriptEtag
   )
     throw new Error("Recovery Worker artifact differs from its trusted release.");
+}
+
+// Adoption proves only the newly activated Worker. Its retained Netlify deployment
+// keeps its independently verified Git source; the adoption build did not publish it.
+export function validateAdoptionRecoveryArtifact(
+  target: RecoveryTarget,
+  record: ProductionAdoptionRecord,
+  prepared: PreparedRelease,
+) {
+  recoveryTargetSchema.parse(target);
+  const adopted = validateCompletedAdoption(record, prepared);
+  if (
+    target.workerArtifactKind !== "production-adoption" ||
+    target.netlifyArtifactSha256 !== undefined ||
+    target.configurationFingerprint !== adopted.source.configurationSha256 ||
+    target.workerArtifactRunId !== adopted.runIds.at(-1) ||
+    target.workerSourceCommit !== adopted.source.promotionCommit ||
+    target.netlifySourceCommit !== adopted.inspection!.netlify.sourceCommit ||
+    target.pair.netlifyDeployId !== adopted.adoptedPair!.netlifyDeployId ||
+    target.pair.workerDeploymentId !== adopted.adoptedPair!.workerDeploymentId ||
+    target.pair.workerVersionId !== adopted.adoptedPair!.workerVersionId ||
+    target.workerArtifactSha256 !== adopted.results.uploadedWorker!.artifactManifestSha256 ||
+    target.workerScriptEtag !== adopted.results.uploadedWorker!.scriptEtag
+  )
+    throw new Error("Recovery Worker artifact differs from its trusted adoption.");
 }

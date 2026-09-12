@@ -36,7 +36,7 @@ beforeEach(() => {
   Object.values(mocks).forEach((mock) => mock.mockReset());
   mocks.read.mockImplementation(async (path: string) =>
     path.endsWith("production-policy.json")
-      ? { productionEnabled: true, maximumEvidenceAgeHours: 168 }
+      ? { productionEnabled: true, adoptionEnabled: false, maximumEvidenceAgeHours: 168 }
       : {},
   );
   mocks.invoke.mockResolvedValue({ headSha: "b".repeat(40), runId: 101 });
@@ -47,7 +47,7 @@ beforeEach(() => {
   mocks.promotion.mockResolvedValue({ candidate: "c".repeat(40) });
 });
 it("blocks the default-off rollout before GitHub or provider operations", async () => {
-  mocks.read.mockResolvedValue({ productionEnabled: false });
+  mocks.read.mockResolvedValue({ productionEnabled: false, adoptionEnabled: false });
   await expect(
     verifyProductionContext("/repo", args, {} as GitHubRuntimeEnvironment, "token"),
   ).rejects.toThrow("not enabled");
@@ -72,6 +72,7 @@ it("requires promotion, exact CI, recent rehearsal and unresolved-run checks", a
     {
       current: { headSha: "b".repeat(40), runId: 101 },
       resumeRunId: undefined,
+      verifyCompletedAdoption: expect.any(Function),
       verifyCompletedRecovery: expect.any(Function),
     },
   );
