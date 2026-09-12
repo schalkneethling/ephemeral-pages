@@ -26,3 +26,5 @@ Changing the protected release runner changes the candidate. Do not weaken same-
 ## Offline repair validation
 
 The integrated repair passed 119 tests across six focused suites, Vite+ checks, release typecheck, and Gitleaks history/worktree scans. The extraction regression validates real archive extraction and rejects changed content before sealing. Separate copies of the actual failed source and adoption recovery-target artifacts passed restoration and strict Netlify/Worker verification. Independent review found no blocker. These checks validate the repair offline; they do not claim a successful production recovery or completed application release.
+
+Review follow-up adds explicit inventory-path containment before filesystem access and permits a recovered deployment ID for an unchanged adopted Worker version. Its integrated checks passed 101 tests; the path-escape regression fails without the fix, and both real retained bundles pass strict restoration. A local real-functions packaging fixture failure also reproduces on unchanged base `4eea778`; it is not attributed to this repair.

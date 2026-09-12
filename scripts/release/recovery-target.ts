@@ -101,7 +101,6 @@ export function validateAdoptionRecoveryArtifact(
     target.workerSourceCommit !== adopted.source.promotionCommit ||
     target.netlifySourceCommit !== adopted.inspection!.netlify.sourceCommit ||
     target.pair.netlifyDeployId !== adopted.adoptedPair!.netlifyDeployId ||
-    target.pair.workerDeploymentId !== adopted.adoptedPair!.workerDeploymentId ||
     target.pair.workerVersionId !== adopted.adoptedPair!.workerVersionId ||
     target.workerArtifactSha256 !== adopted.results.uploadedWorker!.artifactManifestSha256 ||
     target.workerScriptEtag !== adopted.results.uploadedWorker!.scriptEtag

@@ -172,7 +172,10 @@ mutation. Legacy production evidence and ambiguous legacy Worker writes remain b
 archived record is retained for audit.
 
 Worker rollback creates a new deployment ID while restoring the target version. Completion records
-must retain that new ID; subsequent baselines must use the actually recovered pair. A successful
+must retain that new ID; subsequent baselines and reviewed recovery targets must use the actually
+recovered pair, derived from verified completed recovery evidence. Artifact validation binds the
+immutable Worker version, source, hash and ETag; this also permits a new deployment ID for an
+adoption-backed target without changing its version. A successful
 recovery clears the workflow history guard only after its retained completion evidence is verified.
 Missing or expired completion artifacts block that automatic clearance.
 
