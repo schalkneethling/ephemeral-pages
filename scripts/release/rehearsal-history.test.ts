@@ -15,6 +15,7 @@ import { configurationFingerprint } from "./planner.ts";
 import {
   type RehearsalHistoryDependencies,
   rehearsalResolutionSchema,
+  stagingRehearsalFinalPairRecordSchema,
   stagingRehearsalRecoveryRecordSchema,
   stagingWorkerResolutionAuditSchema,
   verifyRehearsalHistory,
@@ -637,6 +638,103 @@ async function resolvedFixture(pairMismatch?: "starting" | "target") {
   return { root, rehearsalBytes, recoveredPair, prefix, workerResolution };
 }
 
+async function finalPairFixture(change?: "incomplete-writes" | "pair" | "configuration" | "smoke") {
+  const root = await mkdtemp(join(tmpdir(), "rehearsal-history-final-pair-"));
+  roots.push(root);
+  const configBytes = await readFile(new URL("./environments.json", import.meta.url));
+  await mkdir(resolve(root, "scripts/release"), { recursive: true });
+  await writeFile(resolve(root, "scripts/release/environments.json"), configBytes);
+  const configuration = releaseConfigSchema.parse(JSON.parse(configBytes.toString("utf8")));
+  const fingerprint = configurationFingerprint(configuration);
+  const finalPair = {
+    netlifyDeployId: "netlify-final",
+    workerDeploymentId: "worker-final",
+    workerVersionId: "version-final",
+  };
+  const unresolved = {
+    schemaVersion: 1,
+    operation: "rehearse",
+    outcome: "failed",
+    source: {
+      candidate: sha,
+      tree: "c".repeat(40),
+      environment: "staging",
+      configurationFingerprint: digest("f"),
+    },
+    preparationSha256: digest("e"),
+    priorPair: {
+      netlifyDeployId: "netlify-prior",
+      workerDeploymentId: "worker-prior",
+      workerVersionId: "version-prior",
+    },
+    activatedWorker: {
+      deploymentId: finalPair.workerDeploymentId,
+      versionId: finalPair.workerVersionId,
+    },
+    publishedNetlify: { publishedDeployId: finalPair.netlifyDeployId },
+    stages: {
+      inspect: "passed",
+      "hold-netlify": "passed",
+      "upload-worker": "passed",
+      "activate-worker": "passed",
+      "observe-worker": "passed",
+      "verify-transition": "passed",
+      "prepublish-check": "passed",
+      "publish-netlify": change === "incomplete-writes" ? "failed" : "passed",
+      "observe-netlify": "failed",
+    },
+    failure: { stage: "observe-netlify", kind: "failed" },
+    recovery: "inspect-recorded-targets-before-recovery",
+  };
+  const rehearsalBytes = Buffer.from(`${JSON.stringify(unresolved)}\n`);
+  const failedRehearsalSha256 = artifactHash(rehearsalBytes);
+  const smoke = smokeReport(fingerprint);
+  if (change === "smoke") smoke.checks.pop();
+  const smokeBytes = Buffer.from(`${JSON.stringify(smoke)}\n`);
+  const recordedPair =
+    change === "pair" ? { ...finalPair, workerVersionId: "version-unrelated" } : finalPair;
+  const recovery = stagingRehearsalFinalPairRecordSchema.parse({
+    schemaVersion: 1,
+    operation: "staging-rehearsal-final-pair",
+    environment: "staging",
+    failedRunId: 299,
+    failedDiagnosticsDigest: `sha256:${digest("b")}`,
+    failedRehearsalSha256,
+    preparedConfigurationFingerprint:
+      change === "configuration" ? digest("0") : unresolved.source.configurationFingerprint,
+    configurationSha256: fingerprint,
+    pairSmokeSha256: artifactHash(smokeBytes),
+    finalPair: recordedPair,
+    outcome: "passed",
+    stages: { inspect: "passed", "verify-pair": "passed" },
+  });
+  const recoveryBytes = Buffer.from(`${JSON.stringify(recovery)}\n`);
+  const prefix = resolve(root, "docs/release-evidence/rehearsal-resolutions/299");
+  await mkdir(resolve(prefix, ".."), { recursive: true });
+  const resolution = rehearsalResolutionSchema.parse({
+    schemaVersion: 1,
+    operation: "resolve-staging-rehearsal",
+    failedRunId: 299,
+    failedDiagnosticsDigest: `sha256:${digest("b")}`,
+    failedRehearsalSha256,
+    restoredPair: recordedPair,
+    recoveryRecord: {
+      path: "docs/release-evidence/rehearsal-resolutions/299-recovery.json",
+      sha256: artifactHash(recoveryBytes),
+    },
+    passedSmoke: {
+      path: "docs/release-evidence/rehearsal-resolutions/299-smoke.json",
+      sha256: artifactHash(smokeBytes),
+    },
+  });
+  await Promise.all([
+    writeFile(`${prefix}.json`, `${JSON.stringify(resolution)}\n`),
+    writeFile(`${prefix}-recovery.json`, recoveryBytes),
+    writeFile(`${prefix}-smoke.json`, smokeBytes),
+  ]);
+  return { root, rehearsalBytes, finalPair };
+}
+
 describe("reviewed rehearsal recovery", () => {
   const client = (): GitHubReleaseApi =>
     api(({ path }) => {
@@ -664,6 +762,54 @@ describe("reviewed rehearsal recovery", () => {
       "SESSION_SIGNING_KEY",
     ];
     expect(stagingWorkerResolutionAuditSchema.safeParse(reordered).success).toBe(false);
+  });
+
+  it("accepts a reviewed final pair after only the postpublication readback failed", async () => {
+    const fixture = await finalPairFixture();
+    const dependencies = inertDependencies();
+    dependencies.extractArtifact = vi.fn(async (_archive, directory) => {
+      await mkdir(resolve(directory, "reports"), { recursive: true });
+      await writeFile(resolve(directory, "reports/rehearsal.json"), fixture.rehearsalBytes);
+    });
+    dependencies.inspectCurrentPair = vi.fn(async () => fixture.finalPair);
+    await expect(
+      verifyRehearsalHistory(client(), input(fixture.root), dependencies),
+    ).resolves.toMatchObject({ resolvedBy: "reviewed-final-pair", runId: 299 });
+    expect(dependencies.inspectCurrentPair).toHaveBeenCalledOnce();
+  });
+
+  it.each(["incomplete-writes", "pair", "configuration", "smoke"] as const)(
+    "blocks reviewed final-pair evidence with changed %s evidence",
+    async (change) => {
+      const fixture = await finalPairFixture(change);
+      const dependencies = inertDependencies();
+      dependencies.extractArtifact = vi.fn(async (_archive, directory) => {
+        await mkdir(resolve(directory, "reports"), { recursive: true });
+        await writeFile(resolve(directory, "reports/rehearsal.json"), fixture.rehearsalBytes);
+      });
+      dependencies.inspectCurrentPair = vi.fn(async () => fixture.finalPair);
+      await expect(
+        verifyRehearsalHistory(client(), input(fixture.root), dependencies),
+      ).rejects.toThrow();
+      expect(dependencies.inspectCurrentPair).not.toHaveBeenCalled();
+    },
+  );
+
+  it("blocks reviewed final-pair evidence when the fresh provider readback drifts", async () => {
+    const fixture = await finalPairFixture();
+    const dependencies = inertDependencies();
+    dependencies.extractArtifact = vi.fn(async (_archive, directory) => {
+      await mkdir(resolve(directory, "reports"), { recursive: true });
+      await writeFile(resolve(directory, "reports/rehearsal.json"), fixture.rehearsalBytes);
+    });
+    dependencies.inspectCurrentPair = vi.fn(async () => ({
+      ...fixture.finalPair,
+      workerDeploymentId: "worker-drifted",
+    }));
+    await expect(
+      verifyRehearsalHistory(client(), input(fixture.root), dependencies),
+    ).rejects.toThrow();
+    expect(dependencies.inspectCurrentPair).toHaveBeenCalledOnce();
   });
 
   it("accepts exact recovery, smoke, failed artifact, and current restored-pair bindings", async () => {

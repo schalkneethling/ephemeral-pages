@@ -97,6 +97,22 @@ export async function runRehearsalWorkflow(argv: readonly string[], repositoryRo
 export function rehearsalWorkflowFailureCode(error: unknown): string {
   return error instanceof GitHubReleaseError ? `github-${error.kind}` : "rehearsal-blocked";
 }
+
+type RehearsalFailureOutput = {
+  write: (message: string, flushed: () => void) => unknown;
+};
+
+export function exitAfterRehearsalWorkflowFailure(
+  error: unknown,
+  output: RehearsalFailureOutput = process.stderr,
+  exit: (code: number) => unknown = (code) => process.exit(code),
+): void {
+  output.write(
+    `Staging rehearsal blocked (${rehearsalWorkflowFailureCode(error)}); inspect sanitized workflow reports.\n`,
+    () => exit(1),
+  );
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const result = await runRehearsalWorkflow(
@@ -105,9 +121,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     );
     process.stdout.write(JSON.stringify(result) + "\n");
   } catch (error) {
-    process.stderr.write(
-      `Staging rehearsal blocked (${rehearsalWorkflowFailureCode(error)}); inspect sanitized workflow reports.\n`,
-    );
-    process.exitCode = 1;
+    exitAfterRehearsalWorkflowFailure(error);
   }
 }

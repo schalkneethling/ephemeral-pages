@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { artifactHash } from "./artifact-contract.ts";
 import { GitHubReleaseError } from "./github-release.ts";
 import {
+  exitAfterRehearsalWorkflowFailure,
   parseRehearsalWorkflowArguments,
   rehearsalWorkflowFailureCode,
   runRehearsalWorkflow,
@@ -159,4 +160,26 @@ it.each(["mode", "preparation", "candidate"] as const)(
 it("reports only a bounded diagnostic code for GitHub evidence failures", () => {
   expect(rehearsalWorkflowFailureCode(new GitHubReleaseError("source"))).toBe("github-source");
   expect(rehearsalWorkflowFailureCode(new Error("secret-value"))).toBe("rehearsal-blocked");
+});
+
+it("exits after the sanitized failure message flushes even while another handle is active", () => {
+  let flushed: (() => void) | undefined;
+  const write = vi.fn((_message: string, callback: () => void) => {
+    flushed = callback;
+    return true;
+  });
+  const exit = vi.fn();
+  const activeHandle = setInterval(() => undefined, 60_000);
+  try {
+    exitAfterRehearsalWorkflowFailure(new Error("secret-value"), { write }, exit);
+    expect(write).toHaveBeenCalledWith(
+      "Staging rehearsal blocked (rehearsal-blocked); inspect sanitized workflow reports.\n",
+      expect.any(Function),
+    );
+    expect(exit).not.toHaveBeenCalled();
+    flushed?.();
+    expect(exit).toHaveBeenCalledExactlyOnceWith(1);
+  } finally {
+    clearInterval(activeHandle);
+  }
 });
