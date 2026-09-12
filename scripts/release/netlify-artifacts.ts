@@ -172,6 +172,80 @@ const normalizeRelativePath = (path: string): string => {
   return normalized;
 };
 
+const isSafeInventoryPath = (value: unknown, prefix: string): value is string => {
+  if (
+    typeof value !== "string" ||
+    isAbsolute(value) ||
+    /^[A-Za-z]:/u.test(value) ||
+    !value.startsWith(`${prefix}/`)
+  ) {
+    return false;
+  }
+  try {
+    return normalizeRelativePath(value) === value;
+  } catch {
+    return false;
+  }
+};
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isInventoryFile = (
+  value: unknown,
+  prefix: "publish" | "functions" | "deploy",
+  limits: NetlifyArtifactLimits,
+): value is NetlifyArtifactFile =>
+  isObject(value) &&
+  isSafeInventoryPath(value.relativePath, prefix) &&
+  Number.isSafeInteger(value.bytes) &&
+  typeof value.bytes === "number" &&
+  value.bytes >= 0 &&
+  value.bytes <= limits.maxFileBytes &&
+  typeof value.sha256 === "string" &&
+  SHA256.test(value.sha256);
+
+const isInventoryFunction = (
+  value: unknown,
+  limits: NetlifyArtifactLimits,
+): value is NetlifyFunctionArtifact => {
+  if (!isObject(value) || typeof value.name !== "string" || !FUNCTION_NAME.test(value.name)) {
+    return false;
+  }
+  const name = value.name;
+  return (
+    isInventoryFile(value, "functions", limits) && value.relativePath === `functions/${name}.zip`
+  );
+};
+
+const validateInventoryPaths = (
+  inventory: NetlifyArtifactInventory,
+  limits: NetlifyArtifactLimits,
+): void => {
+  const value = inventory as unknown;
+  if (
+    !isObject(value) ||
+    value.schemaVersion !== 1 ||
+    value.netlifyCliVersion !== NETLIFY_CLI_VERSION ||
+    value.zipItAndShipItVersion !== ZIP_IT_AND_SHIP_IT_VERSION ||
+    !isInventoryFile(value.headers, "publish", limits) ||
+    value.headers.relativePath !== `publish/${HEADERS_PATH}` ||
+    !isObject(value.deployConfiguration) ||
+    !isInventoryFile(value.deployConfiguration.file, "deploy", limits) ||
+    value.deployConfiguration.file.relativePath !== "deploy/netlify.toml" ||
+    typeof value.deployConfiguration.sha1 !== "string" ||
+    !/^[a-f0-9]{40}$/u.test(value.deployConfiguration.sha1) ||
+    !Array.isArray(value.staticFiles) ||
+    !value.staticFiles.every((file) => isInventoryFile(file, "publish", limits)) ||
+    !Array.isArray(value.functions) ||
+    !value.functions.every((file) => isInventoryFunction(file, limits)) ||
+    !isInventoryFile(value.functionsManifest, "functions", limits) ||
+    value.functionsManifest.relativePath !== FUNCTIONS_MANIFEST_PATH
+  ) {
+    throw new NetlifyArtifactError("state");
+  }
+};
+
 const boundedInteger = (value: number): boolean =>
   Number.isSafeInteger(value) && value > 0 && value <= Number.MAX_SAFE_INTEGER;
 
@@ -896,6 +970,7 @@ const verifyNetlifyArtifactsUnsafe = async (
 ): Promise<void> => {
   const limits = resolveLimits(requestedLimits);
   const artifactDirectory = resolve(prepared.artifactDirectory);
+  validateInventoryPaths(prepared.inventory, limits);
   const inventoryPath = resolve(artifactDirectory, INVENTORY_PATH);
   const rootEntries = await readdir(artifactDirectory, { withFileTypes: true }).catch((error) => {
     throw new NetlifyArtifactError("state", error);
